@@ -1,0 +1,729 @@
+'use client';
+
+import React, { useState } from 'react';
+import { APPRENANTS_REELS, DERNIERE_SITUATION_SIFA, verifierConformiteSifa, estMineur } from '../../../data/mockApprenants_reels';
+import { SESSIONS } from '../../../data/mockData';
+import { COLORS } from '../../../lib/constants';
+import Card from '../../../components/Card';
+import { useAcces } from '../../../lib/useAcces';
+import dynamic from 'next/dynamic';
+const BoutonPdfRupture = dynamic(() => import('../../../components/BoutonPdfRupture'), { ssr: false });
+const btnPrimary: React.CSSProperties = { backgroundColor: COLORS.primary, color: 'white', border: 'none', borderRadius: '8px', padding: '9px 16px', fontSize: '13px', fontWeight: '600', cursor: 'pointer' };
+const btnSecondary: React.CSSProperties = { backgroundColor: 'white', color: COLORS.primary, border: `1.5px solid ${COLORS.primary}`, borderRadius: '8px', padding: '9px 16px', fontSize: '13px', fontWeight: '600', cursor: 'pointer' };
+const btnDanger: React.CSSProperties = { backgroundColor: 'white', color: '#e53e3e', border: '1.5px solid #e53e3e', borderRadius: '8px', padding: '9px 16px', fontSize: '13px', fontWeight: '600', cursor: 'pointer' };
+const inputStyle: React.CSSProperties = { border: '1.5px solid #e0e0e0', borderRadius: '8px', padding: '8px 12px', fontSize: '13px', width: '100%', boxSizing: 'border-box', backgroundColor: 'white' };
+
+function InfoRow({ label, value }: { label: string; value?: string }) {
+  return (
+    <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: `1px solid ${COLORS.border}` }}>
+      <span style={{ fontSize: '12px', color: '#888', textTransform: 'uppercase', fontWeight: '600' }}>{label}</span>
+      <span style={{ fontSize: '13px', fontWeight: '600', color: (!value || value === '—') ? '#ccc' : COLORS.text, textAlign: 'right', maxWidth: '65%' }}>{value || '—'}</span>
+    </div>
+  );
+}
+
+function Champ({ label, champ, form, setForm, type = 'text', placeholder = '' }: { label: string; champ: string; form: any; setForm: any; type?: string; placeholder?: string }) {
+  return (
+    <div>
+      <label style={{ fontSize: '11px', color: '#888', textTransform: 'uppercase', fontWeight: '600', display: 'block', marginBottom: '4px' }}>{label}</label>
+      <input type={type} style={inputStyle} value={form[champ] ?? ''} placeholder={placeholder} onChange={e => setForm((prev: any) => ({ ...prev, [champ]: e.target.value }))} />
+    </div>
+  );
+}
+
+function ChampSelect({ label, champ, form, setForm, options }: { label: string; champ: string; form: any; setForm: any; options: { value: string; label: string }[] }) {
+  return (
+    <div>
+      <label style={{ fontSize: '11px', color: '#888', textTransform: 'uppercase', fontWeight: '600', display: 'block', marginBottom: '4px' }}>{label}</label>
+      <select style={inputStyle} value={form[champ] ?? ''} onChange={e => setForm((prev: any) => ({ ...prev, [champ]: e.target.value }))}>
+        <option value="">— Non renseigné —</option>
+        {options.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+      </select>
+    </div>
+  );
+}
+
+export default function FicheApprenant({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = React.use(params);
+  const apprenant = APPRENANTS_REELS.find(ap => ap.id === id);
+  const [form, setForm] = useState<any>(apprenant ?? {});
+  const [modeEdition, setModeEdition] = useState(false);
+  const [sauvegarde, setSauvegarde] = useState(false);
+  const [modaleRupture, setModaleRupture] = useState(false);
+  const [rupture, setRupture] = useState({ date: '', motif: '', maintien: 'NON' });
+  const { utilisateur, peutModifier } = useAcces();
+
+  if (!apprenant) return (
+    <div style={{ padding: '32px' }}>
+      <a href="/apprenants" style={{ color: COLORS.primary, fontWeight: '600', textDecoration: 'none' }}>← Retour aux apprenants</a>
+      <p style={{ marginTop: '16px', color: COLORS.textMuted }}>Apprenant introuvable.</p>
+    </div>
+  );
+
+  const p2s = form.statut === 'P2S';
+  const estEnRupture = form.statut === 'Rupture';
+  const enCours = form.statut === 'En cours';
+  const statutBg = enCours ? '#e6f4f1' : p2s ? '#fef6e4' : '#fde8e8';
+  const statutColor = enCours ? '#006B68' : p2s ? '#C8A23A' : '#e53e3e';
+  const statutLabel = enCours ? 'CA' : p2s ? 'P2S' : form.maintienFormation === 'OUI' ? 'RUPTURE MEF' : 'RUPTURE FMEF';
+
+  // SIFA — vérification de conformité
+  const champsSifaManquants = verifierConformiteSifa(form);
+  const estMineurApp = estMineur(form);
+
+  // === NOUVEAU : Sessions filtrées par formation de l'apprenant ===
+  const sessionsCompatibles = (SESSIONS as any[]).filter((s: any) => {
+    // Si la session a un champ "formation" ou "codeFormation", on filtre
+    const codeForm = s.formation ?? s.codeFormation ?? s.code;
+    return !codeForm || codeForm === form.formation;
+  });
+  const sessionActuelle = form.sessionId ? (SESSIONS as any[]).find((s: any) => s.id === form.sessionId) : null;
+
+  function libelleSession(s: any): string {
+    if (!s) return '';
+    const code = s.formation ?? s.codeFormation ?? s.code ?? '';
+    const debut = s.dateDebut ?? s.debut ?? s.dateDebutFormation ?? '';
+    const fin = s.dateFin ?? s.fin ?? s.dateFinFormation ?? '';
+    const nom = s.nom ?? s.libelle ?? code;
+    return `${nom}${debut ? ` — ${debut}` : ''}${fin ? ` → ${fin}` : ''}`;
+  }
+
+  function sauvegarder() {
+    localStorage.setItem('apprenant_' + id, JSON.stringify(form));
+    setSauvegarde(true);
+    setModeEdition(false);
+    setTimeout(() => setSauvegarde(false), 3000);
+  }
+
+  function declarerRupture() {
+    const updated = { ...form, statut: 'Rupture', dateRupture: rupture.date, maintienFormation: rupture.maintien };
+    setForm(updated);
+    localStorage.setItem('apprenant_' + id, JSON.stringify(updated));
+    setModaleRupture(false);
+    setSauvegarde(true);
+    setTimeout(() => setSauvegarde(false), 3000);
+  }
+
+  return (
+    <div>
+      <a href="/apprenants" style={{ color: COLORS.primary, fontSize: '13px', textDecoration: 'none', fontWeight: '600' }}>← Retour aux apprenants</a>
+
+      {/* En-tête */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', margin: '16px 0 24px' }}>
+        <div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap', marginBottom: '6px' }}>
+            <h1 style={{ fontSize: '26px', fontWeight: '800', color: COLORS.primary }}>{form.prenom} {form.nom}</h1>
+            <span style={{ backgroundColor: statutBg, color: statutColor, padding: '4px 12px', borderRadius: '20px', fontSize: '12px', fontWeight: '700' }}>{statutLabel}</span>
+            <span style={{ backgroundColor: COLORS.background, color: COLORS.primary, padding: '4px 12px', borderRadius: '20px', fontSize: '12px', fontWeight: '700' }}>{form.formation}</span>
+            {estEnRupture && form.dateRupture && <span style={{ backgroundColor: '#fde8e8', color: '#e53e3e', padding: '4px 12px', borderRadius: '20px', fontSize: '12px', fontWeight: '700' }}>Rupture le {form.dateRupture}</span>}
+            {form.maintienFormation === 'OUI' && <span style={{ backgroundColor: '#fef6e4', color: '#C8A23A', padding: '4px 12px', borderRadius: '20px', fontSize: '12px', fontWeight: '700' }}>Maintien formation</span>}
+            {/* Badge Session */}
+            {sessionActuelle && (
+              <span style={{ backgroundColor: '#e0e7ff', color: '#4338ca', padding: '4px 12px', borderRadius: '20px', fontSize: '12px', fontWeight: '700' }}>
+                📅 Session {sessionActuelle.id}
+              </span>
+            )}
+            {/* Badge SIFA */}
+            {champsSifaManquants.length > 0 ? (
+              <span title={`Champs SIFA manquants : ${champsSifaManquants.join(', ')}`} style={{ backgroundColor: '#fef6e4', color: '#7a5c00', padding: '4px 12px', borderRadius: '20px', fontSize: '12px', fontWeight: '700', cursor: 'help' }}>
+                ⚠️ SIFA : {champsSifaManquants.length} champ{champsSifaManquants.length > 1 ? 's' : ''} manquant{champsSifaManquants.length > 1 ? 's' : ''}
+              </span>
+            ) : (
+              <span style={{ backgroundColor: '#dcfce7', color: '#15803d', padding: '4px 12px', borderRadius: '20px', fontSize: '12px', fontWeight: '700' }}>
+                ✅ SIFA conforme
+              </span>
+            )}
+          </div>
+          <p style={{ color: COLORS.textMuted, fontSize: '14px' }}>{({'SC':'TP Secrétaire Comptable','GCF':'TP Gestionnaire Comptable et Fiscal','ARH':'TP Assistant(e) en Ressources Humaines','AD':'TP Assistant(e) de Direction','CATL':'TP Chargé(e) d\'Accueil Touristique et de Loisirs','EC':'TP Employé(e) Commercial(e)','CV':'TP Conseiller(ère) de Vente','FPA':'TP Formateur(trice) Professionnel(le) d\'Adultes'} as Record<string,string>)[form.formation] || form.formationLibelle || form.formation || '—'} — {form.entreprise || "Pas encore d'entreprise"}</p>
+        </div>
+        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+          {modeEdition ? (
+            <>
+              <button onClick={sauvegarder} style={btnPrimary}>✅ Enregistrer</button>
+              <button onClick={() => { setForm(apprenant); setModeEdition(false); }} style={btnSecondary}>Annuler</button>
+            </>
+          ) : (
+            <>
+              <button onClick={() => setModeEdition(true)} style={btnSecondary}>✏️ Modifier</button>
+              <button style={btnPrimary}>Générer état mensuel</button>
+              <button onClick={() => { const a = document.createElement('a'); a.href = '/modeles/Sortie_Anticipee.pdf'; a.download = 'Sortie_Anticipee_' + form.nom + '_' + form.prenom + '.pdf'; a.click(); }} style={{ backgroundColor: '#ea580c', color: 'white', border: 'none', borderRadius: '8px', padding: '9px 16px', fontSize: '13px', fontWeight: '600', cursor: 'pointer' }}>
+                🚪 Sortie anticipée
+              </button>
+              <button onClick={() => { const a = document.createElement('a'); a.href = '/modeles/Droit_Image.pdf'; a.download = 'Droit_Image_' + form.nom + '_' + form.prenom + '.pdf'; a.click(); }} style={{ backgroundColor: '#0891b2', color: 'white', border: 'none', borderRadius: '8px', padding: '9px 16px', fontSize: '13px', fontWeight: '600', cursor: 'pointer' }}>
+                📸 Droit à l'image
+              </button>
+              <button onClick={() => {
+                const livrets: Record<string, string> = {
+                  'SC': 'https://docs.google.com/document/d/1iRHWuOb5EYT5Yy7v4YXy5rFBAA5KPOeNW88VpZUkkA4/edit?usp=drive_link',
+                  'AD': 'https://docs.google.com/document/d/16oAKKIBW5YwL3sXTZ1Be1bhlEMvwOsleByH8cvjY8a4/edit?usp=drive_link',
+                  'ARH': 'https://docs.google.com/document/d/13m_VmguC9M4sbMksiI6q8kcNMSGrCDIlveVPPoBsac8/edit?usp=drive_link',
+                  'GCF': 'https://docs.google.com/document/d/1mEW1o_VYrU5GexbSRHJQNFetJhBUHozVq3jZJeyy8IA/edit?usp=drive_link',
+                  'CATL': 'https://docs.google.com/document/d/1WM0qKJA2krngqCo4l9NNEPnFc-HGmRhEhNKftl65eaA/edit?usp=drive_link',
+                  'EC': 'https://docs.google.com/document/d/1M4-mFr49q9NnBvK5BjTJ_9gh2YFRQ-fhbodb1h0DpVA/edit?usp=drive_link',
+                  'CV': 'https://docs.google.com/document/d/1xFJxdfirIX2ZUzG7WmxB5eZkq6_yl_uw9UOdm80lcXg/edit?usp=drive_link',
+                };
+                const lien = livrets[form.formation];
+                if (lien) window.open(lien, '_blank');
+                else alert('Livret non disponible pour : ' + form.formation);
+              }} style={{ backgroundColor: '#7c3aed', color: 'white', border: 'none', borderRadius: '8px', padding: '9px 16px', fontSize: '13px', fontWeight: '600', cursor: 'pointer' }}>
+                📓 Livret d'apprentissage
+              </button>
+              <button onClick={() => {
+                const livrets: Record<string, string> = {
+                  'SC': 'https://docs.google.com/document/d/1iRHWuOb5EYT5Yy7v4YXy5rFBAA5KPOeNW88VpZUkkA4/edit?usp=drive_link',
+                  'AD': 'https://docs.google.com/document/d/16oAKKIBW5YwL3sXTZ1Be1bhlEMvwOsleByH8cvjY8a4/edit?usp=drive_link',
+                  'ARH': 'https://docs.google.com/document/d/13m_VmguC9M4sbMksiI6q8kcNMSGrCDIlveVPPoBsac8/edit?usp=drive_link',
+                  'GCF': 'https://docs.google.com/document/d/1mEW1o_VYrU5GexbSRHJQNFetJhBUHozVq3jZJeyy8IA/edit?usp=drive_link',
+                  'CATL': 'https://docs.google.com/document/d/1WM0qKJA2krngqCo4l9NNEPnFc-HGmRhEhNKftl65eaA/edit?usp=drive_link',
+                  'EC': 'https://docs.google.com/document/d/1M4-mFr49q9NnBvK5BjTJ_9gh2YFRQ-fhbodb1h0DpVA/edit?usp=drive_link',
+                  'CV': 'https://docs.google.com/document/d/1xFJxdfirIX2ZUzG7WmxB5eZkq6_yl_uw9UOdm80lcXg/edit?usp=drive_link',
+                };
+                const lienLivret = livrets[form.formation] ?? '';
+                const sujet = encodeURIComponent("Livret d'apprentissage et Livret d'accueil — " + form.prenom + ' ' + form.nom + ' — PAM OI Formation');
+                const corps = encodeURIComponent(
+                  (form.civilite === 'M.' ? 'Monsieur ' : form.civilite === 'Mme' ? 'Madame ' : 'Madame, Monsieur,\n\n') +
+                  (form.civilite ? form.prenom + ' ' + form.nom + ',\n\n' : '') +
+                  "Veuillez trouver ci-dessous les documents liés à votre entrée en formation chez PAM OI :\n\n" +
+                  "📓 LIVRET D'APPRENTISSAGE\n" +
+                  "Votre livret d'apprentissage est disponible en ligne :\n" +
+                  lienLivret + "\n\n" +
+                  "📋 LIVRET D'ACCUEIL\n" +
+                  "Le livret d'accueil PAM OI 2026-2027 vous est transmis en pièce jointe.\n" +
+                  "Il contient toutes les informations pratiques sur le centre de formation.\n\n" +
+                  "⚠️ ACTION REQUISE — RÈGLEMENT INTÉRIEUR\n" +
+                  "Le règlement intérieur se trouve à la page 10 du livret d'accueil.\n" +
+                  "Merci de nous le retourner signé avec la mention 'Lu et approuvé' à l'adresse : pedagogie@pamoi.re\n\n" +
+                  "Pour toute question, n'hésitez pas à nous contacter.\n\n" +
+                  "Cordialement,\n" +
+                  "PAM OI Formation\npedagogie@pamoi.re\n06 93 55 64 97\n1 Chemin Dubuisson — 97436 Saint-Leu"
+                );
+                const a = document.createElement('a');
+                a.href = '/modeles/LIVRET_D_ACCUEIL_PAM_OI_2026-2027.pdf';
+                a.download = 'Livret_Accueil_PAM_OI_2026-2027.pdf';
+                a.click();
+                setTimeout(() => {
+                  window.open("https://mail.google.com/mail/?view=cm&to=" + encodeURIComponent(form.email ?? '') + "&su=" + sujet + "&body=" + corps, '_blank');
+                }, 500);
+              }} style={{ backgroundColor: '#0891b2', color: 'white', border: 'none', borderRadius: '8px', padding: '9px 16px', fontSize: '13px', fontWeight: '600', cursor: 'pointer' }}>
+                📨 Envoyer livrets
+              </button>
+              {!estEnRupture && <button onClick={() => setModaleRupture(true)} style={btnDanger}>Déclarer rupture</button>}
+              {!estEnRupture && form.statut !== 'Terminé' && (
+                <button onClick={() => {
+                  const updated = { ...form, statut: 'Terminé' };
+                  setForm(updated);
+                  localStorage.setItem('apprenant_' + id, JSON.stringify(updated));
+                  setSauvegarde(true);
+                  setTimeout(() => setSauvegarde(false), 3000);
+                }} style={{ backgroundColor: '#16a34a', color: 'white', border: 'none', borderRadius: '8px', padding: '9px 16px', fontSize: '13px', fontWeight: '600', cursor: 'pointer' }}>
+                  ✅ Marquer comme Terminé
+                </button>
+              )}
+              {form.statut === 'Terminé' && (
+                <button onClick={() => {
+                  const updated = { ...form, statut: 'En cours' };
+                  setForm(updated);
+                  localStorage.setItem('apprenant_' + id, JSON.stringify(updated));
+                  setSauvegarde(true);
+                  setTimeout(() => setSauvegarde(false), 3000);
+                }} style={{ backgroundColor: 'white', color: '#16a34a', border: '1.5px solid #16a34a', borderRadius: '8px', padding: '9px 16px', fontSize: '13px', fontWeight: '600', cursor: 'pointer' }}>
+                  ↩️ Réactiver
+                </button>
+              )}
+              {(form.statut === 'Terminé' || estEnRupture) && (
+                <button onClick={() => {
+                  if (confirm('Archiver définitivement ce dossier ? Il ne sera plus visible dans la liste principale.')) {
+                    const updated = { ...form, archive: true };
+                    setForm(updated);
+                    localStorage.setItem('apprenant_' + id, JSON.stringify(updated));
+                    setSauvegarde(true);
+                    setTimeout(() => setSauvegarde(false), 3000);
+                  }
+                }} style={{ backgroundColor: '#f0f0f0', color: '#555', border: '1.5px solid #ccc', borderRadius: '8px', padding: '9px 16px', fontSize: '13px', fontWeight: '600', cursor: 'pointer' }}>
+                  🗄️ Archiver le dossier
+                </button>
+              )}
+            </>
+          )}
+        </div>
+      </div>
+
+      {sauvegarde && (
+        <div style={{ padding: '12px 16px', backgroundColor: '#e6f4f1', border: '2px solid #006B68', borderRadius: '10px', marginBottom: '16px', fontSize: '14px', fontWeight: '600', color: COLORS.primary }}>
+          ✅ Modifications enregistrées avec succès
+        </div>
+      )}
+
+    {p2s && (
+        <div style={{ backgroundColor: '#fef6e4', borderRadius: '10px', padding: '14px 16px', marginBottom: '16px', border: '1.5px solid #C8A23A' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span style={{ color: '#7a5c00', fontWeight: '600', fontSize: '14px' }}>⚠️ Stagiaire P2S — Entreprise à trouver avant le {form.dateFinFormation}</span>
+            <button onClick={() => {
+              const a = document.createElement('a');
+              a.href = '/modeles/KIT_RECHERCHE_ENTREPRISE.pdf';
+              a.download = 'Kit_Recherche_Entreprise_PAM_OI.pdf';
+              a.click();
+              setTimeout(() => {
+                const sujet = encodeURIComponent("Bienvenue chez PAM OI — Kit de recherche entreprise et ateliers TRE");
+                const corps = encodeURIComponent(
+                  (form.civilite === 'M.' ? 'Monsieur ' : form.civilite === 'Mme' ? 'Madame ' : '') +
+                  (form.prenom || '') + ' ' + (form.nom || '') + ',\n\n' +
+                  "Nous sommes ravis de vous accueillir chez PAM OI Formation.\n\n" +
+                  "Vous trouverez en pièce jointe votre Kit de Recherche d'Entreprise.\n\n" +
+                  "Cordialement,\n" +
+                  "L'équipe PAM OI Formation\n" +
+                  "pedagogie@pamoi.re — 06 93 55 64 97"
+                );
+                window.open("https://mail.google.com/mail/?view=cm&to=" + encodeURIComponent(form.email ?? '') + "&su=" + sujet + "&body=" + corps, '_blank');
+              }, 500);
+            }} style={{ backgroundColor: '#C8A23A', color: 'white', border: 'none', borderRadius: '8px', padding: '8px 14px', fontSize: '12px', fontWeight: '600', cursor: 'pointer', whiteSpace: 'nowrap' }}>
+              📨 Envoyer kit + convocation ateliers TRE
+            </button>
+          </div>
+        </div>
+      )}
+      {estEnRupture && (
+        <div style={{ backgroundColor: '#fde8e8', borderRadius: '10px', padding: '14px 16px', marginBottom: '16px' }}>
+          <span style={{ color: '#c53030', fontWeight: '600', fontSize: '14px' }}>❌ Contrat rompu le {form.dateRupture} — Maintien en formation : {form.maintienFormation || 'Non renseigné'}</span>
+        </div>
+      )}
+
+      {/* Identité + Coordonnées + NIR */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '24px', marginBottom: '24px' }}>
+        <Card>
+          <h2 style={{ fontSize: '15px', fontWeight: '700', color: COLORS.primary, marginBottom: '12px' }}>Identité</h2>
+          {modeEdition ? (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              <Champ label="Nom" champ="nom" form={form} setForm={setForm} />
+              <Champ label="Prénom" champ="prenom" form={form} setForm={setForm} />
+              <Champ label="Date de naissance (JJ/MM/AAAA)" champ="dateNaissance" form={form} setForm={setForm} placeholder="JJ/MM/AAAA" />
+              <Champ label="Lieu de naissance" champ="lieuNaissance" form={form} setForm={setForm} />
+            </div>
+          ) : (
+            <>
+              <InfoRow label="Nom" value={form.nom} />
+              <InfoRow label="Prénom" value={form.prenom} />
+              <InfoRow label="Date de naissance" value={form.dateNaissance} />
+              <InfoRow label="Lieu de naissance" value={form.lieuNaissance} />
+            </>
+          )}
+        </Card>
+
+        <Card>
+          <h2 style={{ fontSize: '15px', fontWeight: '700', color: COLORS.primary, marginBottom: '12px' }}>Coordonnées</h2>
+          {modeEdition ? (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              <Champ label="Email" champ="email" form={form} setForm={setForm} type="email" />
+              <Champ label="Téléphone" champ="telephone" form={form} setForm={setForm} placeholder="06 XX XX XX XX" />
+              <Champ label="Adresse" champ="adresse" form={form} setForm={setForm} />
+              <Champ label="Code postal" champ="codePostal" form={form} setForm={setForm} />
+              <Champ label="Ville" champ="ville" form={form} setForm={setForm} />
+            </div>
+          ) : (
+            <>
+              <InfoRow label="Email" value={form.email} />
+              <InfoRow label="Téléphone" value={form.telephone} />
+              <InfoRow label="Adresse" value={form.adresse} />
+              <InfoRow label="Code postal" value={form.codePostal} />
+              <InfoRow label="Ville" value={form.ville} />
+            </>
+          )}
+        </Card>
+
+        <Card>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+            <h2 style={{ fontSize: '15px', fontWeight: '700', color: COLORS.primary }}>Données sensibles</h2>
+            <span style={{ backgroundColor: '#fde8e8', color: '#e53e3e', padding: '3px 10px', borderRadius: '20px', fontSize: '11px', fontWeight: '700' }}>Accès restreint</span>
+          </div>
+          <div style={{ backgroundColor: '#fef6e4', borderRadius: '8px', padding: '12px', marginBottom: '8px' }}>
+            <div style={{ fontSize: '11px', color: '#888', textTransform: 'uppercase', fontWeight: '600', marginBottom: '4px' }}>NIR</div>
+            {modeEdition ? (
+              <input style={{ ...inputStyle, letterSpacing: '2px' }} value={form.nir ?? ''} placeholder="X XX XX XX XXX XXX XX" onChange={e => setForm((p: any) => ({ ...p, nir: e.target.value }))} maxLength={15} />
+            ) : (
+              <div style={{ fontSize: '16px', fontWeight: '700', color: COLORS.text, letterSpacing: '2px' }}>
+                {form.nir ? '● ● ● ● ● ● ● ● ● ● ●' : '— À compléter'}
+              </div>
+            )}
+          </div>
+        </Card>
+      </div>
+
+      {/* Contrat */}
+      <Card style={{ marginBottom: '24px' }}>
+        <h2 style={{ fontSize: '15px', fontWeight: '700', color: COLORS.primary, marginBottom: '12px' }}>Contrat d'apprentissage</h2>
+        {modeEdition ? (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '16px' }}>
+            <div>
+              <label style={{ fontSize: '12px', color: '#888', display: 'block', marginBottom: '4px' }}>Formation</label>
+              <div style={{ padding: '8px 12px', backgroundColor: '#EAF4F3', borderRadius: '8px', fontSize: '13px', fontWeight: '600', color: '#006B68' }}>
+                {({'SC':'TP Secrétaire Comptable','GCF':'TP Gestionnaire Comptable et Fiscal','ARH':'TP Assistant(e) en Ressources Humaines','AD':'TP Assistant(e) de Direction','CATL':'TP Chargé(e) d\'Accueil Touristique et de Loisirs','EC':'TP Employé(e) Commercial(e)','CV':'TP Conseiller(ère) de Vente','FPA':'TP Formateur(trice) Professionnel(le) d\'Adultes'} as Record<string,string>)[form.formation] || form.formation || '—'}
+              </div>
+            </div>
+            <Champ label="Entreprise" champ="entreprise" form={form} setForm={setForm} />
+            <Champ label="Statut" champ="statut" form={form} setForm={setForm} />
+            <Champ label="Début contrat (JJ/MM/AAAA)" champ="dateDebutContrat" form={form} setForm={setForm} placeholder="JJ/MM/AAAA" />
+            <Champ label="Fin contrat (JJ/MM/AAAA)" champ="dateFinContrat" form={form} setForm={setForm} placeholder="JJ/MM/AAAA" />
+            <Champ label="Début formation (JJ/MM/AAAA)" champ="dateDebutFormation" form={form} setForm={setForm} placeholder="JJ/MM/AAAA" />
+            <Champ label="Fin formation (JJ/MM/AAAA)" champ="dateFinFormation" form={form} setForm={setForm} placeholder="JJ/MM/AAAA" />
+            <Champ label="N° dossier OPCO" champ="numeroDossierOpco" form={form} setForm={setForm} placeholder="Ex: 123456789" />
+            <Champ label="N° DECA (APC)" champ="numeroDeca" form={form} setForm={setForm} placeholder="Ex: 974202XXXXXXXXX" />
+
+            {/* ===== NOUVEAU : Sélecteur Session de formation ===== */}
+            <div style={{ gridColumn: 'span 3' }}>
+              <label style={{ fontSize: '11px', color: '#888', textTransform: 'uppercase', fontWeight: '600', display: 'block', marginBottom: '4px' }}>
+                📅 Session de formation
+                {sessionsCompatibles.length === 0 && form.formation && (
+                  <span style={{ marginLeft: '8px', color: '#e53e3e', fontWeight: '500', textTransform: 'none' }}>
+                    Aucune session disponible pour la formation {form.formation}
+                  </span>
+                )}
+              </label>
+              <select
+                style={inputStyle}
+                value={form.sessionId ?? ''}
+                onChange={e => setForm((prev: any) => ({ ...prev, sessionId: e.target.value === '' ? undefined : e.target.value }))}
+              >
+                <option value="">— Aucune session assignée —</option>
+                {sessionsCompatibles.map((s: any) => (
+                  <option key={s.id} value={s.id}>
+                    Session #{s.id} — {libelleSession(s)}
+                  </option>
+                ))}
+              </select>
+              <div style={{ fontSize: '11px', color: '#888', marginTop: '4px' }}>
+                💡 Les sessions sont filtrées par formation ({form.formation}). L'assignation à une session est utilisée pour l'émargement automatique.
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '16px' }}>
+            {[
+              { label: 'Formation', value: ({'SC':'TP Secrétaire Comptable','GCF':'TP Gestionnaire Comptable et Fiscal','ARH':'TP Assistant(e) en Ressources Humaines','AD':'TP Assistant(e) de Direction','CATL':'TP Chargé(e) d\'Accueil Touristique et de Loisirs','EC':'TP Employé(e) Commercial(e)','CV':'TP Conseiller(ère) de Vente','FPA':'TP Formateur(trice) Professionnel(le) d\'Adultes'} as Record<string,string>)[form.formation] || form.formationLibelle || form.formation || '—' },
+              { label: 'Code', value: form.formation },
+              { label: 'Statut', value: statutLabel },
+              { label: 'Entreprise', value: form.entreprise },
+              { label: 'Début contrat', value: form.dateDebutContrat },
+              { label: 'Fin contrat', value: form.dateFinContrat },
+              { label: 'Début formation', value: form.dateDebutFormation },
+              { label: 'Fin formation', value: form.dateFinFormation },
+              { label: 'N° dossier OPCO', value: form.numeroDossierOpco },
+              { label: 'N° DECA (APC)', value: form.numeroDeca },
+              { label: '📅 Session de formation', value: sessionActuelle ? `Session #${sessionActuelle.id} — ${libelleSession(sessionActuelle)}` : '— Non assignée' },
+            ].map((info) => (
+              <div key={info.label} style={{ backgroundColor: COLORS.background, borderRadius: '8px', padding: '12px' }}>
+                <div style={{ fontSize: '11px', color: '#888', textTransform: 'uppercase', fontWeight: '600', marginBottom: '4px' }}>{info.label}</div>
+                <div style={{ fontSize: '13px', fontWeight: '600', color: (!info.value || info.value === '—' || info.value === '— Non assignée') ? '#ccc' : COLORS.text }}>{info.value || '—'}</div>
+              </div>
+            ))}
+          </div>
+        )}
+      </Card>
+
+      {/* ===== NOUVELLE SECTION : DÉCLARATIONS ADMINISTRATIVES (SIFA) ===== */}
+      <Card style={{ marginBottom: '24px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+          <h2 style={{ fontSize: '15px', fontWeight: '700', color: COLORS.primary }}>📊 Déclarations administratives (SIFA)</h2>
+          {champsSifaManquants.length > 0 ? (
+            <span style={{ backgroundColor: '#fef6e4', color: '#7a5c00', padding: '4px 12px', borderRadius: '20px', fontSize: '11px', fontWeight: '700' }}>
+              ⚠️ {champsSifaManquants.length} champ{champsSifaManquants.length > 1 ? 's' : ''} obligatoire{champsSifaManquants.length > 1 ? 's' : ''} manquant{champsSifaManquants.length > 1 ? 's' : ''}
+            </span>
+          ) : (
+            <span style={{ backgroundColor: '#dcfce7', color: '#15803d', padding: '4px 12px', borderRadius: '20px', fontSize: '11px', fontWeight: '700' }}>
+              ✅ Conforme SIFA
+            </span>
+          )}
+        </div>
+
+        <div style={{ marginBottom: '14px', padding: '10px 14px', backgroundColor: COLORS.background, borderRadius: '8px', fontSize: '12px', color: '#555' }}>
+          💡 Ces informations sont nécessaires pour la déclaration annuelle <strong>SIFA</strong> (Système d'Information sur la Formation des Apprentis) à transmettre fin novembre au ministère de l'Éducation Nationale.
+          {estMineurApp && <span> ⚠️ Cet apprenant est <strong>mineur</strong> à la date de signature du contrat : email d'un responsable légal obligatoire.</span>}
+        </div>
+
+        {modeEdition ? (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '16px' }}>
+            <ChampSelect
+              label="Sexe (obligatoire SIFA)"
+              champ="sexe"
+              form={form}
+              setForm={setForm}
+              options={[
+                { value: 'M', label: 'Masculin' },
+                { value: 'F', label: 'Féminin' },
+              ]}
+            />
+            <Champ label="Code postal de naissance" champ="codePostalNaissance" form={form} setForm={setForm} placeholder="ex: 97410" />
+            <Champ label="INE (Identifiant National Élève)" champ="ine" form={form} setForm={setForm} placeholder="11 caractères (10 chiffres + 1 lettre)" />
+
+            <ChampSelect
+              label="RQTH (Reconnaissance Travailleur Handicapé)"
+              champ="rqth"
+              form={form}
+              setForm={setForm}
+              options={[
+                { value: 'OUI', label: 'OUI' },
+                { value: 'NON', label: 'NON' },
+              ]}
+            />
+            <Champ label="Date de RQTH (JJ/MM/AAAA)" champ="dateRqth" form={form} setForm={setForm} placeholder="JJ/MM/AAAA (si RQTH = OUI)" />
+            <div></div>
+
+            <Champ label="Email représentant légal (général)" champ="representantEmail" form={form} setForm={setForm} type="email" placeholder="email@exemple.fr" />
+            <Champ label="Email responsable légal 1" champ="responsableEmail1" form={form} setForm={setForm} type="email" placeholder="responsable1@exemple.fr" />
+            <Champ label="Email responsable légal 2" champ="responsableEmail2" form={form} setForm={setForm} type="email" placeholder="responsable2@exemple.fr" />
+
+            <Champ label="UAI dernier établissement" champ="dernierOrganismeUai" form={form} setForm={setForm} placeholder="ex: 0123456A" />
+            <ChampSelect
+              label="Dernière situation scolaire"
+              champ="derniereSituationCode"
+              form={form}
+              setForm={setForm}
+              options={DERNIERE_SITUATION_SIFA.map(s => ({ value: s.code, label: `${s.code} — ${s.label}` }))}
+            />
+            <div></div>
+          </div>
+        ) : (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '24px' }}>
+            <div>
+              <h3 style={{ fontSize: '13px', fontWeight: '700', color: COLORS.secondary, textTransform: 'uppercase', marginBottom: '12px' }}>État civil & santé</h3>
+              <InfoRow label="Sexe" value={form.sexe === 'M' ? 'Masculin' : form.sexe === 'F' ? 'Féminin' : ''} />
+              <InfoRow label="CP de naissance" value={form.codePostalNaissance} />
+              <InfoRow label="INE" value={form.ine} />
+              <InfoRow label="RQTH" value={form.rqth} />
+              <InfoRow label="Date RQTH" value={form.dateRqth} />
+            </div>
+            <div>
+              <h3 style={{ fontSize: '13px', fontWeight: '700', color: COLORS.secondary, textTransform: 'uppercase', marginBottom: '12px' }}>
+                Responsables légaux & parcours
+                {estMineurApp && <span style={{ marginLeft: '8px', fontSize: '11px', color: '#e53e3e', backgroundColor: '#fde8e8', padding: '2px 8px', borderRadius: '10px' }}>👶 Mineur</span>}
+              </h3>
+              <InfoRow label="Email représentant" value={form.representantEmail} />
+              <InfoRow label="Email responsable 1" value={form.responsableEmail1} />
+              <InfoRow label="Email responsable 2" value={form.responsableEmail2} />
+              <InfoRow label="UAI étab. précédent" value={form.dernierOrganismeUai} />
+              <InfoRow label="Dernière situation" value={form.derniereSituationCode ? `${form.derniereSituationCode} — ${DERNIERE_SITUATION_SIFA.find(s => s.code === form.derniereSituationCode)?.label ?? ''}` : ''} />
+            </div>
+          </div>
+        )}
+
+        {champsSifaManquants.length > 0 && !modeEdition && (
+          <div style={{ marginTop: '14px', padding: '10px 14px', backgroundColor: '#fef6e4', borderRadius: '8px', fontSize: '12px', color: '#7a5c00' }}>
+            <strong>Champs SIFA manquants :</strong> {champsSifaManquants.join(', ')}
+            <br />
+            Clique sur <strong>✏️ Modifier</strong> pour les compléter.
+          </div>
+        )}
+      </Card>
+
+      {/* CERFA */}
+      <Card style={{ marginBottom: '24px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+          <h2 style={{ fontSize: '15px', fontWeight: '700', color: COLORS.primary }}>Informations CERFA</h2>
+          <span style={{ backgroundColor: '#fef6e4', color: '#C8A23A', padding: '4px 12px', borderRadius: '20px', fontSize: '12px', fontWeight: '600' }}>⚠️ À compléter</span>
+        </div>
+        {modeEdition ? (
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+            <Champ label="Situation avant contrat" champ="cerfa_situationAvantContrat" form={form} setForm={setForm} />
+            <Champ label="Dernière formation suivie" champ="cerfa_derniereFormation" form={form} setForm={setForm} />
+            <Champ label="Dernier établissement" champ="cerfa_dernierEtablissement" form={form} setForm={setForm} />
+            <Champ label="Dernière classe" champ="cerfa_derniereClasse" form={form} setForm={setForm} />
+            <Champ label="Diplôme le plus élevé" champ="cerfa_diplomePlusEleve" form={form} setForm={setForm} />
+            <Champ label="Année d'obtention" champ="cerfa_anneeObtention" form={form} setForm={setForm} />
+            <Champ label="Sportif haut niveau" champ="cerfa_sportifHautNiveau" form={form} setForm={setForm} />
+            <Champ label="Représentant légal — Nom" champ="representantNom" form={form} setForm={setForm} />
+            <Champ label="Représentant légal — Prénom" champ="representantPrenom" form={form} setForm={setForm} />
+            <Champ label="Représentant légal — Lien" champ="representantLien" form={form} setForm={setForm} />
+            <Champ label="Représentant légal — Téléphone" champ="representantTelephone" form={form} setForm={setForm} />
+          </div>
+        ) : (
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px' }}>
+            <div>
+              <h3 style={{ fontSize: '13px', fontWeight: '700', color: COLORS.secondary, textTransform: 'uppercase', marginBottom: '12px' }}>Parcours antérieur</h3>
+              <InfoRow label="Situation avant contrat" value={form.cerfa_situationAvantContrat} />
+              <InfoRow label="Dernière formation" value={form.cerfa_derniereFormation} />
+              <InfoRow label="Dernier établissement" value={form.cerfa_dernierEtablissement} />
+              <InfoRow label="Dernière classe" value={form.cerfa_derniereClasse} />
+              <InfoRow label="Diplôme le plus élevé" value={form.cerfa_diplomePlusEleve} />
+              <InfoRow label="Année d'obtention" value={form.cerfa_anneeObtention} />
+            </div>
+            <div>
+              <h3 style={{ fontSize: '13px', fontWeight: '700', color: COLORS.secondary, textTransform: 'uppercase', marginBottom: '12px' }}>Situation particulière</h3>
+              <InfoRow label="Sportif haut niveau" value={form.cerfa_sportifHautNiveau} />
+              <h3 style={{ fontSize: '13px', fontWeight: '700', color: COLORS.secondary, textTransform: 'uppercase', margin: '16px 0 12px' }}>Représentant légal</h3>
+              <InfoRow label="Nom" value={form.representantNom} />
+              <InfoRow label="Prénom" value={form.representantPrenom} />
+              <InfoRow label="Lien" value={form.representantLien} />
+              <InfoRow label="Téléphone" value={form.representantTelephone} />
+            </div>
+          </div>
+        )}
+        <div style={{ marginTop: '16px', padding: '12px 16px', backgroundColor: COLORS.background, borderRadius: '8px', fontSize: '13px', color: '#555' }}>
+          💡 Cliquez sur <strong>✏️ Modifier</strong> pour compléter les informations CERFA.
+        </div>
+      </Card>
+
+      {/* Pièces justificatives */}
+      <Card style={{ marginBottom: '24px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+          <h2 style={{ fontSize: '15px', fontWeight: '700', color: COLORS.primary }}>📎 Pièces justificatives</h2>
+          <span style={{ fontSize: '12px', color: '#888' }}>Formats acceptés : PDF, JPG, PNG — Max 5 Mo</span>
+        </div>
+
+        {[
+          { id: 'cv', label: 'CV à jour', detail: 'Curriculum vitae à jour', obligatoire: false },
+          { id: 'cni', label: 'Pièce d\'identité valide', detail: 'CNI, passeport ou titre de séjour en cours de validité', obligatoire: true },
+          { id: 'domicile', label: 'Justificatif de domicile', detail: 'Moins de 3 mois', obligatoire: true },
+          { id: 'vitale', label: 'Carte vitale ou attestation de droits', detail: 'Numéro de sécurité sociale obligatoire pour le CERFA', obligatoire: true },
+          { id: 'diplomes', label: 'Diplômes obtenus', detail: 'Derniers diplômes ou attestations de réussite', obligatoire: true },
+          { id: 'contrat', label: 'Contrat d\'apprentissage signé', detail: 'Importé automatiquement depuis la fiche entreprise', obligatoire: true, readonly: true },
+          { id: 'dpae', label: 'DPAE', detail: 'Déclaration Préalable à l\'Embauche — fournie par l\'employeur', obligatoire: false },
+          { id: 'autre', label: 'Autre document', detail: 'Tout autre document utile au dossier', obligatoire: false },
+        ].map((piece) => {
+          const fichier = form['piece_' + piece.id];
+          const ficheSource = (piece as any).readonly && fichier?.source ? fichier.source : null;
+          return (
+            <div key={piece.id} style={{
+              display: 'flex', alignItems: 'center', gap: '16px',
+              padding: '12px 14px', borderRadius: '10px', marginBottom: '8px',
+              backgroundColor: fichier ? '#e6f4f1' : piece.obligatoire ? '#fffbf0' : '#fafafa',
+              border: `1.5px solid ${fichier ? '#006B68' : piece.obligatoire ? '#C8A23A' : '#e0e0e0'}`,
+            }}>
+              <div style={{ fontSize: '22px', flexShrink: 0 }}>
+                {fichier ? '✅' : piece.obligatoire ? '⚠️' : '📄'}
+              </div>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: '13px', fontWeight: '700', color: fichier ? COLORS.primary : '#333' }}>
+                  {piece.label}
+                  {piece.obligatoire && <span style={{ color: '#e53e3e', marginLeft: '6px', fontSize: '11px' }}>OBLIGATOIRE</span>}
+                </div>
+                <div style={{ fontSize: '11px', color: '#888', marginTop: '2px' }}>{piece.detail}</div>
+                {fichier && (
+                  <div style={{ fontSize: '12px', color: COLORS.primary, marginTop: '4px', fontWeight: '600' }}>
+                    📄 {fichier.nom} ({fichier.taille})
+                    {ficheSource && <span style={{ fontSize: '11px', color: '#888', fontWeight: '400', marginLeft: '6px' }}>— {ficheSource}</span>}
+                  </div>
+                )}
+              </div>
+              {peutModifier && !(piece as any).readonly && (
+                <label style={{ backgroundColor: fichier ? 'white' : COLORS.primary, color: fichier ? COLORS.primary : 'white', border: fichier ? `1.5px solid ${COLORS.primary}` : 'none', borderRadius: '8px', padding: '7px 12px', fontSize: '12px', fontWeight: '600', cursor: 'pointer', display: 'inline-block', whiteSpace: 'nowrap', flexShrink: 0 }}>
+                  {fichier ? '🔄 Remplacer' : '⬆ Importer'}
+                  <input
+                    type="file"
+                    accept=".pdf,.jpg,.jpeg,.png"
+                    style={{ display: 'none' }}
+                    onChange={(e) => {
+                      const f = e.target.files?.[0];
+                      if (f) {
+                        const taille = f.size > 1024 * 1024 ? `${(f.size / 1024 / 1024).toFixed(1)} Mo` : `${Math.round(f.size / 1024)} Ko`;
+                        const updated = { ...form, ['piece_' + piece.id]: { nom: f.name, taille } };
+                        setForm(updated);
+                        localStorage.setItem('apprenant_' + id, JSON.stringify(updated));
+                      }
+                    }}
+                  />
+                </label>
+              )}
+            </div>
+          );
+        })}
+
+        <div style={{ marginTop: '12px', padding: '10px 14px', backgroundColor: COLORS.background, borderRadius: '8px', fontSize: '12px', color: '#555' }}>
+          📊 {[...['cni','domicile','vitale','diplomes','contrat']].filter(p => form['piece_' + p]).length} / 5 pièces obligatoires importées
+          {[...['cni','domicile','vitale','diplomes','contrat']].every(p => form['piece_' + p]) && <span style={{ color: COLORS.primary, fontWeight: '700', marginLeft: '8px' }}>✅ Dossier complet !</span>}
+        </div>
+      </Card>
+
+      {/* Présences */}
+      <Card style={{ marginBottom: '24px' }}>
+        <h2 style={{ fontSize: '15px', fontWeight: '700', color: COLORS.primary, marginBottom: '16px' }}>Présences mensuelles</h2>
+        <div style={{ padding: '20px', textAlign: 'center', color: COLORS.textMuted, fontSize: '14px', fontStyle: 'italic' }}>
+          Alimentées depuis le module Émargement
+        </div>
+      </Card>
+
+      {/* Rupture */}
+      <Card>
+        <h2 style={{ fontSize: '15px', fontWeight: '700', color: COLORS.primary, marginBottom: '12px' }}>Rupture de contrat</h2>
+        {estEnRupture ? (
+          <div style={{ padding: '16px', backgroundColor: '#fde8e8', borderRadius: '8px' }}>
+            <div style={{ fontSize: '14px', color: '#c53030', fontWeight: '700', marginBottom: '12px' }}>❌ Contrat rompu</div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '12px', marginBottom: '16px' }}>
+              <div style={{ backgroundColor: 'white', borderRadius: '8px', padding: '10px' }}>
+                <div style={{ fontSize: '10px', color: '#888', textTransform: 'uppercase', fontWeight: '600', marginBottom: '4px' }}>Date de rupture</div>
+                <div style={{ fontSize: '13px', fontWeight: '700', color: '#c53030' }}>{form.dateRupture || '—'}</div>
+              </div>
+              <div style={{ backgroundColor: 'white', borderRadius: '8px', padding: '10px' }}>
+                <div style={{ fontSize: '10px', color: '#888', textTransform: 'uppercase', fontWeight: '600', marginBottom: '4px' }}>Maintien formation</div>
+                <div style={{ fontSize: '13px', fontWeight: '700', color: form.maintienFormation === 'OUI' ? COLORS.primary : '#888' }}>{form.maintienFormation || '—'}</div>
+              </div>
+            </div>
+            <BoutonPdfRupture
+                apprenant={form}
+                motif={rupture.motif}
+                dateRupture={form.dateRupture}
+                maintienFormation={form.maintienFormation}
+                emailTuteur={form.emailTuteur}
+                expediteur={utilisateur?.email}
+                signature={utilisateur?.signatureEmail}
+                nomFichier={"Rupture_" + form.nom + "_" + form.prenom + "_" + (form.dateRupture ?? 'date').replace(/\//g, '-') + ".pdf"}
+              />
+          </div>
+        ) : (
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px', backgroundColor: '#e6f4f1', borderRadius: '8px' }}>
+            <span style={{ fontSize: '14px', color: '#004744', fontWeight: '500' }}>✅ Aucune rupture déclarée.</span>
+            <button onClick={() => setModaleRupture(true)} style={btnDanger}>Déclarer une rupture</button>
+          </div>
+        )}
+      </Card>
+
+      {/* Modale rupture */}
+      {modaleRupture && (
+        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
+          <div style={{ backgroundColor: 'white', borderRadius: '12px', padding: '28px', width: '480px', boxShadow: '0 8px 32px rgba(0,0,0,0.2)' }}>
+            <h2 style={{ fontSize: '18px', fontWeight: '700', color: '#e53e3e', marginBottom: '8px' }}>❌ Déclarer une rupture</h2>
+            <p style={{ fontSize: '13px', color: '#888', marginBottom: '20px' }}>{form.prenom} {form.nom} — {({'SC':'TP Secrétaire Comptable','GCF':'TP Gestionnaire Comptable et Fiscal','ARH':'TP Assistant(e) en Ressources Humaines','AD':'TP Assistant(e) de Direction','CATL':'TP Chargé(e) d\'Accueil Touristique et de Loisirs','EC':'TP Employé(e) Commercial(e)','CV':'TP Conseiller(ère) de Vente','FPA':'TP Formateur(trice) Professionnel(le) d\'Adultes'} as Record<string,string>)[form.formation] || form.formationLibelle || form.formation || '—'}</p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+              <div>
+                <label style={{ fontSize: '11px', color: '#888', textTransform: 'uppercase', fontWeight: '600', display: 'block', marginBottom: '4px' }}>Date de rupture (JJ/MM/AAAA) *</label>
+                <input style={inputStyle} value={rupture.date} placeholder="JJ/MM/AAAA" onChange={e => setRupture(p => ({ ...p, date: e.target.value }))} />
+              </div>
+              <div>
+                <label style={{ fontSize: '11px', color: '#888', textTransform: 'uppercase', fontWeight: '600', display: 'block', marginBottom: '4px' }}>Motif de rupture</label>
+                <select style={inputStyle} value={rupture.motif} onChange={e => setRupture(p => ({ ...p, motif: e.target.value }))}>
+                  <option value="">Choisir un motif...</option>
+                  <option value="unilateral">Rupture unilatérale — 45 premiers jours</option>
+                  <option value="commun">Rupture d'un commun accord</option>
+                  <option value="force_majeure">Force majeure</option>
+                  <option value="faute_grave">Faute grave de l'apprenti</option>
+                  <option value="inaptitude">Inaptitude médicale</option>
+                  <option value="deces">Décès de l'employeur maître d'apprentissage</option>
+                  <option value="initiative">À l'initiative de l'apprenti</option>
+                  <option value="liquidation">Liquidation judiciaire</option>
+                  <option value="exclusion">Exclusion définitive par le CFA</option>
+                  <option value="diplome">Obtention du diplôme</option>
+                  <option value="administratif">Décision administrative</option>
+                </select>
+              </div>
+              <div>
+                <label style={{ fontSize: '11px', color: '#888', textTransform: 'uppercase', fontWeight: '600', display: 'block', marginBottom: '4px' }}>Maintien en formation (6 mois) *</label>
+                <select style={inputStyle} value={rupture.maintien} onChange={e => setRupture(p => ({ ...p, maintien: e.target.value }))}>
+                  <option value="OUI">OUI — L'apprenti continue la formation (MEF)</option>
+                  <option value="NON">NON — L'apprenti quitte la formation (FMEF)</option>
+                </select>
+              </div>
+            </div>
+            <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end', marginTop: '20px' }}>
+              <button onClick={() => setModaleRupture(false)} style={btnSecondary}>Annuler</button>
+              <button
+                onClick={declarerRupture}
+                disabled={!rupture.date}
+                style={{ ...btnDanger, backgroundColor: rupture.date ? '#e53e3e' : '#f0f0f0', color: rupture.date ? 'white' : '#aaa', border: 'none' }}
+              >
+                ❌ Confirmer la rupture
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
