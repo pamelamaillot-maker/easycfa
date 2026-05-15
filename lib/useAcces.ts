@@ -36,6 +36,44 @@ export function resetAccesParRole() {
   window.dispatchEvent(new Event('easycfa_acces_change'));
 }
 
+/**
+ * ✅ NOUVEAU — Trace une action sensible dans l'historique pour conformité Qualiopi/RGPD/DEETS.
+ *
+ * Utilise cette fonction depuis n'importe quel composant pour tracer :
+ * - Suppressions (apprenants, entreprises, formateurs, etc.)
+ * - Modifications critiques (contrats, ruptures, etc.)
+ * - Toute action engageant le CFA
+ *
+ * L'historique est consultable via la clé localStorage `easycfa_acces_historique`.
+ *
+ * Exemple d'usage :
+ *   tracerAction('SUPPRESSION', 'apprenant', 'MAIPA_001', 'MAILLOT Paméla', utilisateur);
+ */
+export function tracerAction(
+  action: string,
+  type: string,
+  id: string,
+  libelle: string,
+  utilisateur: { identifiant?: string; nom?: string; prenom?: string } | null | undefined,
+) {
+  if (typeof window === 'undefined') return;
+  try {
+    const historique = JSON.parse(localStorage.getItem('easycfa_acces_historique') || '[]');
+    historique.push({
+      date: new Date().toISOString(),
+      action,
+      type,
+      id,
+      libelle,
+      utilisateur: utilisateur?.identifiant ?? 'inconnu',
+      nomUtilisateur: utilisateur ? `${utilisateur.prenom ?? ''} ${utilisateur.nom ?? ''}`.trim() : 'inconnu',
+    });
+    localStorage.setItem('easycfa_acces_historique', JSON.stringify(historique));
+  } catch (err) {
+    console.error('Erreur traçage historique:', err);
+  }
+}
+
 export function useAcces() {
   const { utilisateur } = useUser();
   const role = utilisateur?.role ?? 'lecteur';
@@ -62,6 +100,11 @@ export function useAcces() {
     estFormateur: role === 'formateur',
     estLecteur: role === 'lecteur',
     peutModifier: role === 'admin' || role === 'pedagogique' || role === 'comptable',
+    // ✅ NOUVEAU — Suppression réservée à l'admin (= PAMA uniquement)
+    // Garde-fou métier : Qualiopi/DEETS imposent une responsabilité claire
+    // sur les données du CFA. Une seule personne autorisée à supprimer
+    // évite les fausses manipulations par les collaborateurs.
+    peutSupprimer: role === 'admin',
     peutAccederQualiopi: role === 'admin',
     peutAccederBPF: accesPages.includes('/bpf'),
     peutAccederFacturation: accesPages.includes('/precomptabilite'),

@@ -1,17 +1,93 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
+import { useRouter } from 'next/navigation';
 import { APPRENANTS_REELS, DERNIERE_SITUATION_SIFA, verifierConformiteSifa, estMineur } from '../../../data/mockApprenants_reels';
 import { SESSIONS } from '../../../data/mockData';
 import { COLORS } from '../../../lib/constants';
 import Card from '../../../components/Card';
 import { useAcces } from '../../../lib/useAcces';
 import dynamic from 'next/dynamic';
+import BoutonSupprimer from '../../../components/BoutonSupprimer';
+import {
+  Entretien,
+  TypeEntretien,
+  LIBELLE_TYPE,
+  LIBELLE_TYPE_LONG,
+  INDICATEUR_QUALIOPI,
+  STATUT_STYLE,
+  MOTIFS_NON_FAIT,
+  chargerOuCreerEntretiensApprenant,
+  sauvegarderEntretien,
+  supprimerEntretiensApprenant,
+  calculerStatut,
+  dateIsoToFr,
+  dateFrToIso,
+} from '../../../data/mockEntretiens';
 const BoutonPdfRupture = dynamic(() => import('../../../components/BoutonPdfRupture'), { ssr: false });
+
 const btnPrimary: React.CSSProperties = { backgroundColor: COLORS.primary, color: 'white', border: 'none', borderRadius: '8px', padding: '9px 16px', fontSize: '13px', fontWeight: '600', cursor: 'pointer' };
 const btnSecondary: React.CSSProperties = { backgroundColor: 'white', color: COLORS.primary, border: `1.5px solid ${COLORS.primary}`, borderRadius: '8px', padding: '9px 16px', fontSize: '13px', fontWeight: '600', cursor: 'pointer' };
 const btnDanger: React.CSSProperties = { backgroundColor: 'white', color: '#e53e3e', border: '1.5px solid #e53e3e', borderRadius: '8px', padding: '9px 16px', fontSize: '13px', fontWeight: '600', cursor: 'pointer' };
 const inputStyle: React.CSSProperties = { border: '1.5px solid #e0e0e0', borderRadius: '8px', padding: '8px 12px', fontSize: '13px', width: '100%', boxSizing: 'border-box', backgroundColor: 'white' };
+
+function trouverApprenant(id: string): any | null {
+  if (typeof window === 'undefined') {
+    return (APPRENANTS_REELS as any[]).find(a => a.id === id) || null;
+  }
+  try {
+    const liste = JSON.parse(localStorage.getItem('easycfa_apprenants_v2') || '[]');
+    const trouve = liste.find((a: any) => a.id === id);
+    if (trouve) {
+      try {
+        const fiche = localStorage.getItem(`apprenant_${id}`);
+        if (fiche) return { ...trouve, ...JSON.parse(fiche) };
+      } catch {}
+      return trouve;
+    }
+  } catch {}
+
+  const mockA = (APPRENANTS_REELS as any[]).find(a => a.id === id);
+  if (mockA) {
+    try {
+      const fiche = localStorage.getItem(`apprenant_${id}`);
+      if (fiche) return { ...mockA, ...JSON.parse(fiche) };
+    } catch {}
+    return mockA;
+  }
+
+  try {
+    const fiche = localStorage.getItem(`apprenant_${id}`);
+    if (fiche) return JSON.parse(fiche);
+  } catch {}
+
+  return null;
+}
+
+function chargerEntreprises(): string[] {
+  if (typeof window === 'undefined') return [];
+  try {
+    const apcs = JSON.parse(localStorage.getItem('easycfa_apcs_v2') || '[]');
+    const set = new Set<string>();
+    apcs.forEach((apc: any) => {
+      const nom = apc.entrepriseNom || apc.entreprise;
+      if (nom && typeof nom === 'string' && nom.trim()) set.add(nom.trim());
+    });
+    return Array.from(set).sort((a, b) => a.localeCompare(b, 'fr'));
+  } catch { return []; }
+}
+
+function chargerSessions(): any[] {
+  if (typeof window === 'undefined') return SESSIONS as any[];
+  try {
+    const saved = localStorage.getItem('easycfa_sessions_v2');
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+    }
+  } catch {}
+  return SESSIONS as any[];
+}
 
 function InfoRow({ label, value }: { label: string; value?: string }) {
   return (
@@ -43,20 +119,573 @@ function ChampSelect({ label, champ, form, setForm, options }: { label: string; 
   );
 }
 
+// ============================================================================
+// COMPOSANT ENTRETIEN
+// ============================================================================
+
+function CardEntretien({
+  entretien,
+  apprenantNom,
+  peutModifierEntretien,
+  utilisateur,
+  onSave,
+}: {
+  entretien: Entretien;
+  apprenantNom: string;
+  peutModifierEntretien: boolean;
+  utilisateur: any;
+  onSave: (e: Entretien) => void;
+}) {
+  const [mode, setMode] = useState<'lecture' | 'edition' | 'nonFait'>('lecture');
+  const [form, setForm] = useState<Entretien>(entretien);
+
+  React.useEffect(() => {
+    setForm(entretien);
+  }, [entretien.id, entretien.statut, entretien.dateEffective]);
+
+  const style = STATUT_STYLE[entretien.statut];
+
+  function marquerCommeFait() {
+    setForm({
+      ...entretien,
+      dateEffective: entretien.dateEffective || new Date().toISOString().slice(0, 10),
+      realisePar: entretien.realisePar || (utilisateur ? `${utilisateur.prenom ?? ''} ${utilisateur.nom ?? ''}`.trim() : ''),
+      supportUtilise: entretien.supportUtilise || {
+        livretApprentissage: true, // ✅ Livret pré-coché car SEUL support officiel
+      },
+      presents: entretien.presents || {
+        apprenti: true,
+        formateur: false,
+        maitreApprentissage: false,
+        employeur: false,
+        responsableLegal: false,
+      },
+    });
+    setMode('edition');
+  }
+
+  function marquerCommeNonFait() {
+    setForm({
+      ...entretien,
+      motifNonFait: entretien.motifNonFait || '',
+    });
+    setMode('nonFait');
+  }
+
+  function sauvegarder() {
+    const final: Entretien = {
+      ...form,
+      statut: 'fait',
+      modifiePar: utilisateur?.identifiant ?? 'inconnu',
+    };
+    onSave(final);
+    setMode('lecture');
+  }
+
+  function sauvegarderNonFait() {
+    if (!form.motifNonFait?.trim()) {
+      alert('⚠️ Merci de sélectionner un motif.');
+      return;
+    }
+    const final: Entretien = {
+      ...form,
+      statut: 'nonFait',
+      modifiePar: utilisateur?.identifiant ?? 'inconnu',
+    };
+    onSave(final);
+    setMode('lecture');
+  }
+
+  function reouvrir() {
+    if (!confirm('Réouvrir cet entretien ? Le statut sera remis à "à faire" et les données saisies seront conservées.')) return;
+    const final: Entretien = {
+      ...entretien,
+      statut: calculerStatut({ ...entretien, statut: 'aprevoir' }),
+    };
+    onSave(final);
+  }
+
+  // ✅ NOUVEAU — Upload du livret signé (utilisable après l'entretien)
+  function uploadLivretSigne(e: React.ChangeEvent<HTMLInputElement>) {
+    const f = e.target.files?.[0];
+    if (!f) return;
+    const taille = f.size > 1024 * 1024 ? `${(f.size / 1024 / 1024).toFixed(1)} Mo` : `${Math.round(f.size / 1024)} Ko`;
+    const livretSigne = { nom: f.name, taille, dateImport: new Date().toISOString() };
+    const updated: Entretien = {
+      ...entretien,
+      supportUtilise: {
+        ...(entretien.supportUtilise || { livretApprentissage: true }),
+        livretSigne,
+      },
+      modifiePar: utilisateur?.identifiant ?? 'inconnu',
+    };
+    onSave(updated);
+  }
+
+  function supprimerLivretSigne() {
+    if (!confirm('Supprimer le livret signé importé ?')) return;
+    const updated: Entretien = {
+      ...entretien,
+      supportUtilise: {
+        ...(entretien.supportUtilise || { livretApprentissage: true }),
+        livretSigne: undefined,
+      },
+      modifiePar: utilisateur?.identifiant ?? 'inconnu',
+    };
+    onSave(updated);
+  }
+
+  return (
+    <div style={{
+      backgroundColor: 'white',
+      border: `2px solid ${style.color}`,
+      borderRadius: '12px',
+      padding: '18px',
+      marginBottom: '12px',
+    }}>
+      {/* En-tête */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '12px', gap: '12px', flexWrap: 'wrap' }}>
+        <div style={{ flex: 1, minWidth: '200px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', marginBottom: '4px' }}>
+            <h3 style={{ fontSize: '15px', fontWeight: '700', color: COLORS.text }}>
+              {LIBELLE_TYPE[entretien.type]}
+            </h3>
+            <span style={{
+              backgroundColor: style.bg,
+              color: style.color,
+              padding: '3px 10px',
+              borderRadius: '20px',
+              fontSize: '11px',
+              fontWeight: '700',
+            }}>
+              {style.emoji} {style.label}
+            </span>
+          </div>
+          <p style={{ fontSize: '11px', color: COLORS.textMuted, fontStyle: 'italic' }}>
+            🛡️ {INDICATEUR_QUALIOPI[entretien.type]}
+          </p>
+        </div>
+      </div>
+
+      {/* Dates */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '12px' }}>
+        <div style={{ backgroundColor: COLORS.background, borderRadius: '8px', padding: '10px 12px' }}>
+          <div style={{ fontSize: '10px', color: '#888', textTransform: 'uppercase', fontWeight: '600' }}>📅 Date prévue</div>
+          <div style={{ fontSize: '14px', fontWeight: '700', color: COLORS.text, marginTop: '2px' }}>
+            {entretien.datePrevue ? dateIsoToFr(entretien.datePrevue) : '— (dates contrat manquantes)'}
+          </div>
+        </div>
+        <div style={{ backgroundColor: entretien.dateEffective ? '#dcfce7' : '#f5f5f5', borderRadius: '8px', padding: '10px 12px' }}>
+          <div style={{ fontSize: '10px', color: '#888', textTransform: 'uppercase', fontWeight: '600' }}>
+            {entretien.statut === 'nonFait' ? '❌ Non effectué' : '✅ Date effective'}
+          </div>
+          <div style={{ fontSize: '14px', fontWeight: '700', color: entretien.dateEffective ? '#15803d' : '#ccc', marginTop: '2px' }}>
+            {entretien.dateEffective ? dateIsoToFr(entretien.dateEffective) : entretien.statut === 'nonFait' ? `Motif: ${entretien.motifNonFait}` : '— En attente'}
+          </div>
+        </div>
+      </div>
+
+      {/* === MODE LECTURE === */}
+      {mode === 'lecture' && (
+        <>
+          {entretien.statut === 'fait' && (
+            <div style={{ backgroundColor: '#f9f9f9', borderRadius: '8px', padding: '12px', marginBottom: '12px' }}>
+              <div style={{ marginBottom: '8px' }}>
+                <strong style={{ fontSize: '12px', color: '#666' }}>👤 Réalisé par :</strong>{' '}
+                <span style={{ fontSize: '13px' }}>{entretien.realisePar || '—'}</span>
+              </div>
+              {entretien.supportUtilise?.livretApprentissage && (
+                <div style={{ marginBottom: '8px' }}>
+                  <strong style={{ fontSize: '12px', color: '#666' }}>📓 Support :</strong>{' '}
+                  <span style={{ fontSize: '13px' }}>📘 Livret d'apprentissage</span>
+                </div>
+              )}
+              {entretien.presents && (
+                <div style={{ marginBottom: '8px' }}>
+                  <strong style={{ fontSize: '12px', color: '#666' }}>👥 Présents :</strong>{' '}
+                  <span style={{ fontSize: '13px' }}>
+                    {[
+                      entretien.presents.apprenti && 'Apprenti',
+                      entretien.presents.formateur && 'Formateur',
+                      entretien.presents.maitreApprentissage && 'Maître d\'apprentissage',
+                      entretien.presents.employeur && 'Employeur',
+                      entretien.presents.responsableLegal && 'Responsable légal',
+                    ].filter(Boolean).join(', ') || '—'}
+                  </span>
+                </div>
+              )}
+              {entretien.notes && (
+                <div style={{ marginBottom: '8px' }}>
+                  <strong style={{ fontSize: '12px', color: '#666' }}>📝 Notes :</strong>
+                  <div style={{ fontSize: '13px', color: COLORS.text, marginTop: '4px', whiteSpace: 'pre-wrap' }}>{entretien.notes}</div>
+                </div>
+              )}
+              {entretien.decisions && (
+                <div style={{ marginBottom: '8px' }}>
+                  <strong style={{ fontSize: '12px', color: '#666' }}>🎯 Décisions :</strong>
+                  <div style={{ fontSize: '13px', color: COLORS.text, marginTop: '4px', whiteSpace: 'pre-wrap' }}>{entretien.decisions}</div>
+                </div>
+              )}
+
+              {/* ✅ Livret signé — visible après que l'entretien est marqué effectué */}
+              <div style={{ marginTop: '12px', padding: '12px', backgroundColor: entretien.supportUtilise?.livretSigne ? '#e6f4f1' : '#fffbf0', borderRadius: '8px', border: `1.5px solid ${entretien.supportUtilise?.livretSigne ? '#006B68' : '#C8A23A'}` }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                  <div style={{ fontSize: '22px' }}>{entretien.supportUtilise?.livretSigne ? '✅' : '📘'}</div>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: '13px', fontWeight: '700', color: entretien.supportUtilise?.livretSigne ? COLORS.primary : '#7a5c00' }}>
+                      Livret d'apprentissage signé
+                    </div>
+                    {entretien.supportUtilise?.livretSigne ? (
+                      <div style={{ fontSize: '12px', color: COLORS.primary, marginTop: '4px', fontWeight: '600' }}>
+                        📄 {entretien.supportUtilise.livretSigne.nom} ({entretien.supportUtilise.livretSigne.taille})
+                        <span style={{ fontWeight: '400', fontStyle: 'italic', marginLeft: '6px' }}>
+                          — Importé le {new Date(entretien.supportUtilise.livretSigne.dateImport).toLocaleDateString('fr-FR')}
+                        </span>
+                      </div>
+                    ) : (
+                      <div style={{ fontSize: '11px', color: '#888', marginTop: '2px' }}>
+                        Importe ici le livret signé après l'entretien (PDF, JPG, PNG — Max 5 Mo)
+                      </div>
+                    )}
+                  </div>
+                  {peutModifierEntretien && (
+                    <div style={{ display: 'flex', gap: '6px' }}>
+                      <label style={{
+                        backgroundColor: entretien.supportUtilise?.livretSigne ? 'white' : COLORS.primary,
+                        color: entretien.supportUtilise?.livretSigne ? COLORS.primary : 'white',
+                        border: entretien.supportUtilise?.livretSigne ? `1.5px solid ${COLORS.primary}` : 'none',
+                        borderRadius: '8px',
+                        padding: '7px 12px',
+                        fontSize: '12px',
+                        fontWeight: '600',
+                        cursor: 'pointer',
+                        whiteSpace: 'nowrap',
+                      }}>
+                        {entretien.supportUtilise?.livretSigne ? '🔄 Remplacer' : '⬆ Importer'}
+                        <input type="file" accept=".pdf,.jpg,.jpeg,.png" style={{ display: 'none' }} onChange={uploadLivretSigne} />
+                      </label>
+                      {entretien.supportUtilise?.livretSigne && (
+                        <button onClick={supprimerLivretSigne} style={{ backgroundColor: 'white', color: '#c53030', border: '1.5px solid #c53030', borderRadius: '8px', padding: '7px 10px', fontSize: '12px', fontWeight: '600', cursor: 'pointer' }}>
+                          🗑️
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {entretien.statut === 'nonFait' && (
+            <div style={{ backgroundColor: '#fef2f2', borderRadius: '8px', padding: '12px', marginBottom: '12px', borderLeft: '3px solid #c53030' }}>
+              <strong style={{ fontSize: '12px', color: '#c53030' }}>❌ Motif :</strong>{' '}
+              <span style={{ fontSize: '13px' }}>{entretien.motifNonFait}</span>
+              {entretien.dateReport && (
+                <div style={{ fontSize: '12px', color: '#888', marginTop: '6px' }}>
+                  📅 Reporté au {dateIsoToFr(entretien.dateReport)}
+                </div>
+              )}
+              {entretien.notes && (
+                <div style={{ fontSize: '13px', color: COLORS.text, marginTop: '8px', whiteSpace: 'pre-wrap' }}>{entretien.notes}</div>
+              )}
+            </div>
+          )}
+
+          {peutModifierEntretien && (
+            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+              {entretien.statut !== 'fait' && entretien.statut !== 'nonFait' && (
+                <>
+                  <button onClick={marquerCommeFait} style={{ ...btnPrimary, backgroundColor: '#15803d' }}>
+                    ✅ Marquer comme effectué
+                  </button>
+                  <button onClick={marquerCommeNonFait} style={btnDanger}>
+                    ❌ Marquer comme non effectué
+                  </button>
+                </>
+              )}
+              {(entretien.statut === 'fait' || entretien.statut === 'nonFait') && (
+                <>
+                  <button onClick={marquerCommeFait} style={btnSecondary}>
+                    ✏️ Modifier
+                  </button>
+                  <button onClick={reouvrir} style={{ ...btnSecondary, color: '#888', borderColor: '#ccc' }}>
+                    ↩️ Réouvrir
+                  </button>
+                </>
+              )}
+            </div>
+          )}
+        </>
+      )}
+
+      {/* === MODE EDITION === */}
+      {mode === 'edition' && (
+        <div style={{ backgroundColor: '#f9f9f9', borderRadius: '8px', padding: '16px' }}>
+          <h4 style={{ fontSize: '13px', fontWeight: '700', color: COLORS.primary, marginBottom: '12px' }}>
+            ✏️ Saisir les détails de l'entretien
+          </h4>
+
+          {/* Date + Réalisé par */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '12px' }}>
+            <div>
+              <label style={{ fontSize: '11px', color: '#888', textTransform: 'uppercase', fontWeight: '600', display: 'block', marginBottom: '4px' }}>📅 Date effective *</label>
+              <div style={{ display: 'flex', gap: '6px' }}>
+                <input
+                  type="text"
+                  style={{ ...inputStyle, flex: 1 }}
+                  value={form.dateEffective ? dateIsoToFr(form.dateEffective) : ''}
+                  placeholder="JJ/MM/AAAA"
+                  onChange={e => {
+                    const valeur = e.target.value;
+                    if (valeur.match(/^\d{2}\/\d{2}\/\d{4}$/)) {
+                      setForm(p => ({ ...p, dateEffective: dateFrToIso(valeur) }));
+                    } else if (valeur === '') {
+                      setForm(p => ({ ...p, dateEffective: '' }));
+                    } else {
+                      setForm(p => ({ ...p, dateEffective: valeur }));
+                    }
+                  }}
+                />
+                <input
+                  type="date"
+                  style={{ width: '40px', border: '1.5px solid #e0e0e0', borderRadius: '8px', padding: '4px', cursor: 'pointer', backgroundColor: 'white' }}
+                  value={form.dateEffective && form.dateEffective.match(/^\d{4}-\d{2}-\d{2}$/) ? form.dateEffective : ''}
+                  onChange={e => setForm(p => ({ ...p, dateEffective: e.target.value }))}
+                  title="Ouvrir le calendrier"
+                />
+              </div>
+              <div style={{ fontSize: '10px', color: '#888', marginTop: '2px' }}>
+                Tape la date au format JJ/MM/AAAA ou utilise l'icône 📅 à droite
+              </div>
+            </div>
+            <div>
+              <label style={{ fontSize: '11px', color: '#888', textTransform: 'uppercase', fontWeight: '600', display: 'block', marginBottom: '4px' }}>👤 Réalisé par *</label>
+              <input
+                style={inputStyle}
+                value={form.realisePar ?? ''}
+                onChange={e => setForm(p => ({ ...p, realisePar: e.target.value }))}
+                placeholder="Ex: Paméla MAILLOT"
+              />
+            </div>
+          </div>
+
+          {/* ✅ Support — Livret uniquement */}
+          <div style={{ marginBottom: '12px' }}>
+            <label style={{ fontSize: '11px', color: '#888', textTransform: 'uppercase', fontWeight: '600', display: 'block', marginBottom: '6px' }}>📓 Support utilisé pendant l'entretien</label>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '13px', padding: '10px 12px', backgroundColor: 'white', borderRadius: '8px', border: `1.5px solid ${form.supportUtilise?.livretApprentissage ? COLORS.primary : '#e0e0e0'}` }}>
+              <input
+                type="checkbox"
+                checked={form.supportUtilise?.livretApprentissage ?? false}
+                onChange={e => setForm(p => ({ ...p, supportUtilise: { ...(p.supportUtilise || {}), livretApprentissage: e.target.checked } }))}
+              />
+              📘 <strong>Livret d'apprentissage</strong>
+              <span style={{ fontSize: '11px', color: COLORS.textMuted, marginLeft: '4px' }}>(support officiel CFA)</span>
+            </label>
+            <div style={{ fontSize: '11px', color: '#888', marginTop: '6px', fontStyle: 'italic' }}>
+              💡 Tu pourras importer le livret signé par les parties après l'entretien.
+            </div>
+          </div>
+
+          {/* ✅ Présents — terminologie CFA officielle */}
+          <div style={{ marginBottom: '12px' }}>
+            <label style={{ fontSize: '11px', color: '#888', textTransform: 'uppercase', fontWeight: '600', display: 'block', marginBottom: '6px' }}>👥 Présents à l'entretien</label>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px' }}>
+              {([
+                { key: 'apprenti', label: '👨‍🎓 Apprenti' },
+                { key: 'formateur', label: '👨‍🏫 Formateur' },
+                { key: 'maitreApprentissage', label: '🎓 Maître d\'apprentissage' },
+                { key: 'employeur', label: '👔 Employeur' },
+                { key: 'responsableLegal', label: '👨‍👩‍👧 Responsable légal' },
+              ] as const).map(p => (
+                <label key={p.key} style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '13px', padding: '6px 8px', backgroundColor: 'white', borderRadius: '6px' }}>
+                  <input
+                    type="checkbox"
+                    checked={form.presents?.[p.key] ?? false}
+                    onChange={e => setForm(prev => ({
+                      ...prev,
+                      presents: {
+                        apprenti: false, formateur: false, maitreApprentissage: false, employeur: false, responsableLegal: false,
+                        ...(prev.presents || {}),
+                        [p.key]: e.target.checked,
+                      },
+                    }))}
+                  />
+                  {p.label}
+                </label>
+              ))}
+            </div>
+          </div>
+
+          {/* Notes */}
+          <div style={{ marginBottom: '12px' }}>
+            <label style={{ fontSize: '11px', color: '#888', textTransform: 'uppercase', fontWeight: '600', display: 'block', marginBottom: '4px' }}>📝 Notes / Compte-rendu</label>
+            <textarea
+              style={{ ...inputStyle, minHeight: '70px', resize: 'vertical' }}
+              value={form.notes ?? ''}
+              onChange={e => setForm(p => ({ ...p, notes: e.target.value }))}
+              placeholder="Observations sur le déroulement, les acquis, les difficultés rencontrées..."
+            />
+          </div>
+
+          {/* Décisions */}
+          <div style={{ marginBottom: '12px' }}>
+            <label style={{ fontSize: '11px', color: '#888', textTransform: 'uppercase', fontWeight: '600', display: 'block', marginBottom: '4px' }}>🎯 Décisions / Plan d'action</label>
+            <textarea
+              style={{ ...inputStyle, minHeight: '60px', resize: 'vertical' }}
+              value={form.decisions ?? ''}
+              onChange={e => setForm(p => ({ ...p, decisions: e.target.value }))}
+              placeholder="Actions à mettre en place suite à l'entretien..."
+            />
+          </div>
+
+          <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+            <button onClick={() => setMode('lecture')} style={btnSecondary}>Annuler</button>
+            <button
+              onClick={sauvegarder}
+              disabled={!form.dateEffective || !form.realisePar || !form.dateEffective.match(/^\d{4}-\d{2}-\d{2}$/)}
+              style={{
+                ...btnPrimary,
+                backgroundColor: (form.dateEffective && form.realisePar && form.dateEffective.match(/^\d{4}-\d{2}-\d{2}$/)) ? '#15803d' : '#ccc',
+                cursor: (form.dateEffective && form.realisePar && form.dateEffective.match(/^\d{4}-\d{2}-\d{2}$/)) ? 'pointer' : 'not-allowed',
+              }}
+            >
+              ✅ Enregistrer l'entretien
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* === MODE NON FAIT === */}
+      {mode === 'nonFait' && (
+        <div style={{ backgroundColor: '#fef2f2', borderRadius: '8px', padding: '16px' }}>
+          <h4 style={{ fontSize: '13px', fontWeight: '700', color: '#c53030', marginBottom: '12px' }}>
+            ❌ Entretien non effectué
+          </h4>
+
+          <div style={{ marginBottom: '12px' }}>
+            <label style={{ fontSize: '11px', color: '#888', textTransform: 'uppercase', fontWeight: '600', display: 'block', marginBottom: '4px' }}>Motif *</label>
+            <select
+              style={inputStyle}
+              value={form.motifNonFait ?? ''}
+              onChange={e => setForm(p => ({ ...p, motifNonFait: e.target.value }))}
+            >
+              <option value="">— Choisir un motif —</option>
+              {MOTIFS_NON_FAIT.map(m => <option key={m} value={m}>{m}</option>)}
+            </select>
+          </div>
+
+          <div style={{ marginBottom: '12px' }}>
+            <label style={{ fontSize: '11px', color: '#888', textTransform: 'uppercase', fontWeight: '600', display: 'block', marginBottom: '4px' }}>📅 Date de report éventuelle</label>
+            <div style={{ display: 'flex', gap: '6px' }}>
+              <input
+                type="text"
+                style={{ ...inputStyle, flex: 1 }}
+                value={form.dateReport ? dateIsoToFr(form.dateReport) : ''}
+                placeholder="JJ/MM/AAAA"
+                onChange={e => {
+                  const valeur = e.target.value;
+                  if (valeur.match(/^\d{2}\/\d{2}\/\d{4}$/)) {
+                    setForm(p => ({ ...p, dateReport: dateFrToIso(valeur) }));
+                  } else if (valeur === '') {
+                    setForm(p => ({ ...p, dateReport: '' }));
+                  } else {
+                    setForm(p => ({ ...p, dateReport: valeur }));
+                  }
+                }}
+              />
+              <input
+                type="date"
+                style={{ width: '40px', border: '1.5px solid #e0e0e0', borderRadius: '8px', padding: '4px', cursor: 'pointer', backgroundColor: 'white' }}
+                value={form.dateReport && form.dateReport.match(/^\d{4}-\d{2}-\d{2}$/) ? form.dateReport : ''}
+                onChange={e => setForm(p => ({ ...p, dateReport: e.target.value }))}
+              />
+            </div>
+          </div>
+
+          <div style={{ marginBottom: '12px' }}>
+            <label style={{ fontSize: '11px', color: '#888', textTransform: 'uppercase', fontWeight: '600', display: 'block', marginBottom: '4px' }}>📝 Notes / Précisions</label>
+            <textarea
+              style={{ ...inputStyle, minHeight: '60px', resize: 'vertical' }}
+              value={form.notes ?? ''}
+              onChange={e => setForm(p => ({ ...p, notes: e.target.value }))}
+              placeholder="Détails du contexte..."
+            />
+          </div>
+
+          <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+            <button onClick={() => setMode('lecture')} style={btnSecondary}>Annuler</button>
+            <button onClick={sauvegarderNonFait} style={btnDanger}>
+              ❌ Enregistrer comme non effectué
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ============================================================================
+// COMPOSANT PRINCIPAL
+// ============================================================================
+
 export default function FicheApprenant({ params }: { params: Promise<{ id: string }> }) {
   const { id } = React.use(params);
-  const apprenant = APPRENANTS_REELS.find(ap => ap.id === id);
-  const [form, setForm] = useState<any>(apprenant ?? {});
+  const router = useRouter();
+  const [apprenant, setApprenant] = useState<any>(null);
+  const [form, setForm] = useState<any>({});
   const [modeEdition, setModeEdition] = useState(false);
   const [sauvegarde, setSauvegarde] = useState(false);
   const [modaleRupture, setModaleRupture] = useState(false);
   const [rupture, setRupture] = useState({ date: '', motif: '', maintien: 'NON' });
-  const { utilisateur, peutModifier } = useAcces();
+  const [sessions, setSessions] = useState<any[]>([]);
+  const [entreprises, setEntreprises] = useState<string[]>([]);
+  const [modeEntrepriseManuelle, setModeEntrepriseManuelle] = useState(false);
+  const [chargement, setChargement] = useState(true);
+  const [entretiens, setEntretiens] = useState<Entretien[]>([]);
+  const { utilisateur, peutModifier, estAdmin, estPedagogique } = useAcces();
+
+  const peutModifierEntretien = estAdmin || estPedagogique;
+
+  useEffect(() => {
+    const trouve = trouverApprenant(id);
+    setApprenant(trouve);
+    setForm(trouve ?? {});
+    setSessions(chargerSessions());
+    setEntreprises(chargerEntreprises());
+
+    if (trouve) {
+      const ents = chargerOuCreerEntretiensApprenant(id, trouve.dateDebutContrat, trouve.dateFinContrat);
+      setEntretiens(ents);
+    }
+
+    setChargement(false);
+  }, [id]);
+
+  useEffect(() => {
+    if (apprenant && (form.dateDebutContrat !== apprenant.dateDebutContrat || form.dateFinContrat !== apprenant.dateFinContrat)) {
+      const ents = chargerOuCreerEntretiensApprenant(id, form.dateDebutContrat, form.dateFinContrat);
+      setEntretiens(ents);
+    }
+  }, [form.dateDebutContrat, form.dateFinContrat]);
+
+  function handleSauvegarderEntretien(entretien: Entretien) {
+    sauvegarderEntretien(entretien);
+    const ents = chargerOuCreerEntretiensApprenant(id, form.dateDebutContrat, form.dateFinContrat);
+    setEntretiens(ents);
+  }
+
+  if (chargement) {
+    return (
+      <div style={{ padding: '32px', textAlign: 'center', color: COLORS.textMuted }}>
+        Chargement...
+      </div>
+    );
+  }
 
   if (!apprenant) return (
     <div style={{ padding: '32px' }}>
       <a href="/apprenants" style={{ color: COLORS.primary, fontWeight: '600', textDecoration: 'none' }}>← Retour aux apprenants</a>
-      <p style={{ marginTop: '16px', color: COLORS.textMuted }}>Apprenant introuvable.</p>
+      <p style={{ marginTop: '16px', color: COLORS.textMuted }}>Apprenant introuvable (ID : {id}).</p>
     </div>
   );
 
@@ -67,17 +696,18 @@ export default function FicheApprenant({ params }: { params: Promise<{ id: strin
   const statutColor = enCours ? '#006B68' : p2s ? '#C8A23A' : '#e53e3e';
   const statutLabel = enCours ? 'CA' : p2s ? 'P2S' : form.maintienFormation === 'OUI' ? 'RUPTURE MEF' : 'RUPTURE FMEF';
 
-  // SIFA — vérification de conformité
   const champsSifaManquants = verifierConformiteSifa(form);
   const estMineurApp = estMineur(form);
 
-  // === NOUVEAU : Sessions filtrées par formation de l'apprenant ===
-  const sessionsCompatibles = (SESSIONS as any[]).filter((s: any) => {
-    // Si la session a un champ "formation" ou "codeFormation", on filtre
+  const sessionsCompatibles = sessions.filter((s: any) => {
     const codeForm = s.formation ?? s.codeFormation ?? s.code;
-    return !codeForm || codeForm === form.formation;
+    if (!codeForm || !form.formation) return true;
+    if (codeForm === form.formation) return true;
+    if (typeof codeForm === 'string' && (codeForm.startsWith(form.formation + '-') || codeForm.startsWith(form.formation + '_'))) return true;
+    return false;
   });
-  const sessionActuelle = form.sessionId ? (SESSIONS as any[]).find((s: any) => s.id === form.sessionId) : null;
+
+  const sessionActuelle = form.sessionId ? sessions.find((s: any) => s.id === form.sessionId) : null;
 
   function libelleSession(s: any): string {
     if (!s) return '';
@@ -90,6 +720,17 @@ export default function FicheApprenant({ params }: { params: Promise<{ id: strin
 
   function sauvegarder() {
     localStorage.setItem('apprenant_' + id, JSON.stringify(form));
+    try {
+      const liste = JSON.parse(localStorage.getItem('easycfa_apprenants_v2') || '[]');
+      const idx = liste.findIndex((a: any) => a.id === id);
+      if (idx >= 0) {
+        liste[idx] = { ...liste[idx], ...form };
+      } else {
+        liste.push(form);
+      }
+      localStorage.setItem('easycfa_apprenants_v2', JSON.stringify(liste));
+    } catch {}
+    setApprenant(form);
     setSauvegarde(true);
     setModeEdition(false);
     setTimeout(() => setSauvegarde(false), 3000);
@@ -98,17 +739,38 @@ export default function FicheApprenant({ params }: { params: Promise<{ id: strin
   function declarerRupture() {
     const updated = { ...form, statut: 'Rupture', dateRupture: rupture.date, maintienFormation: rupture.maintien };
     setForm(updated);
+    setApprenant(updated);
     localStorage.setItem('apprenant_' + id, JSON.stringify(updated));
+    try {
+      const liste = JSON.parse(localStorage.getItem('easycfa_apprenants_v2') || '[]');
+      const idx = liste.findIndex((a: any) => a.id === id);
+      if (idx >= 0) liste[idx] = { ...liste[idx], ...updated };
+      else liste.push(updated);
+      localStorage.setItem('easycfa_apprenants_v2', JSON.stringify(liste));
+    } catch {}
     setModaleRupture(false);
     setSauvegarde(true);
     setTimeout(() => setSauvegarde(false), 3000);
+  }
+
+  function supprimerApprenant() {
+    try {
+      const liste = JSON.parse(localStorage.getItem('easycfa_apprenants_v2') || '[]');
+      const listeFiltree = liste.filter((a: any) => a.id !== id);
+      localStorage.setItem('easycfa_apprenants_v2', JSON.stringify(listeFiltree));
+      localStorage.removeItem(`apprenant_${id}`);
+      supprimerEntretiensApprenant(id);
+      router.push('/apprenants');
+    } catch (err) {
+      console.error('Erreur suppression apprenant:', err);
+      alert('Erreur lors de la suppression. Voir la console (F12).');
+    }
   }
 
   return (
     <div>
       <a href="/apprenants" style={{ color: COLORS.primary, fontSize: '13px', textDecoration: 'none', fontWeight: '600' }}>← Retour aux apprenants</a>
 
-      {/* En-tête */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', margin: '16px 0 24px' }}>
         <div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap', marginBottom: '6px' }}>
@@ -117,13 +779,11 @@ export default function FicheApprenant({ params }: { params: Promise<{ id: strin
             <span style={{ backgroundColor: COLORS.background, color: COLORS.primary, padding: '4px 12px', borderRadius: '20px', fontSize: '12px', fontWeight: '700' }}>{form.formation}</span>
             {estEnRupture && form.dateRupture && <span style={{ backgroundColor: '#fde8e8', color: '#e53e3e', padding: '4px 12px', borderRadius: '20px', fontSize: '12px', fontWeight: '700' }}>Rupture le {form.dateRupture}</span>}
             {form.maintienFormation === 'OUI' && <span style={{ backgroundColor: '#fef6e4', color: '#C8A23A', padding: '4px 12px', borderRadius: '20px', fontSize: '12px', fontWeight: '700' }}>Maintien formation</span>}
-            {/* Badge Session */}
             {sessionActuelle && (
               <span style={{ backgroundColor: '#e0e7ff', color: '#4338ca', padding: '4px 12px', borderRadius: '20px', fontSize: '12px', fontWeight: '700' }}>
                 📅 Session {sessionActuelle.id}
               </span>
             )}
-            {/* Badge SIFA */}
             {champsSifaManquants.length > 0 ? (
               <span title={`Champs SIFA manquants : ${champsSifaManquants.join(', ')}`} style={{ backgroundColor: '#fef6e4', color: '#7a5c00', padding: '4px 12px', borderRadius: '20px', fontSize: '12px', fontWeight: '700', cursor: 'help' }}>
                 ⚠️ SIFA : {champsSifaManquants.length} champ{champsSifaManquants.length > 1 ? 's' : ''} manquant{champsSifaManquants.length > 1 ? 's' : ''}
@@ -133,6 +793,25 @@ export default function FicheApprenant({ params }: { params: Promise<{ id: strin
                 ✅ SIFA conforme
               </span>
             )}
+            {entretiens.map(e => {
+              const s = STATUT_STYLE[e.statut];
+              return (
+                <span
+                  key={e.id}
+                  title={`${LIBELLE_TYPE_LONG[e.type]} — ${s.label}`}
+                  style={{
+                    backgroundColor: s.bg,
+                    color: s.color,
+                    padding: '4px 12px',
+                    borderRadius: '20px',
+                    fontSize: '12px',
+                    fontWeight: '700',
+                  }}
+                >
+                  {s.emoji} {LIBELLE_TYPE[e.type]}
+                </span>
+              );
+            })}
           </div>
           <p style={{ color: COLORS.textMuted, fontSize: '14px' }}>{({'SC':'TP Secrétaire Comptable','GCF':'TP Gestionnaire Comptable et Fiscal','ARH':'TP Assistant(e) en Ressources Humaines','AD':'TP Assistant(e) de Direction','CATL':'TP Chargé(e) d\'Accueil Touristique et de Loisirs','EC':'TP Employé(e) Commercial(e)','CV':'TP Conseiller(ère) de Vente','FPA':'TP Formateur(trice) Professionnel(le) d\'Adultes'} as Record<string,string>)[form.formation] || form.formationLibelle || form.formation || '—'} — {form.entreprise || "Pas encore d'entreprise"}</p>
         </div>
@@ -140,7 +819,7 @@ export default function FicheApprenant({ params }: { params: Promise<{ id: strin
           {modeEdition ? (
             <>
               <button onClick={sauvegarder} style={btnPrimary}>✅ Enregistrer</button>
-              <button onClick={() => { setForm(apprenant); setModeEdition(false); }} style={btnSecondary}>Annuler</button>
+              <button onClick={() => { setForm(apprenant); setModeEdition(false); setModeEntrepriseManuelle(false); }} style={btnSecondary}>Annuler</button>
             </>
           ) : (
             <>
@@ -168,53 +847,19 @@ export default function FicheApprenant({ params }: { params: Promise<{ id: strin
               }} style={{ backgroundColor: '#7c3aed', color: 'white', border: 'none', borderRadius: '8px', padding: '9px 16px', fontSize: '13px', fontWeight: '600', cursor: 'pointer' }}>
                 📓 Livret d'apprentissage
               </button>
-              <button onClick={() => {
-                const livrets: Record<string, string> = {
-                  'SC': 'https://docs.google.com/document/d/1iRHWuOb5EYT5Yy7v4YXy5rFBAA5KPOeNW88VpZUkkA4/edit?usp=drive_link',
-                  'AD': 'https://docs.google.com/document/d/16oAKKIBW5YwL3sXTZ1Be1bhlEMvwOsleByH8cvjY8a4/edit?usp=drive_link',
-                  'ARH': 'https://docs.google.com/document/d/13m_VmguC9M4sbMksiI6q8kcNMSGrCDIlveVPPoBsac8/edit?usp=drive_link',
-                  'GCF': 'https://docs.google.com/document/d/1mEW1o_VYrU5GexbSRHJQNFetJhBUHozVq3jZJeyy8IA/edit?usp=drive_link',
-                  'CATL': 'https://docs.google.com/document/d/1WM0qKJA2krngqCo4l9NNEPnFc-HGmRhEhNKftl65eaA/edit?usp=drive_link',
-                  'EC': 'https://docs.google.com/document/d/1M4-mFr49q9NnBvK5BjTJ_9gh2YFRQ-fhbodb1h0DpVA/edit?usp=drive_link',
-                  'CV': 'https://docs.google.com/document/d/1xFJxdfirIX2ZUzG7WmxB5eZkq6_yl_uw9UOdm80lcXg/edit?usp=drive_link',
-                };
-                const lienLivret = livrets[form.formation] ?? '';
-                const sujet = encodeURIComponent("Livret d'apprentissage et Livret d'accueil — " + form.prenom + ' ' + form.nom + ' — PAM OI Formation');
-                const corps = encodeURIComponent(
-                  (form.civilite === 'M.' ? 'Monsieur ' : form.civilite === 'Mme' ? 'Madame ' : 'Madame, Monsieur,\n\n') +
-                  (form.civilite ? form.prenom + ' ' + form.nom + ',\n\n' : '') +
-                  "Veuillez trouver ci-dessous les documents liés à votre entrée en formation chez PAM OI :\n\n" +
-                  "📓 LIVRET D'APPRENTISSAGE\n" +
-                  "Votre livret d'apprentissage est disponible en ligne :\n" +
-                  lienLivret + "\n\n" +
-                  "📋 LIVRET D'ACCUEIL\n" +
-                  "Le livret d'accueil PAM OI 2026-2027 vous est transmis en pièce jointe.\n" +
-                  "Il contient toutes les informations pratiques sur le centre de formation.\n\n" +
-                  "⚠️ ACTION REQUISE — RÈGLEMENT INTÉRIEUR\n" +
-                  "Le règlement intérieur se trouve à la page 10 du livret d'accueil.\n" +
-                  "Merci de nous le retourner signé avec la mention 'Lu et approuvé' à l'adresse : pedagogie@pamoi.re\n\n" +
-                  "Pour toute question, n'hésitez pas à nous contacter.\n\n" +
-                  "Cordialement,\n" +
-                  "PAM OI Formation\npedagogie@pamoi.re\n06 93 55 64 97\n1 Chemin Dubuisson — 97436 Saint-Leu"
-                );
-                const a = document.createElement('a');
-                a.href = '/modeles/LIVRET_D_ACCUEIL_PAM_OI_2026-2027.pdf';
-                a.download = 'Livret_Accueil_PAM_OI_2026-2027.pdf';
-                a.click();
-                setTimeout(() => {
-                  window.open("https://mail.google.com/mail/?view=cm&to=" + encodeURIComponent(form.email ?? '') + "&su=" + sujet + "&body=" + corps, '_blank');
-                }, 500);
-              }} style={{ backgroundColor: '#0891b2', color: 'white', border: 'none', borderRadius: '8px', padding: '9px 16px', fontSize: '13px', fontWeight: '600', cursor: 'pointer' }}>
-                📨 Envoyer livrets
-              </button>
               {!estEnRupture && <button onClick={() => setModaleRupture(true)} style={btnDanger}>Déclarer rupture</button>}
               {!estEnRupture && form.statut !== 'Terminé' && (
                 <button onClick={() => {
                   const updated = { ...form, statut: 'Terminé' };
-                  setForm(updated);
+                  setForm(updated); setApprenant(updated);
                   localStorage.setItem('apprenant_' + id, JSON.stringify(updated));
-                  setSauvegarde(true);
-                  setTimeout(() => setSauvegarde(false), 3000);
+                  try {
+                    const liste = JSON.parse(localStorage.getItem('easycfa_apprenants_v2') || '[]');
+                    const idx = liste.findIndex((a: any) => a.id === id);
+                    if (idx >= 0) liste[idx] = { ...liste[idx], ...updated };
+                    localStorage.setItem('easycfa_apprenants_v2', JSON.stringify(liste));
+                  } catch {}
+                  setSauvegarde(true); setTimeout(() => setSauvegarde(false), 3000);
                 }} style={{ backgroundColor: '#16a34a', color: 'white', border: 'none', borderRadius: '8px', padding: '9px 16px', fontSize: '13px', fontWeight: '600', cursor: 'pointer' }}>
                   ✅ Marquer comme Terminé
                 </button>
@@ -222,27 +867,25 @@ export default function FicheApprenant({ params }: { params: Promise<{ id: strin
               {form.statut === 'Terminé' && (
                 <button onClick={() => {
                   const updated = { ...form, statut: 'En cours' };
-                  setForm(updated);
+                  setForm(updated); setApprenant(updated);
                   localStorage.setItem('apprenant_' + id, JSON.stringify(updated));
-                  setSauvegarde(true);
-                  setTimeout(() => setSauvegarde(false), 3000);
+                  try {
+                    const liste = JSON.parse(localStorage.getItem('easycfa_apprenants_v2') || '[]');
+                    const idx = liste.findIndex((a: any) => a.id === id);
+                    if (idx >= 0) liste[idx] = { ...liste[idx], ...updated };
+                    localStorage.setItem('easycfa_apprenants_v2', JSON.stringify(liste));
+                  } catch {}
+                  setSauvegarde(true); setTimeout(() => setSauvegarde(false), 3000);
                 }} style={{ backgroundColor: 'white', color: '#16a34a', border: '1.5px solid #16a34a', borderRadius: '8px', padding: '9px 16px', fontSize: '13px', fontWeight: '600', cursor: 'pointer' }}>
                   ↩️ Réactiver
                 </button>
               )}
-              {(form.statut === 'Terminé' || estEnRupture) && (
-                <button onClick={() => {
-                  if (confirm('Archiver définitivement ce dossier ? Il ne sera plus visible dans la liste principale.')) {
-                    const updated = { ...form, archive: true };
-                    setForm(updated);
-                    localStorage.setItem('apprenant_' + id, JSON.stringify(updated));
-                    setSauvegarde(true);
-                    setTimeout(() => setSauvegarde(false), 3000);
-                  }
-                }} style={{ backgroundColor: '#f0f0f0', color: '#555', border: '1.5px solid #ccc', borderRadius: '8px', padding: '9px 16px', fontSize: '13px', fontWeight: '600', cursor: 'pointer' }}>
-                  🗄️ Archiver le dossier
-                </button>
-              )}
+              <BoutonSupprimer
+                type="apprenant"
+                id={id}
+                libelle={`${form.prenom ?? ''} ${form.nom ?? ''} (${form.formation ?? ''})`}
+                onSupprimer={supprimerApprenant}
+              />
             </>
           )}
         </div>
@@ -254,39 +897,55 @@ export default function FicheApprenant({ params }: { params: Promise<{ id: strin
         </div>
       )}
 
-    {p2s && (
+      {p2s && (
         <div style={{ backgroundColor: '#fef6e4', borderRadius: '10px', padding: '14px 16px', marginBottom: '16px', border: '1.5px solid #C8A23A' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <span style={{ color: '#7a5c00', fontWeight: '600', fontSize: '14px' }}>⚠️ Stagiaire P2S — Entreprise à trouver avant le {form.dateFinFormation}</span>
-            <button onClick={() => {
-              const a = document.createElement('a');
-              a.href = '/modeles/KIT_RECHERCHE_ENTREPRISE.pdf';
-              a.download = 'Kit_Recherche_Entreprise_PAM_OI.pdf';
-              a.click();
-              setTimeout(() => {
-                const sujet = encodeURIComponent("Bienvenue chez PAM OI — Kit de recherche entreprise et ateliers TRE");
-                const corps = encodeURIComponent(
-                  (form.civilite === 'M.' ? 'Monsieur ' : form.civilite === 'Mme' ? 'Madame ' : '') +
-                  (form.prenom || '') + ' ' + (form.nom || '') + ',\n\n' +
-                  "Nous sommes ravis de vous accueillir chez PAM OI Formation.\n\n" +
-                  "Vous trouverez en pièce jointe votre Kit de Recherche d'Entreprise.\n\n" +
-                  "Cordialement,\n" +
-                  "L'équipe PAM OI Formation\n" +
-                  "pedagogie@pamoi.re — 06 93 55 64 97"
-                );
-                window.open("https://mail.google.com/mail/?view=cm&to=" + encodeURIComponent(form.email ?? '') + "&su=" + sujet + "&body=" + corps, '_blank');
-              }, 500);
-            }} style={{ backgroundColor: '#C8A23A', color: 'white', border: 'none', borderRadius: '8px', padding: '8px 14px', fontSize: '12px', fontWeight: '600', cursor: 'pointer', whiteSpace: 'nowrap' }}>
-              📨 Envoyer kit + convocation ateliers TRE
-            </button>
           </div>
         </div>
       )}
+
       {estEnRupture && (
         <div style={{ backgroundColor: '#fde8e8', borderRadius: '10px', padding: '14px 16px', marginBottom: '16px' }}>
           <span style={{ color: '#c53030', fontWeight: '600', fontSize: '14px' }}>❌ Contrat rompu le {form.dateRupture} — Maintien en formation : {form.maintienFormation || 'Non renseigné'}</span>
         </div>
       )}
+
+      {/* 📋 ENTRETIENS DE SUIVI QUALIOPI */}
+      <Card style={{ marginBottom: '24px', borderTop: `4px solid ${COLORS.secondary}` }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', flexWrap: 'wrap', gap: '8px' }}>
+          <div>
+            <h2 style={{ fontSize: '17px', fontWeight: '800', color: COLORS.primary, marginBottom: '4px' }}>
+              📋 Entretiens de suivi Qualiopi
+            </h2>
+            <p style={{ fontSize: '12px', color: COLORS.textMuted }}>
+              🛡️ Indicateurs 11, 13 et 14 — Preuves obligatoires pour audit Qualiopi
+            </p>
+          </div>
+          {!peutModifierEntretien && (
+            <span style={{ backgroundColor: '#fef6e4', color: '#7a5c00', padding: '4px 12px', borderRadius: '20px', fontSize: '11px', fontWeight: '700' }}>
+              👁️ Lecture seule — Saisie réservée à PAMA/Pédagogique
+            </span>
+          )}
+        </div>
+
+        {(!form.dateDebutContrat || !form.dateFinContrat) && (
+          <div style={{ padding: '12px 14px', backgroundColor: '#fef6e4', borderRadius: '8px', marginBottom: '12px', fontSize: '13px', color: '#7a5c00', borderLeft: '4px solid #C8A23A' }}>
+            ⚠️ <strong>Dates de contrat manquantes</strong> — Renseigne <em>début</em> et <em>fin de contrat</em> dans la section "Contrat d'apprentissage" ci-dessous pour que les dates prévues d'entretien se calculent automatiquement.
+          </div>
+        )}
+
+        {entretiens.map(ent => (
+          <CardEntretien
+            key={ent.id}
+            entretien={ent}
+            apprenantNom={`${form.prenom} ${form.nom}`}
+            peutModifierEntretien={peutModifierEntretien}
+            utilisateur={utilisateur}
+            onSave={handleSauvegarderEntretien}
+          />
+        ))}
+      </Card>
 
       {/* Identité + Coordonnées + NIR */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '24px', marginBottom: '24px' }}>
@@ -359,7 +1018,49 @@ export default function FicheApprenant({ params }: { params: Promise<{ id: strin
                 {({'SC':'TP Secrétaire Comptable','GCF':'TP Gestionnaire Comptable et Fiscal','ARH':'TP Assistant(e) en Ressources Humaines','AD':'TP Assistant(e) de Direction','CATL':'TP Chargé(e) d\'Accueil Touristique et de Loisirs','EC':'TP Employé(e) Commercial(e)','CV':'TP Conseiller(ère) de Vente','FPA':'TP Formateur(trice) Professionnel(le) d\'Adultes'} as Record<string,string>)[form.formation] || form.formation || '—'}
               </div>
             </div>
-            <Champ label="Entreprise" champ="entreprise" form={form} setForm={setForm} />
+
+            <div>
+              <label style={{ fontSize: '11px', color: '#888', textTransform: 'uppercase', fontWeight: '600', display: 'block', marginBottom: '4px' }}>Entreprise</label>
+              {!modeEntrepriseManuelle ? (
+                <select
+                  style={inputStyle}
+                  value={entreprises.includes(form.entreprise) ? form.entreprise : (form.entreprise ? '__autre__' : '')}
+                  onChange={e => {
+                    const v = e.target.value;
+                    if (v === '__manuelle__' || v === '__autre__') {
+                      setModeEntrepriseManuelle(true);
+                    } else {
+                      setForm((p: any) => ({ ...p, entreprise: v }));
+                    }
+                  }}
+                >
+                  <option value="">— Choisir une entreprise —</option>
+                  {entreprises.map(nom => <option key={nom} value={nom}>{nom}</option>)}
+                  {form.entreprise && !entreprises.includes(form.entreprise) && (
+                    <option value="__autre__">📝 {form.entreprise} (saisie manuelle)</option>
+                  )}
+                  <option value="__manuelle__">✏️ Saisir manuellement (nouvelle entreprise)</option>
+                </select>
+              ) : (
+                <div style={{ display: 'flex', gap: '6px' }}>
+                  <input
+                    style={{ ...inputStyle, flex: 1 }}
+                    value={form.entreprise ?? ''}
+                    onChange={e => setForm((p: any) => ({ ...p, entreprise: e.target.value }))}
+                    placeholder="Nom de l'entreprise"
+                    autoFocus
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setModeEntrepriseManuelle(false)}
+                    style={{ backgroundColor: 'white', color: COLORS.primary, border: `1.5px solid ${COLORS.primary}`, borderRadius: '8px', padding: '0 10px', fontSize: '11px', fontWeight: '600', cursor: 'pointer', whiteSpace: 'nowrap' }}
+                  >
+                    ↩
+                  </button>
+                </div>
+              )}
+            </div>
+
             <Champ label="Statut" champ="statut" form={form} setForm={setForm} />
             <Champ label="Début contrat (JJ/MM/AAAA)" champ="dateDebutContrat" form={form} setForm={setForm} placeholder="JJ/MM/AAAA" />
             <Champ label="Fin contrat (JJ/MM/AAAA)" champ="dateFinContrat" form={form} setForm={setForm} placeholder="JJ/MM/AAAA" />
@@ -368,7 +1069,6 @@ export default function FicheApprenant({ params }: { params: Promise<{ id: strin
             <Champ label="N° dossier OPCO" champ="numeroDossierOpco" form={form} setForm={setForm} placeholder="Ex: 123456789" />
             <Champ label="N° DECA (APC)" champ="numeroDeca" form={form} setForm={setForm} placeholder="Ex: 974202XXXXXXXXX" />
 
-            {/* ===== NOUVEAU : Sélecteur Session de formation ===== */}
             <div style={{ gridColumn: 'span 3' }}>
               <label style={{ fontSize: '11px', color: '#888', textTransform: 'uppercase', fontWeight: '600', display: 'block', marginBottom: '4px' }}>
                 📅 Session de formation
@@ -391,7 +1091,7 @@ export default function FicheApprenant({ params }: { params: Promise<{ id: strin
                 ))}
               </select>
               <div style={{ fontSize: '11px', color: '#888', marginTop: '4px' }}>
-                💡 Les sessions sont filtrées par formation ({form.formation}). L'assignation à une session est utilisée pour l'émargement automatique.
+                💡 {sessionsCompatibles.length} session{sessionsCompatibles.length > 1 ? 's' : ''} compatible{sessionsCompatibles.length > 1 ? 's' : ''} avec la formation {form.formation || '(toutes)'}.
               </div>
             </div>
           </div>
@@ -419,7 +1119,7 @@ export default function FicheApprenant({ params }: { params: Promise<{ id: strin
         )}
       </Card>
 
-      {/* ===== NOUVELLE SECTION : DÉCLARATIONS ADMINISTRATIVES (SIFA) ===== */}
+      {/* SIFA */}
       <Card style={{ marginBottom: '24px' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
           <h2 style={{ fontSize: '15px', fontWeight: '700', color: COLORS.primary }}>📊 Déclarations administratives (SIFA)</h2>
@@ -435,50 +1135,23 @@ export default function FicheApprenant({ params }: { params: Promise<{ id: strin
         </div>
 
         <div style={{ marginBottom: '14px', padding: '10px 14px', backgroundColor: COLORS.background, borderRadius: '8px', fontSize: '12px', color: '#555' }}>
-          💡 Ces informations sont nécessaires pour la déclaration annuelle <strong>SIFA</strong> (Système d'Information sur la Formation des Apprentis) à transmettre fin novembre au ministère de l'Éducation Nationale.
-          {estMineurApp && <span> ⚠️ Cet apprenant est <strong>mineur</strong> à la date de signature du contrat : email d'un responsable légal obligatoire.</span>}
+          💡 Ces informations sont nécessaires pour la déclaration annuelle <strong>SIFA</strong>.
+          {estMineurApp && <span> ⚠️ Cet apprenant est <strong>mineur</strong> : email d'un responsable légal obligatoire.</span>}
         </div>
 
         {modeEdition ? (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '16px' }}>
-            <ChampSelect
-              label="Sexe (obligatoire SIFA)"
-              champ="sexe"
-              form={form}
-              setForm={setForm}
-              options={[
-                { value: 'M', label: 'Masculin' },
-                { value: 'F', label: 'Féminin' },
-              ]}
-            />
-            <Champ label="Code postal de naissance" champ="codePostalNaissance" form={form} setForm={setForm} placeholder="ex: 97410" />
-            <Champ label="INE (Identifiant National Élève)" champ="ine" form={form} setForm={setForm} placeholder="11 caractères (10 chiffres + 1 lettre)" />
-
-            <ChampSelect
-              label="RQTH (Reconnaissance Travailleur Handicapé)"
-              champ="rqth"
-              form={form}
-              setForm={setForm}
-              options={[
-                { value: 'OUI', label: 'OUI' },
-                { value: 'NON', label: 'NON' },
-              ]}
-            />
-            <Champ label="Date de RQTH (JJ/MM/AAAA)" champ="dateRqth" form={form} setForm={setForm} placeholder="JJ/MM/AAAA (si RQTH = OUI)" />
+            <ChampSelect label="Sexe" champ="sexe" form={form} setForm={setForm} options={[{ value: 'M', label: 'Masculin' }, { value: 'F', label: 'Féminin' }]} />
+            <Champ label="CP de naissance" champ="codePostalNaissance" form={form} setForm={setForm} placeholder="ex: 97410" />
+            <Champ label="INE" champ="ine" form={form} setForm={setForm} placeholder="11 caractères" />
+            <ChampSelect label="RQTH" champ="rqth" form={form} setForm={setForm} options={[{ value: 'OUI', label: 'OUI' }, { value: 'NON', label: 'NON' }]} />
+            <Champ label="Date RQTH" champ="dateRqth" form={form} setForm={setForm} placeholder="JJ/MM/AAAA" />
             <div></div>
-
-            <Champ label="Email représentant légal (général)" champ="representantEmail" form={form} setForm={setForm} type="email" placeholder="email@exemple.fr" />
-            <Champ label="Email responsable légal 1" champ="responsableEmail1" form={form} setForm={setForm} type="email" placeholder="responsable1@exemple.fr" />
-            <Champ label="Email responsable légal 2" champ="responsableEmail2" form={form} setForm={setForm} type="email" placeholder="responsable2@exemple.fr" />
-
-            <Champ label="UAI dernier établissement" champ="dernierOrganismeUai" form={form} setForm={setForm} placeholder="ex: 0123456A" />
-            <ChampSelect
-              label="Dernière situation scolaire"
-              champ="derniereSituationCode"
-              form={form}
-              setForm={setForm}
-              options={DERNIERE_SITUATION_SIFA.map(s => ({ value: s.code, label: `${s.code} — ${s.label}` }))}
-            />
+            <Champ label="Email représentant légal" champ="representantEmail" form={form} setForm={setForm} type="email" />
+            <Champ label="Email responsable légal 1" champ="responsableEmail1" form={form} setForm={setForm} type="email" />
+            <Champ label="Email responsable légal 2" champ="responsableEmail2" form={form} setForm={setForm} type="email" />
+            <Champ label="UAI dernier établissement" champ="dernierOrganismeUai" form={form} setForm={setForm} />
+            <ChampSelect label="Dernière situation scolaire" champ="derniereSituationCode" form={form} setForm={setForm} options={DERNIERE_SITUATION_SIFA.map(s => ({ value: s.code, label: `${s.code} — ${s.label}` }))} />
             <div></div>
           </div>
         ) : (
@@ -504,82 +1177,27 @@ export default function FicheApprenant({ params }: { params: Promise<{ id: strin
             </div>
           </div>
         )}
-
-        {champsSifaManquants.length > 0 && !modeEdition && (
-          <div style={{ marginTop: '14px', padding: '10px 14px', backgroundColor: '#fef6e4', borderRadius: '8px', fontSize: '12px', color: '#7a5c00' }}>
-            <strong>Champs SIFA manquants :</strong> {champsSifaManquants.join(', ')}
-            <br />
-            Clique sur <strong>✏️ Modifier</strong> pour les compléter.
-          </div>
-        )}
-      </Card>
-
-      {/* CERFA */}
-      <Card style={{ marginBottom: '24px' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-          <h2 style={{ fontSize: '15px', fontWeight: '700', color: COLORS.primary }}>Informations CERFA</h2>
-          <span style={{ backgroundColor: '#fef6e4', color: '#C8A23A', padding: '4px 12px', borderRadius: '20px', fontSize: '12px', fontWeight: '600' }}>⚠️ À compléter</span>
-        </div>
-        {modeEdition ? (
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
-            <Champ label="Situation avant contrat" champ="cerfa_situationAvantContrat" form={form} setForm={setForm} />
-            <Champ label="Dernière formation suivie" champ="cerfa_derniereFormation" form={form} setForm={setForm} />
-            <Champ label="Dernier établissement" champ="cerfa_dernierEtablissement" form={form} setForm={setForm} />
-            <Champ label="Dernière classe" champ="cerfa_derniereClasse" form={form} setForm={setForm} />
-            <Champ label="Diplôme le plus élevé" champ="cerfa_diplomePlusEleve" form={form} setForm={setForm} />
-            <Champ label="Année d'obtention" champ="cerfa_anneeObtention" form={form} setForm={setForm} />
-            <Champ label="Sportif haut niveau" champ="cerfa_sportifHautNiveau" form={form} setForm={setForm} />
-            <Champ label="Représentant légal — Nom" champ="representantNom" form={form} setForm={setForm} />
-            <Champ label="Représentant légal — Prénom" champ="representantPrenom" form={form} setForm={setForm} />
-            <Champ label="Représentant légal — Lien" champ="representantLien" form={form} setForm={setForm} />
-            <Champ label="Représentant légal — Téléphone" champ="representantTelephone" form={form} setForm={setForm} />
-          </div>
-        ) : (
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px' }}>
-            <div>
-              <h3 style={{ fontSize: '13px', fontWeight: '700', color: COLORS.secondary, textTransform: 'uppercase', marginBottom: '12px' }}>Parcours antérieur</h3>
-              <InfoRow label="Situation avant contrat" value={form.cerfa_situationAvantContrat} />
-              <InfoRow label="Dernière formation" value={form.cerfa_derniereFormation} />
-              <InfoRow label="Dernier établissement" value={form.cerfa_dernierEtablissement} />
-              <InfoRow label="Dernière classe" value={form.cerfa_derniereClasse} />
-              <InfoRow label="Diplôme le plus élevé" value={form.cerfa_diplomePlusEleve} />
-              <InfoRow label="Année d'obtention" value={form.cerfa_anneeObtention} />
-            </div>
-            <div>
-              <h3 style={{ fontSize: '13px', fontWeight: '700', color: COLORS.secondary, textTransform: 'uppercase', marginBottom: '12px' }}>Situation particulière</h3>
-              <InfoRow label="Sportif haut niveau" value={form.cerfa_sportifHautNiveau} />
-              <h3 style={{ fontSize: '13px', fontWeight: '700', color: COLORS.secondary, textTransform: 'uppercase', margin: '16px 0 12px' }}>Représentant légal</h3>
-              <InfoRow label="Nom" value={form.representantNom} />
-              <InfoRow label="Prénom" value={form.representantPrenom} />
-              <InfoRow label="Lien" value={form.representantLien} />
-              <InfoRow label="Téléphone" value={form.representantTelephone} />
-            </div>
-          </div>
-        )}
-        <div style={{ marginTop: '16px', padding: '12px 16px', backgroundColor: COLORS.background, borderRadius: '8px', fontSize: '13px', color: '#555' }}>
-          💡 Cliquez sur <strong>✏️ Modifier</strong> pour compléter les informations CERFA.
-        </div>
       </Card>
 
       {/* Pièces justificatives */}
       <Card style={{ marginBottom: '24px' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
           <h2 style={{ fontSize: '15px', fontWeight: '700', color: COLORS.primary }}>📎 Pièces justificatives</h2>
-          <span style={{ fontSize: '12px', color: '#888' }}>Formats acceptés : PDF, JPG, PNG — Max 5 Mo</span>
+          <span style={{ fontSize: '12px', color: '#888' }}>Formats : PDF, JPG, PNG — Max 5 Mo</span>
         </div>
 
         {[
           { id: 'cv', label: 'CV à jour', detail: 'Curriculum vitae à jour', obligatoire: false },
-          { id: 'cni', label: 'Pièce d\'identité valide', detail: 'CNI, passeport ou titre de séjour en cours de validité', obligatoire: true },
+          { id: 'cni', label: 'Pièce d\'identité valide', detail: 'CNI, passeport ou titre de séjour', obligatoire: true },
           { id: 'domicile', label: 'Justificatif de domicile', detail: 'Moins de 3 mois', obligatoire: true },
-          { id: 'vitale', label: 'Carte vitale ou attestation de droits', detail: 'Numéro de sécurité sociale obligatoire pour le CERFA', obligatoire: true },
-          { id: 'diplomes', label: 'Diplômes obtenus', detail: 'Derniers diplômes ou attestations de réussite', obligatoire: true },
-          { id: 'contrat', label: 'Contrat d\'apprentissage signé', detail: 'Importé automatiquement depuis la fiche entreprise', obligatoire: true, readonly: true },
-          { id: 'dpae', label: 'DPAE', detail: 'Déclaration Préalable à l\'Embauche — fournie par l\'employeur', obligatoire: false },
-          { id: 'autre', label: 'Autre document', detail: 'Tout autre document utile au dossier', obligatoire: false },
+          { id: 'vitale', label: 'Carte vitale / attestation SS', detail: 'NIR obligatoire pour le CERFA', obligatoire: true },
+          { id: 'diplomes', label: 'Diplômes obtenus', detail: 'Derniers diplômes', obligatoire: true },
+          { id: 'contrat', label: 'Contrat signé', detail: 'Importé depuis fiche entreprise', obligatoire: true, readonly: true },
+          { id: 'convention', label: 'Convention signée', detail: 'Importée depuis fiche entreprise', obligatoire: false, readonly: true },
+          { id: 'dpae', label: 'DPAE', detail: 'Déclaration Préalable à l\'Embauche', obligatoire: false },
+          { id: 'autre', label: 'Autre document', detail: 'Tout autre document utile', obligatoire: false },
         ].map((piece) => {
           const fichier = form['piece_' + piece.id];
-          const ficheSource = (piece as any).readonly && fichier?.source ? fichier.source : null;
           return (
             <div key={piece.id} style={{
               display: 'flex', alignItems: 'center', gap: '16px',
@@ -587,9 +1205,7 @@ export default function FicheApprenant({ params }: { params: Promise<{ id: strin
               backgroundColor: fichier ? '#e6f4f1' : piece.obligatoire ? '#fffbf0' : '#fafafa',
               border: `1.5px solid ${fichier ? '#006B68' : piece.obligatoire ? '#C8A23A' : '#e0e0e0'}`,
             }}>
-              <div style={{ fontSize: '22px', flexShrink: 0 }}>
-                {fichier ? '✅' : piece.obligatoire ? '⚠️' : '📄'}
-              </div>
+              <div style={{ fontSize: '22px', flexShrink: 0 }}>{fichier ? '✅' : piece.obligatoire ? '⚠️' : '📄'}</div>
               <div style={{ flex: 1 }}>
                 <div style={{ fontSize: '13px', fontWeight: '700', color: fichier ? COLORS.primary : '#333' }}>
                   {piece.label}
@@ -599,7 +1215,7 @@ export default function FicheApprenant({ params }: { params: Promise<{ id: strin
                 {fichier && (
                   <div style={{ fontSize: '12px', color: COLORS.primary, marginTop: '4px', fontWeight: '600' }}>
                     📄 {fichier.nom} ({fichier.taille})
-                    {ficheSource && <span style={{ fontSize: '11px', color: '#888', fontWeight: '400', marginLeft: '6px' }}>— {ficheSource}</span>}
+                    {fichier.source && <span style={{ fontStyle: 'italic', marginLeft: '6px' }}>— {fichier.source}</span>}
                   </div>
                 )}
               </div>
@@ -625,14 +1241,9 @@ export default function FicheApprenant({ params }: { params: Promise<{ id: strin
             </div>
           );
         })}
-
-        <div style={{ marginTop: '12px', padding: '10px 14px', backgroundColor: COLORS.background, borderRadius: '8px', fontSize: '12px', color: '#555' }}>
-          📊 {[...['cni','domicile','vitale','diplomes','contrat']].filter(p => form['piece_' + p]).length} / 5 pièces obligatoires importées
-          {[...['cni','domicile','vitale','diplomes','contrat']].every(p => form['piece_' + p]) && <span style={{ color: COLORS.primary, fontWeight: '700', marginLeft: '8px' }}>✅ Dossier complet !</span>}
-        </div>
       </Card>
 
-      {/* Présences */}
+      {/* Présences mensuelles */}
       <Card style={{ marginBottom: '24px' }}>
         <h2 style={{ fontSize: '15px', fontWeight: '700', color: COLORS.primary, marginBottom: '16px' }}>Présences mensuelles</h2>
         <div style={{ padding: '20px', textAlign: 'center', color: COLORS.textMuted, fontSize: '14px', fontStyle: 'italic' }}>
@@ -657,15 +1268,15 @@ export default function FicheApprenant({ params }: { params: Promise<{ id: strin
               </div>
             </div>
             <BoutonPdfRupture
-                apprenant={form}
-                motif={rupture.motif}
-                dateRupture={form.dateRupture}
-                maintienFormation={form.maintienFormation}
-                emailTuteur={form.emailTuteur}
-                expediteur={utilisateur?.email}
-                signature={utilisateur?.signatureEmail}
-                nomFichier={"Rupture_" + form.nom + "_" + form.prenom + "_" + (form.dateRupture ?? 'date').replace(/\//g, '-') + ".pdf"}
-              />
+              apprenant={form}
+              motif={rupture.motif}
+              dateRupture={form.dateRupture}
+              maintienFormation={form.maintienFormation}
+              emailTuteur={form.emailTuteur}
+              expediteur={utilisateur?.email}
+              signature={utilisateur?.signatureEmail}
+              nomFichier={"Rupture_" + form.nom + "_" + form.prenom + "_" + (form.dateRupture ?? 'date').replace(/\//g, '-') + ".pdf"}
+            />
           </div>
         ) : (
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px', backgroundColor: '#e6f4f1', borderRadius: '8px' }}>
@@ -680,14 +1291,14 @@ export default function FicheApprenant({ params }: { params: Promise<{ id: strin
         <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
           <div style={{ backgroundColor: 'white', borderRadius: '12px', padding: '28px', width: '480px', boxShadow: '0 8px 32px rgba(0,0,0,0.2)' }}>
             <h2 style={{ fontSize: '18px', fontWeight: '700', color: '#e53e3e', marginBottom: '8px' }}>❌ Déclarer une rupture</h2>
-            <p style={{ fontSize: '13px', color: '#888', marginBottom: '20px' }}>{form.prenom} {form.nom} — {({'SC':'TP Secrétaire Comptable','GCF':'TP Gestionnaire Comptable et Fiscal','ARH':'TP Assistant(e) en Ressources Humaines','AD':'TP Assistant(e) de Direction','CATL':'TP Chargé(e) d\'Accueil Touristique et de Loisirs','EC':'TP Employé(e) Commercial(e)','CV':'TP Conseiller(ère) de Vente','FPA':'TP Formateur(trice) Professionnel(le) d\'Adultes'} as Record<string,string>)[form.formation] || form.formationLibelle || form.formation || '—'}</p>
+            <p style={{ fontSize: '13px', color: '#888', marginBottom: '20px' }}>{form.prenom} {form.nom}</p>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
               <div>
-                <label style={{ fontSize: '11px', color: '#888', textTransform: 'uppercase', fontWeight: '600', display: 'block', marginBottom: '4px' }}>Date de rupture (JJ/MM/AAAA) *</label>
+                <label style={{ fontSize: '11px', color: '#888', textTransform: 'uppercase', fontWeight: '600', display: 'block', marginBottom: '4px' }}>Date de rupture *</label>
                 <input style={inputStyle} value={rupture.date} placeholder="JJ/MM/AAAA" onChange={e => setRupture(p => ({ ...p, date: e.target.value }))} />
               </div>
               <div>
-                <label style={{ fontSize: '11px', color: '#888', textTransform: 'uppercase', fontWeight: '600', display: 'block', marginBottom: '4px' }}>Motif de rupture</label>
+                <label style={{ fontSize: '11px', color: '#888', textTransform: 'uppercase', fontWeight: '600', display: 'block', marginBottom: '4px' }}>Motif</label>
                 <select style={inputStyle} value={rupture.motif} onChange={e => setRupture(p => ({ ...p, motif: e.target.value }))}>
                   <option value="">Choisir un motif...</option>
                   <option value="unilateral">Rupture unilatérale — 45 premiers jours</option>
@@ -695,7 +1306,6 @@ export default function FicheApprenant({ params }: { params: Promise<{ id: strin
                   <option value="force_majeure">Force majeure</option>
                   <option value="faute_grave">Faute grave de l'apprenti</option>
                   <option value="inaptitude">Inaptitude médicale</option>
-                  <option value="deces">Décès de l'employeur maître d'apprentissage</option>
                   <option value="initiative">À l'initiative de l'apprenti</option>
                   <option value="liquidation">Liquidation judiciaire</option>
                   <option value="exclusion">Exclusion définitive par le CFA</option>

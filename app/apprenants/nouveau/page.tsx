@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { COLORS } from '../../../lib/constants';
 
@@ -43,12 +43,49 @@ function Champ({ label, required, children }: { label: string; required?: boolea
   );
 }
 
-function Grille({ cols = 2, children }: { cols?: number; children: React.ReactNode }) {
+function Grille({ cols = 2, children, style }: { cols?: number; children: React.ReactNode; style?: React.CSSProperties }) {
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: `repeat(${cols}, 1fr)`, gap: '16px' }}>
+    <div style={{ display: 'grid', gridTemplateColumns: `repeat(${cols}, 1fr)`, gap: '16px', ...style }}>
       {children}
     </div>
   );
+}
+
+/**
+ * Génère un ID unique pour un apprenant à partir de son nom + prénom.
+ * Format : <3 lettres NOM><2 lettres prenom>_<num>
+ * Exemple : MAILLOT Paméla → MAIPA_001 (puis 002, 003 si déjà existant)
+ */
+function genererId(nom: string, prenom: string, idsExistants: string[]): string {
+  const base = (nom.slice(0, 3) + prenom.slice(0, 2)).toUpperCase().replace(/[^A-Z]/g, '');
+  let num = 1;
+  let id = `${base}_${String(num).padStart(3, '0')}`;
+  while (idsExistants.includes(id)) {
+    num++;
+    id = `${base}_${String(num).padStart(3, '0')}`;
+  }
+  return id;
+}
+
+/**
+ * Extrait les entreprises uniques depuis easycfa_apcs_v2 (les contrats d'apprentissage).
+ * Retourne une liste triée alphabétiquement.
+ */
+function chargerEntreprisesDepuisAPC(): string[] {
+  if (typeof window === 'undefined') return [];
+  try {
+    const apcs = JSON.parse(localStorage.getItem('easycfa_apcs_v2') || '[]');
+    const set = new Set<string>();
+    apcs.forEach((apc: any) => {
+      const nom = apc.entrepriseNom || apc.entreprise;
+      if (nom && typeof nom === 'string' && nom.trim()) {
+        set.add(nom.trim());
+      }
+    });
+    return Array.from(set).sort((a, b) => a.localeCompare(b, 'fr'));
+  } catch {
+    return [];
+  }
 }
 
 export default function NouvelApprenant() {
@@ -58,10 +95,18 @@ export default function NouvelApprenant() {
   const isP2S = statutInitial === 'P2S';
   const [section, setSection] = useState('identite');
   const [sauvegarde, setSauvegarde] = useState(false);
+  const [erreurSauvegarde, setErreurSauvegarde] = useState('');
   const [fichiers, setFichiers] = useState<Record<string, { nom: string; taille: string } | null>>({});
+  const [entreprisesDisponibles, setEntreprisesDisponibles] = useState<string[]>([]);
+  const [modeEntrepriseManuelle, setModeEntrepriseManuelle] = useState(false);
+
+  // Charge la liste des entreprises depuis les APC au montage
+  useEffect(() => {
+    setEntreprisesDisponibles(chargerEntreprisesDepuisAPC());
+  }, []);
 
   const [form, setForm] = useState({
-    statut: statutInitial,
+    statut: statutInitial === 'P2S' ? 'P2S' : 'En cours',
     // Identité
     civilite: '',
     nom: '',
@@ -111,6 +156,7 @@ export default function NouvelApprenant() {
 
   function update(champ: string, valeur: string) {
     setForm(prev => ({ ...prev, [champ]: valeur }));
+    if (erreurSauvegarde) setErreurSauvegarde('');
   }
 
   function calculerAge() {
@@ -142,11 +188,67 @@ export default function NouvelApprenant() {
     }
   }
 
+  /**
+   * ✅ SAUVEGARDE RÉELLE — corrige le bug majeur où rien n'était sauvegardé.
+   *
+   * Cette fonction :
+   * 1. Valide les champs minimum obligatoires (nom + prénom + formation)
+   * 2. Génère un ID unique pour le nouvel apprenant
+   * 3. Sauvegarde dans `easycfa_apprenants_v2` (la liste globale) ← BUG CORRIGÉ
+   * 4. Sauvegarde aussi dans `apprenant_<id>` (la fiche détail) avec toutes les données
+   * 5. Redirige vers la liste OU la fiche du nouvel apprenant
+   */
   function sauvegarder() {
-    setSauvegarde(true);
-    setTimeout(() => {
-      router.push('/apprenants');
-    }, 1500);
+    // 1️⃣ Validation minimale — nom + prénom + formation obligatoires pour créer
+    if (!form.nom.trim() || !form.prenom.trim()) {
+      setErreurSauvegarde('⚠️ Le NOM et le prénom sont obligatoires pour créer un apprenant.');
+      setSection('identite');
+      return;
+    }
+    if (!form.formation) {
+      setErreurSauvegarde('⚠️ La formation est obligatoire (section CERFA).');
+      setSection('cerfa');
+      return;
+    }
+
+    try {
+      // 2️⃣ Charger la liste actuelle des apprenants
+      const listeBrute = localStorage.getItem('easycfa_apprenants_v2');
+      const liste: any[] = listeBrute ? JSON.parse(listeBrute) : [];
+
+      // 3️⃣ Générer un ID unique
+      const idsExistants = liste.map(a => a.id);
+      const id = genererId(form.nom, form.prenom, idsExistants);
+
+      // 4️⃣ Construire l'objet apprenant à sauvegarder
+      const nouveau: any = {
+        id,
+        ...form,
+        // Ajout des pièces jointes en format compatible avec la fiche apprenant
+        ...Object.fromEntries(
+          Object.entries(fichiers)
+            .filter(([_, f]) => f)
+            .map(([k, f]) => [`piece_${k}`, f])
+        ),
+        dateCreation: new Date().toISOString(),
+      };
+
+      // 5️⃣ Ajouter à la liste globale (pour qu'il apparaisse dans /apprenants)
+      liste.push(nouveau);
+      localStorage.setItem('easycfa_apprenants_v2', JSON.stringify(liste));
+
+      // 6️⃣ Sauvegarder aussi la fiche détail (pour /apprenants/[id])
+      localStorage.setItem(`apprenant_${id}`, JSON.stringify(nouveau));
+
+      // 7️⃣ Feedback visuel + redirection
+      setSauvegarde(true);
+      setTimeout(() => {
+        router.push(`/apprenants/${id}`);
+      }, 1500);
+    } catch (err) {
+      console.error('Erreur sauvegarde apprenant:', err);
+      setErreurSauvegarde('❌ Erreur lors de la sauvegarde. Ouvrez la console (F12) pour les détails.');
+    }
   }
 
   const nbSections = SECTIONS.length;
@@ -187,34 +289,6 @@ export default function NouvelApprenant() {
               <div style={{ fontSize: '11px', color: '#888', marginTop: '8px', fontStyle: 'italic' }}>
                 💡 Le bouton de la formation sélectionnée est mis en surbrillance. Téléchargez, faites signer et importez dans les pièces justificatives.
               </div>
-              <a
-                href={"https://mail.google.com/mail/?view=cm&to=" + encodeURIComponent(form.email ?? '') + "&su=" + encodeURIComponent("Dossier d'inscription PAM OI — Formulaire P2S et pièces justificatives") + "&body=" + encodeURIComponent(
-                  (form.civilite === 'M.' ? "Monsieur " : form.civilite === 'Mme' ? "Madame " : "Madame, Monsieur,") + (form.civilite ? (form.prenom ?? '') + " " + (form.nom ?? '') + "," : "") + "\n\n" +
-                  "Suite à notre échange, veuillez trouver ci-joint le formulaire P2S " + (form.formation ?? '') + " à compléter et signer.\n\n" +
-                  "Nous vous remercions de bien vouloir nous retourner par email les documents suivants :\n\n" +
-                  "📄 FORMULAIRE P2S\n" +
-                  "— Formulaire P2S (ci-joint) complété et signé\n\n" +
-                  "🪪 PIÈCES JUSTIFICATIVES\n" +
-                  "— Pièce d'identité en cours de validité (CNI recto/verso ou passeport)\n" +
-                  "— Copie de carte vitale ou attestation de droits Sécurité Sociale\n" +
-                  "— Justificatif de domicile de moins de 3 mois\n" +
-                  "— Diplôme(s) obtenu(s) ou attestation de réussite\n" +
-                  "— Attestation RQTH (si concerné(e))\n" +
-                  "— Photo professionnelle pour carte étudiant\n\n" +
-                  "Ces documents sont indispensables pour finaliser votre inscription et vous garantir une protection sociale durant votre période de recherche d'entreprise.\n\n" +
-                  "Pour toute question, n'hésitez pas à nous contacter.\n\n" +
-                  "Cordialement,\n" +
-                  "PAM OI Formation\n" +
-                  "pedagogie@pamoi.re\n" +
-                  "06 93 55 64 97\n" +
-                  "1 Chemin Dubuisson — 97436 Saint-Leu"
-                )}
-                target="_blank"
-                rel="noopener noreferrer"
-                style={{ backgroundColor: '#3a5bc7', color: 'white', borderRadius: '8px', padding: '8px 14px', fontSize: '12px', fontWeight: '600', textDecoration: 'none', display: 'inline-block', marginTop: '10px' }}
-              >
-                ✉️ Envoyer le formulaire P2S par email
-              </a>
             </div>
           )}
         </div>
@@ -234,10 +308,17 @@ export default function NouvelApprenant() {
         </div>
       </div>
 
+      {/* Message d'erreur de sauvegarde */}
+      {erreurSauvegarde && (
+        <div style={{ padding: '14px 16px', backgroundColor: '#fde8e8', border: '2px solid #e53e3e', borderRadius: '10px', marginBottom: '16px', fontSize: '14px', fontWeight: '600', color: '#c53030' }}>
+          {erreurSauvegarde}
+        </div>
+      )}
+
       {/* Message succès */}
       {sauvegarde && (
         <div style={{ padding: '14px 16px', backgroundColor: '#e6f4f1', border: '2px solid #006B68', borderRadius: '10px', marginBottom: '16px', fontSize: '14px', fontWeight: '600', color: COLORS.primary }}>
-          ✅ Apprenant enregistré avec succès ! Redirection en cours...
+          ✅ Apprenant enregistré avec succès ! Redirection vers sa fiche...
         </div>
       )}
 
@@ -581,7 +662,7 @@ export default function NouvelApprenant() {
             </div>
           )}
 
-          {/* ===== SECTION ENTREPRISE ===== */}
+          {/* ===== SECTION ENTREPRISE (✅ CORRIGÉE — dropdown des vraies entreprises) ===== */}
           {section === 'entreprise' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
               <h2 style={{ fontSize: '17px', fontWeight: '700', color: COLORS.primary, marginBottom: '4px' }}>
@@ -589,17 +670,51 @@ export default function NouvelApprenant() {
               </h2>
 
               <div style={{ padding: '12px 16px', backgroundColor: COLORS.background, borderRadius: '8px', fontSize: '13px', color: '#555' }}>
-                💡 Si l'apprenant n'a pas encore trouvé d'entreprise, laissez ces champs vides — le statut sera "P2S" (Période Sans Entreprise).
+                💡 {entreprisesDisponibles.length} entreprise{entreprisesDisponibles.length > 1 ? 's' : ''} disponible{entreprisesDisponibles.length > 1 ? 's' : ''} (extraite{entreprisesDisponibles.length > 1 ? 's' : ''} de tes contrats d'apprentissage signés).
+                Si l'apprenant n'a pas encore trouvé d'entreprise, laisse vide et choisis P2S.
               </div>
 
-              <Champ label="Entreprise d'accueil" required>
-                <select style={inputStyle} value={form.entreprise} onChange={e => update('entreprise', e.target.value)}>
-                  <option value="">Choisir une entreprise ou saisir manuellement...</option>
-                  <option value="entreprise-a">Entreprise A</option>
-                  <option value="entreprise-b">Entreprise B</option>
-                  <option value="entreprise-c">Entreprise C</option>
-                  <option value="p2s">⚠️ P2S — Pas encore d'entreprise</option>
-                </select>
+              <Champ label="Entreprise d'accueil" required={!isP2S}>
+                {!modeEntrepriseManuelle ? (
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                    <select
+                      style={{ ...inputStyle, flex: 1 }}
+                      value={form.entreprise}
+                      onChange={e => {
+                        const v = e.target.value;
+                        if (v === '__manuelle__') {
+                          setModeEntrepriseManuelle(true);
+                          update('entreprise', '');
+                        } else {
+                          update('entreprise', v);
+                        }
+                      }}
+                    >
+                      <option value="">— Choisir une entreprise —</option>
+                      {entreprisesDisponibles.map(nom => (
+                        <option key={nom} value={nom}>{nom}</option>
+                      ))}
+                      <option value="__manuelle__">✏️ Saisir manuellement (entreprise nouvelle)</option>
+                    </select>
+                  </div>
+                ) : (
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                    <input
+                      style={{ ...inputStyle, flex: 1 }}
+                      value={form.entreprise}
+                      onChange={e => update('entreprise', e.target.value)}
+                      placeholder="Nom de l'entreprise"
+                      autoFocus
+                    />
+                    <button
+                      type="button"
+                      onClick={() => { setModeEntrepriseManuelle(false); update('entreprise', ''); }}
+                      style={{ backgroundColor: 'white', color: COLORS.primary, border: `1.5px solid ${COLORS.primary}`, borderRadius: '8px', padding: '0 14px', fontSize: '12px', fontWeight: '600', cursor: 'pointer', whiteSpace: 'nowrap' }}
+                    >
+                      ↩ Liste
+                    </button>
+                  </div>
+                )}
               </Champ>
 
               <div style={{ borderTop: '1px solid #f0f0f0', paddingTop: '20px' }}>
@@ -698,7 +813,7 @@ export default function NouvelApprenant() {
               {/* Résumé pièces */}
               <div style={{ marginTop: '8px', padding: '14px 16px', backgroundColor: COLORS.background, borderRadius: '10px' }}>
                 <div style={{ fontSize: '13px', fontWeight: '700', color: COLORS.primary, marginBottom: '4px' }}>
-                  {Object.keys(fichiers).length} pièce(s) importée(s) sur {PIECES_OBLIGATOIRES.length}
+                  {Object.keys(fichiers).filter(k => fichiers[k]).length} pièce(s) importée(s) sur {PIECES_OBLIGATOIRES.length}
                 </div>
                 <div style={{ fontSize: '12px', color: '#888' }}>
                   Pièces obligatoires manquantes : {PIECES_OBLIGATOIRES.filter(p => p.obligatoire && !fichiers[p.id]).map(p => p.label).join(', ') || 'Aucune ✅'}

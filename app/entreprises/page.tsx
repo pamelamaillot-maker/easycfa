@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { ENTREPRISES_REELS } from '../../data/mockEntreprises_reels';
 import { COLORS } from '../../lib/constants';
 import Card from '../../components/Card';
@@ -10,13 +10,62 @@ const btnPrimary: React.CSSProperties = { backgroundColor: COLORS.primary, color
 const btnSecondary: React.CSSProperties = { backgroundColor: 'white', color: COLORS.primary, border: `1.5px solid ${COLORS.primary}`, borderRadius: '8px', padding: '9px 16px', fontSize: '13px', fontWeight: '600', cursor: 'pointer' };
 const inputStyle: React.CSSProperties = { border: '1.5px solid #e0e0e0', borderRadius: '8px', padding: '8px 12px', fontSize: '13px', color: COLORS.text, backgroundColor: 'white' };
 
-const ALERTE_E: Record<string, { bg: string; color: string }> = {
-  'OK': { bg: '#e6f4f1', color: '#006B68' },
-  'Email tuteur manquant': { bg: '#fef6e4', color: '#C8A23A' },
-  'Documents à transmettre': { bg: '#fde8e8', color: '#e53e3e' },
-};
+/**
+ * ✅ Charge toutes les entreprises en fusionnant 3 sources :
+ *   1. ENTREPRISES_REELS (mock — les 47 d'origine)
+ *   2. easycfa_entreprises_v2 (liste persistée — contient les nouvelles)
+ *   3. entreprise_<id> (fiches modifiées individuellement)
+ *
+ * Et exclut les entreprises supprimées (marquées dans easycfa_entreprises_supprimees).
+ */
+function chargerEntreprisesMerges(): any[] {
+  if (typeof window === 'undefined') return ENTREPRISES_REELS as any[];
+
+  // Liste des IDs supprimés (pour ne plus les afficher)
+  let supprimees: string[] = [];
+  try {
+    supprimees = JSON.parse(localStorage.getItem('easycfa_entreprises_supprimees') || '[]');
+  } catch {}
+
+  // Liste persistée (nouvelles entreprises créées)
+  let listePersistee: any[] = [];
+  try {
+    const raw = localStorage.getItem('easycfa_entreprises_v2');
+    if (raw) listePersistee = JSON.parse(raw);
+  } catch {}
+
+  // Construction de la liste de base : mock + nouvelles
+  const idsExistants = new Set();
+  const liste: any[] = [];
+
+  // 1. Ajouter d'abord les entreprises du mock (sauf supprimées)
+  (ENTREPRISES_REELS as any[]).forEach(e => {
+    if (!supprimees.includes(e.id)) {
+      liste.push(e);
+      idsExistants.add(e.id);
+    }
+  });
+
+  // 2. Ajouter les nouvelles entreprises persistées (sauf doublons et supprimées)
+  listePersistee.forEach(e => {
+    if (!supprimees.includes(e.id) && !idsExistants.has(e.id)) {
+      liste.push(e);
+      idsExistants.add(e.id);
+    }
+  });
+
+  // 3. Fusionner avec les modifications individuelles
+  return liste.map(e => {
+    try {
+      const fiche = localStorage.getItem(`entreprise_${e.id}`);
+      if (fiche) return { ...e, ...JSON.parse(fiche) };
+    } catch {}
+    return e;
+  });
+}
 
 export default function Entreprises() {
+  const [entreprises, setEntreprises] = useState<any[]>(ENTREPRISES_REELS as any[]);
   const [alertesContactes, setAlertesContacts] = useState<string[]>([]);
   const [afficherAlertes, setAfficherAlertes] = useState(false);
   const [importOk, setImportOk] = useState(false);
@@ -25,9 +74,14 @@ export default function Entreprises() {
   const [filtreOpco, setFiltreOpco] = useState('');
   const fileRef = useRef<HTMLInputElement>(null);
 
+  // ✅ Charge les entreprises depuis localStorage au montage
+  useEffect(() => {
+    setEntreprises(chargerEntreprisesMerges());
+  }, []);
+
   function exporter() {
     const headers = ['Raison sociale', 'SIRET', 'Code APE', 'Adresse', 'Ville', 'Email', 'Téléphone', 'IDCC', 'OPCO', 'Tuteur Nom', 'Tuteur Prénom', 'Tuteur Email', 'Tuteur Téléphone'];
-    const rows = ENTREPRISES_REELS.map(e => [
+    const rows = entreprises.map(e => [
       e.raisonSociale, e.siret, e.codeApe, e.adresse, e.ville, e.email, e.telephone,
       e.idcc, e.opco, e.tuteurNom, e.tuteurPrenom, e.tuteurEmail, e.tuteurTelephone,
     ]);
@@ -43,7 +97,7 @@ export default function Entreprises() {
 
   function controlerContacts() {
     const alertes: string[] = [];
-    ENTREPRISES_REELS.forEach(e => {
+    entreprises.forEach(e => {
       if (!e.tuteurEmail) alertes.push(`⚠️ ${e.raisonSociale} — Email tuteur manquant`);
       if (!e.tuteurTelephone) alertes.push(`⚠️ ${e.raisonSociale} — Téléphone tuteur manquant`);
       if (!e.idcc || e.idcc === '9999') alertes.push(`⚠️ ${e.raisonSociale} — IDCC à vérifier (${e.idcc})`);
@@ -78,7 +132,9 @@ export default function Entreprises() {
             </div>
           )}
         </Card>
-      )}<div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '24px' }}>
+      )}
+
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '24px' }}>
         <div>
           <h1 style={{ fontSize: '24px', fontWeight: '700', color: COLORS.primary, marginBottom: '4px' }}>Entreprises</h1>
           <p style={{ color: COLORS.textMuted, fontSize: '14px' }}>Suivez les entreprises d'accueil, tuteurs, apprentis rattachés et documents associés.</p>
@@ -122,7 +178,7 @@ export default function Entreprises() {
           </div>
           <select value={filtreOpco} onChange={e => setFiltreOpco(e.target.value)} style={inputStyle}>
             <option value="">Tous les OPCO</option>
-            {[...new Set(ENTREPRISES_REELS.map(e => e.opco).filter(Boolean))].sort().map(o => (
+            {[...new Set(entreprises.map(e => e.opco).filter(Boolean))].sort().map(o => (
               <option key={o} value={o}>{o}</option>
             ))}
           </select>
@@ -136,31 +192,31 @@ export default function Entreprises() {
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: '16px', marginBottom: '24px' }}>
         {[
-  { label: 'Total entreprises', value: ENTREPRISES_REELS.length, color: COLORS.primary },
-  { label: 'OPCO différents', value: new Set(ENTREPRISES_REELS.map(e => e.opco)).size, color: COLORS.secondary },
-].map((s) => <StatCard key={s.label} {...s} />)}
+          { label: 'Total entreprises', value: entreprises.length, color: COLORS.primary },
+          { label: 'OPCO différents', value: new Set(entreprises.map(e => e.opco).filter(Boolean)).size, color: COLORS.secondary },
+        ].map((s) => <StatCard key={s.label} {...s} />)}
       </div>
 
       <Card>
         <h2 style={{ fontSize: '16px', fontWeight: '700', color: COLORS.primary, marginBottom: '16px' }}>
-          Liste des entreprises ({ENTREPRISES_REELS.length})
+          Liste des entreprises ({entreprises.length})
         </h2>
         <div style={{ overflowX: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '1000px' }}>
             <thead>
               <tr style={{ borderBottom: `2px solid ${COLORS.background}` }}>
-                {['Entreprise', 'SIRET', 'Contact principal', 'Email', 'Téléphone', 'Apprentis', 'Tuteurs', 'Statut', 'Alertes', 'Actions'].map((col) => (
+                {['Entreprise', 'SIRET', 'Tuteur principal', 'Email', 'Téléphone', 'OPCO', 'IDCC', 'Statut', 'Actions'].map((col) => (
                   <th key={col} style={{ textAlign: 'left', padding: '8px 10px', fontSize: '11px', color: '#999', fontWeight: '600', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>{col}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
-              {ENTREPRISES_REELS.filter(e => {
-  const matchRecherche = !recherche || e.raisonSociale.toLowerCase().includes(recherche.toLowerCase()) || e.ville.toLowerCase().includes(recherche.toLowerCase()) || e.siret.includes(recherche);
-  const matchTuteur = !rechercheTuteur || (e.tuteurNom + ' ' + e.tuteurPrenom).toLowerCase().includes(rechercheTuteur.toLowerCase());
-  const matchOpco = !filtreOpco || e.opco === filtreOpco;
-  return matchRecherche && matchTuteur && matchOpco;
-}).map((e) => {
+              {entreprises.filter(e => {
+                const matchRecherche = !recherche || (e.raisonSociale ?? '').toLowerCase().includes(recherche.toLowerCase()) || (e.ville ?? '').toLowerCase().includes(recherche.toLowerCase()) || (e.siret ?? '').includes(recherche);
+                const matchTuteur = !rechercheTuteur || ((e.tuteurNom ?? '') + ' ' + (e.tuteurPrenom ?? '')).toLowerCase().includes(rechercheTuteur.toLowerCase());
+                const matchOpco = !filtreOpco || e.opco === filtreOpco;
+                return matchRecherche && matchTuteur && matchOpco;
+              }).map((e) => {
                 return (
                   <tr key={e.id} style={{ borderBottom: `1px solid ${COLORS.border}` }}>
                     <td style={{ padding: '10px', fontSize: '14px', fontWeight: '700' }}>{e.raisonSociale}</td>
@@ -172,9 +228,6 @@ export default function Entreprises() {
                     <td style={{ padding: '10px', fontSize: '12px', color: COLORS.textMuted }}>{e.idcc}</td>
                     <td style={{ padding: '10px' }}>
                       <span style={{ backgroundColor: '#e6f4f1', color: '#006B68', padding: '3px 10px', borderRadius: '20px', fontSize: '12px', fontWeight: '600' }}>Active</span>
-                    </td>
-                    <td style={{ padding: '10px' }}>
-                      <span style={{ backgroundColor: '#f0f0f0', color: '#888', padding: '3px 10px', borderRadius: '20px', fontSize: '12px', fontWeight: '600' }}>—</span>
                     </td>
                     <td style={{ padding: '10px' }}>
                       <div style={{ display: 'flex', gap: '4px' }}>

@@ -4,6 +4,9 @@ import { useState, useEffect } from 'react';
 import { APPRENANTS_REELS } from '../../data/mockApprenants_reels';
 import { COLORS } from '../../lib/constants';
 import Card from '../../components/Card';
+import CardEvaluationsChaud from '../../components/CardEvaluationsChaud';
+import CardEvaluationsFroid from '../../components/CardEvaluationsFroid';
+import CardEvaluationsEntreprise from '../../components/CardEvaluationsEntreprise';
 
 const inputStyle: React.CSSProperties = { border: '1.5px solid #e0e0e0', borderRadius: '8px', padding: '8px 12px', fontSize: '13px', width: '100%', boxSizing: 'border-box', backgroundColor: 'white' };
 const btnPrimary: React.CSSProperties = { backgroundColor: '#006B68', color: 'white', border: 'none', borderRadius: '8px', padding: '9px 16px', fontSize: '13px', fontWeight: '600', cursor: 'pointer' };
@@ -168,7 +171,7 @@ export default function Sessions() {
   const [sessions, setSessions] = useState<Session[]>([]);
   const [selectionne, setSelectionne] = useState<Session | null>(null);
   const [modale, setModale] = useState(false);
-  const [onglet, setOnglet] = useState<'planning' | 'apprenants' | 'modules'>('planning');
+  const [onglet, setOnglet] = useState<'planning' | 'apprenants' | 'modules' | 'eval_chaud' | 'eval_froid' | 'eval_entreprise'>('planning');
   const [filtreFormation, setFiltreFormation] = useState('');
   const [filtreStatut, setFiltreStatut] = useState('Tous');
   const [form, setForm] = useState<Partial<Session>>({ formation: 'SC', annee: '2026', statut: 'À venir', apprenantIds: [], modules: [] });
@@ -464,6 +467,8 @@ export default function Sessions() {
                   { id: 'planning', label: '📅 Planning' },
                   { id: 'apprenants', label: `👥 Apprenants (${selectionne.apprenantIds.length})` },
                   { id: 'modules', label: '📚 Modules/Formateurs' },
+                  { id: 'eval_chaud', label: '🌡️ Évaluations à chaud' },
+                  { id: 'eval_entreprise', label: '🏢 Évaluations entreprises' },
                 ].map(o => (
                   <button key={o.id} onClick={() => setOnglet(o.id as any)} style={{ flex: 1, padding: '12px', fontSize: '12px', fontWeight: '600', border: 'none', borderBottom: onglet === o.id ? '3px solid #006B68' : '3px solid transparent', backgroundColor: 'white', color: onglet === o.id ? '#006B68' : '#888', cursor: 'pointer' }}>
                     {o.label}
@@ -717,6 +722,47 @@ export default function Sessions() {
                         </div>
                       </div>
                     )}
+                  </div>
+                )}
+
+                {onglet === 'eval_chaud' && (
+                  <div>
+                    <div style={{ marginBottom: '14px' }}>
+                      <h3 style={{ fontSize: '14px', fontWeight: '700', color: '#006B68' }}>🌡️ Évaluations à chaud des apprentis</h3>
+                      <p style={{ fontSize: '10px', color: '#888' }}>🛡️ Indicateurs 30/31 Qualiopi</p>
+                    </div>
+                    <CardEvaluationsChaud
+                      sessionId={selectionne.id}
+                      sessionNom={`${selectionne.numero} — ${config.label}`}
+                      apprenantIds={selectionne.apprenantIds}
+                    />
+                  </div>
+                )}
+
+                {onglet === 'eval_froid' && (
+                  <div>
+                    <div style={{ marginBottom: '14px' }}>
+                      <h3 style={{ fontSize: '14px', fontWeight: '700', color: '#006B68' }}>❄️ Évaluations à froid (6 mois)</h3>
+                      <p style={{ fontSize: '10px', color: '#888' }}>🛡️ Indicateur 30 Qualiopi — Suivi à froid</p>
+                    </div>
+                    <CardEvaluationsFroid
+                      sessionId={selectionne.id}
+                      sessionNom={`${selectionne.numero} — ${config.label}`}
+                      apprenantIds={selectionne.apprenantIds}
+                    />
+                  </div>
+                )}
+                {onglet === 'eval_entreprise' && (
+                  <div>
+                    <div style={{ marginBottom: '14px' }}>
+                      <h3 style={{ fontSize: '14px', fontWeight: '700', color: '#006B68' }}>🏢 Évaluations entreprises / Maîtres d'apprentissage</h3>
+                      <p style={{ fontSize: '10px', color: '#888' }}>🛡️ Indicateur 13 Qualiopi — Recueil de l'avis des entreprises</p>
+                    </div>
+                    <CardEvaluationsEntreprise
+                      sessionId={selectionne.id}
+                      sessionNom={`${selectionne.numero} — ${config.label}`}
+                      apprenantIds={selectionne.apprenantIds}
+                    />
                   </div>
                 )}
               </div>

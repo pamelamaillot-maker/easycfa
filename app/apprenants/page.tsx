@@ -18,9 +18,7 @@ function getStatut(a: any): { code: string; label: string; bg: string; color: st
 }
 
 function estArchive(a: any): boolean {
-  // Archivé manuellement
   if (a.archive === true) return true;
-  // Archivé automatiquement après 1 mois RUPTURE FMEF
   if (a.statut !== 'Rupture' || a.maintienFormation === 'OUI') return false;
   if (!a.dateRupture) return false;
   try {
@@ -33,33 +31,65 @@ function estArchive(a: any): boolean {
   } catch { return false; }
 }
 
+/**
+ * Construit la liste complète des apprenants en fusionnant 3 sources :
+ *   1. APPRENANTS_REELS (mock, les 62 d'origine)
+ *   2. easycfa_apprenants_v2 (la liste persistée — contient les nouveaux apprenants créés)
+ *   3. apprenant_<id> (les fiches détails modifiées individuellement)
+ *
+ * Règle : si un ID apparaît dans plusieurs sources, on garde la version la plus récente
+ * (fiche individuelle > liste persistée > mock).
+ */
+function chargerApprenantsMerges(): any[] {
+  if (typeof window === 'undefined') return APPRENANTS_REELS as any[];
+
+  // 1. Liste persistée (peut contenir les 62 réels + nouveaux apprenants créés)
+  let listePersistee: any[] = [];
+  try {
+    const raw = localStorage.getItem('easycfa_apprenants_v2');
+    if (raw) listePersistee = JSON.parse(raw);
+  } catch {}
+
+  // 2. Si la liste persistée existe, on s'en sert comme base — sinon on prend le mock
+  const base: any[] = listePersistee.length > 0 ? listePersistee : (APPRENANTS_REELS as any[]);
+
+  // 3. On garantit que tous les apprenants du mock sont présents (au cas où la liste persistée
+  //    aurait été partiellement perdue) — sans écraser les versions persistées
+  const idsBase = new Set(base.map(a => a.id));
+  (APPRENANTS_REELS as any[]).forEach(a => {
+    if (!idsBase.has(a.id)) base.push(a);
+  });
+
+  // 4. Fusion avec les fiches individuelles (apprenant_<id>)
+  return base.map(a => {
+    try {
+      const fiche = localStorage.getItem(`apprenant_${a.id}`);
+      if (fiche) return { ...a, ...JSON.parse(fiche) };
+    } catch {}
+    return a;
+  });
+}
+
 export default function Apprenants() {
   const [recherche, setRecherche] = useState('');
   const [filtreStatut, setFiltreStatut] = useState('Tous');
   const [filtreFormation, setFiltreFormation] = useState('Toutes');
+  const [apprenantsMerges, setApprenantsMerges] = useState<any[]>(APPRENANTS_REELS as any[]);
 
-  const [apprenantsMerges, setApprenantsMerges] = useState(APPRENANTS_REELS);
-
+  // ✅ CORRECTION : lit aussi easycfa_apprenants_v2 (donc les nouveaux apprenants créés)
   useEffect(() => {
-    const merges = APPRENANTS_REELS.map(a => {
-      try {
-        const saved = localStorage.getItem('apprenant_' + a.id);
-        if (saved) return { ...a, ...JSON.parse(saved) };
-      } catch {}
-      return a;
-    });
-    setApprenantsMerges(merges);
+    setApprenantsMerges(chargerApprenantsMerges());
   }, []);
 
   const actifs = apprenantsMerges.filter(a => !estArchive(a));
   const archives = apprenantsMerges.filter(a => estArchive(a));
-  const formations = [...new Set(APPRENANTS_REELS.map(a => a.formation))].sort();
+  const formations = [...new Set(apprenantsMerges.map(a => a.formation).filter(Boolean))].sort();
 
   const actifsFiltres = actifs.filter(a => {
     const s = getStatut(a);
     const matchRecherche = recherche === '' ||
-      a.nom.toLowerCase().includes(recherche.toLowerCase()) ||
-      a.prenom.toLowerCase().includes(recherche.toLowerCase()) ||
+      (a.nom ?? '').toLowerCase().includes(recherche.toLowerCase()) ||
+      (a.prenom ?? '').toLowerCase().includes(recherche.toLowerCase()) ||
       (a.entreprise ?? '').toLowerCase().includes(recherche.toLowerCase()) ||
       (a.email ?? '').toLowerCase().includes(recherche.toLowerCase());
     const matchStatut = filtreStatut === 'Tous' || s.code === filtreStatut;

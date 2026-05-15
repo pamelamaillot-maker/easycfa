@@ -1,10 +1,12 @@
 'use client';
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { ENTREPRISES_REELS } from '../../../data/mockEntreprises_reels';
 import { APPRENANTS_REELS } from '../../../data/mockApprenants_reels';
 import { COLORS } from '../../../lib/constants';
 import Card from '../../../components/Card';
 import StatCard from '../../../components/StatCard';
+import BoutonSupprimer from '../../../components/BoutonSupprimer';
 
 const DOC_STATUT: Record<string, { bg: string; color: string }> = {
   'Disponible': { bg: '#e6f4f1', color: '#006B68' },
@@ -16,20 +18,67 @@ const DOC_STATUT: Record<string, { bg: string; color: string }> = {
 const btnPrimary: React.CSSProperties = { backgroundColor: COLORS.primary, color: 'white', border: 'none', borderRadius: '8px', padding: '9px 16px', fontSize: '13px', fontWeight: '600', cursor: 'pointer' };
 const btnSecondary: React.CSSProperties = { backgroundColor: 'white', color: COLORS.primary, border: `1.5px solid ${COLORS.primary}`, borderRadius: '8px', padding: '9px 16px', fontSize: '13px', fontWeight: '600', cursor: 'pointer' };
 
+/** Recherche une entreprise dans toutes les sources */
+function trouverEntreprise(id: string): any | null {
+  if (typeof window === 'undefined') {
+    return (ENTREPRISES_REELS as any[]).find(e => e.id === id) || null;
+  }
+  // 1. Liste persistée (contient les nouvelles + modifs majeures)
+  try {
+    const liste = JSON.parse(localStorage.getItem('easycfa_entreprises_v2') || '[]');
+    const trouve = liste.find((e: any) => e.id === id);
+    if (trouve) {
+      try {
+        const fiche = localStorage.getItem(`entreprise_${id}`);
+        if (fiche) return { ...trouve, ...JSON.parse(fiche) };
+      } catch {}
+      return trouve;
+    }
+  } catch {}
+
+  // 2. Mock + fiche détail individuelle
+  const mockE = (ENTREPRISES_REELS as any[]).find(e => e.id === id);
+  if (mockE) {
+    try {
+      const fiche = localStorage.getItem(`entreprise_${id}`);
+      if (fiche) return { ...mockE, ...JSON.parse(fiche) };
+    } catch {}
+    return mockE;
+  }
+
+  // 3. Cas limite : fiche orpheline
+  try {
+    const fiche = localStorage.getItem(`entreprise_${id}`);
+    if (fiche) return JSON.parse(fiche);
+  } catch {}
+
+  return null;
+}
+
 function InfoRow({ label, value, alert }: { label: string; value: string; alert?: boolean }) {
   return (
     <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: `1px solid ${COLORS.border}` }}>
       <span style={{ fontSize: '12px', color: '#888', textTransform: 'uppercase', fontWeight: '600' }}>{label}</span>
-      <span style={{ fontSize: '13px', fontWeight: '600', color: alert ? '#e53e3e' : COLORS.text, textAlign: 'right', maxWidth: '60%' }}>{value}</span>
+      <span style={{ fontSize: '13px', fontWeight: '600', color: alert ? '#e53e3e' : COLORS.text, textAlign: 'right', maxWidth: '60%' }}>{value || '—'}</span>
     </div>
   );
 }
 
 export default function FicheEntreprise({ params }: { params: Promise<{ id: string }> }) {
   const { id } = React.use(params);
-  const e = ENTREPRISES_REELS.find(ent => ent.id === id);
+  const router = useRouter();
+  const [entreprise, setEntreprise] = useState<any>(null);
   const [modeEdition, setModeEdition] = useState(false);
-  const [form, setForm] = useState<any>(e ?? {});
+  const [form, setForm] = useState<any>({});
+  const [sauvegarde, setSauvegarde] = useState(false);
+  const [chargement, setChargement] = useState(true);
+
+  useEffect(() => {
+    const trouve = trouverEntreprise(id);
+    setEntreprise(trouve);
+    setForm(trouve ?? {});
+    setChargement(false);
+  }, [id]);
 
   function genererMandat() {
     const a = document.createElement('a');
@@ -38,17 +87,70 @@ export default function FicheEntreprise({ params }: { params: Promise<{ id: stri
     a.click();
   }
 
+  /**
+   * ✅ SAUVEGARDE — met à jour à la fois entreprise_<id> ET easycfa_entreprises_v2
+   */
   function sauvegarder() {
     localStorage.setItem('entreprise_' + id, JSON.stringify(form));
+
+    try {
+      const liste = JSON.parse(localStorage.getItem('easycfa_entreprises_v2') || '[]');
+      const idx = liste.findIndex((e: any) => e.id === id);
+      if (idx >= 0) {
+        liste[idx] = { ...liste[idx], ...form };
+      } else {
+        liste.push(form);
+      }
+      localStorage.setItem('easycfa_entreprises_v2', JSON.stringify(liste));
+    } catch {}
+
+    setEntreprise(form);
+    setSauvegarde(true);
     setModeEdition(false);
+    setTimeout(() => setSauvegarde(false), 3000);
   }
 
-  if (!e) return (
+  /**
+   * ✅ SUPPRESSION — retire de la liste persistée + ajoute dans la liste des supprimées
+   * (le mock ne peut pas être effacé, on marque l'ID comme supprimé pour le filtrer)
+   */
+  function supprimerEntreprise() {
+    try {
+      // 1. Retirer de la liste persistée
+      const liste = JSON.parse(localStorage.getItem('easycfa_entreprises_v2') || '[]');
+      const filtree = liste.filter((e: any) => e.id !== id);
+      localStorage.setItem('easycfa_entreprises_v2', JSON.stringify(filtree));
+
+      // 2. Supprimer la fiche détail
+      localStorage.removeItem(`entreprise_${id}`);
+
+      // 3. Marquer dans la liste des supprimées (pour exclure du mock)
+      const supprimees = JSON.parse(localStorage.getItem('easycfa_entreprises_supprimees') || '[]');
+      if (!supprimees.includes(id)) {
+        supprimees.push(id);
+        localStorage.setItem('easycfa_entreprises_supprimees', JSON.stringify(supprimees));
+      }
+
+      // 4. Redirection
+      router.push('/entreprises');
+    } catch (err) {
+      console.error('Erreur suppression entreprise:', err);
+      alert('Erreur lors de la suppression. Voir la console (F12).');
+    }
+  }
+
+  if (chargement) {
+    return <div style={{ padding: '32px', textAlign: 'center', color: COLORS.textMuted }}>Chargement...</div>;
+  }
+
+  if (!entreprise) return (
     <div style={{ padding: '32px' }}>
       <a href="/entreprises" style={{ color: COLORS.primary, fontWeight: '600', textDecoration: 'none' }}>← Retour aux entreprises</a>
-      <p style={{ marginTop: '16px', color: COLORS.textMuted }}>Entreprise introuvable.</p>
+      <p style={{ marginTop: '16px', color: COLORS.textMuted }}>Entreprise introuvable (ID : {id}).</p>
     </div>
   );
+
+  const e = entreprise;
 
   return (
     <div>
@@ -60,7 +162,7 @@ export default function FicheEntreprise({ params }: { params: Promise<{ id: stri
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', margin: '16px 0 24px' }}>
         <div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '6px', flexWrap: 'wrap' }}>
-            <h1 style={{ fontSize: '26px', fontWeight: '800', color: COLORS.primary }}>{e.raisonSociale}</h1>
+            <h1 style={{ fontSize: '26px', fontWeight: '800', color: COLORS.primary }}>{form.raisonSociale}</h1>
             {[
               { label: 'Active', bg: '#e6f4f1', color: '#006B68' },
               { label: 'Apprentis rattachés', bg: COLORS.backgroundGold, color: COLORS.secondary },
@@ -72,21 +174,39 @@ export default function FicheEntreprise({ params }: { params: Promise<{ id: stri
           <p style={{ color: COLORS.textMuted, fontSize: '14px' }}>Fiche entreprise — Entreprise d'accueil apprentissage</p>
         </div>
         <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-          <button onClick={() => setModeEdition(!modeEdition)} style={modeEdition ? btnPrimary : btnSecondary}>
-            {modeEdition ? '✅ Enregistrer' : '✏️ Modifier'}
-          </button>
-        
-          <button onClick={genererMandat} style={btnPrimary}>
-            📄 Générer mandat
-          </button>
+          {modeEdition ? (
+            <>
+              <button onClick={sauvegarder} style={btnPrimary}>✅ Enregistrer</button>
+              <button onClick={() => { setForm(entreprise); setModeEdition(false); }} style={btnSecondary}>Annuler</button>
+            </>
+          ) : (
+            <>
+              <button onClick={() => setModeEdition(true)} style={btnSecondary}>✏️ Modifier</button>
+              <button onClick={genererMandat} style={btnPrimary}>📄 Générer mandat</button>
+
+              {/* ✅ Bouton Supprimer — visible PAMA uniquement */}
+              <BoutonSupprimer
+                type="entreprise"
+                id={id}
+                libelle={`${form.raisonSociale ?? ''} (SIRET ${form.siret ?? ''})`}
+                onSupprimer={supprimerEntreprise}
+              />
+            </>
+          )}
         </div>
       </div>
+
+      {sauvegarde && (
+        <div style={{ padding: '12px 16px', backgroundColor: '#e6f4f1', border: '2px solid #006B68', borderRadius: '10px', marginBottom: '16px', fontSize: '14px', fontWeight: '600', color: COLORS.primary }}>
+          ✅ Modifications enregistrées avec succès
+        </div>
+      )}
 
       {/* Infos générales + Suivi */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px', marginBottom: '24px' }}>
         <Card>
           <h2 style={{ fontSize: '15px', fontWeight: '700', color: COLORS.primary, marginBottom: '12px' }}>Informations entreprise</h2>
-           {modeEdition ? (
+          {modeEdition ? (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
               {[
                 { label: 'Raison sociale', champ: 'raisonSociale' },
@@ -128,7 +248,7 @@ export default function FicheEntreprise({ params }: { params: Promise<{ id: stri
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '16px' }}>
-{[{ label: 'OPCO', value: e.opco }, { label: 'IDCC', value: e.idcc }].map((s) => <StatCard key={s.label} {...s} />)}
+            {[{ label: 'OPCO', value: e.opco || '—' }, { label: 'IDCC', value: e.idcc || '—' }].map((s) => <StatCard key={s.label} {...s} />)}
           </div>
           <Card>
             <h2 style={{ fontSize: '15px', fontWeight: '700', color: COLORS.primary, marginBottom: '12px' }}>Récapitulatif apprentis</h2>
@@ -152,11 +272,8 @@ export default function FicheEntreprise({ params }: { params: Promise<{ id: stri
                     <span style={{ fontSize: '18px', fontWeight: '800', color: '#e53e3e' }}>{rupture.length}</span>
                   </div>
                   <div style={{ backgroundColor: COLORS.background, borderRadius: '8px', padding: '10px 14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <span style={{ fontSize: '13px', fontWeight: '600', color: '#555' }}>📊 Total (données importées)</span>
+                    <span style={{ fontSize: '13px', fontWeight: '600', color: '#555' }}>📊 Total</span>
                     <span style={{ fontSize: '18px', fontWeight: '800', color: '#555' }}>{tous.length}</span>
-                  </div>
-                  <div style={{ marginTop: '4px', padding: '8px 10px', backgroundColor: '#fffbf0', borderRadius: '6px', fontSize: '11px', color: '#888', fontStyle: 'italic' }}>
-                    ℹ️ Les dossiers 2023-2024 (terminés au 31/12/2024) ne sont pas inclus dans ce récapitulatif.
                   </div>
                 </div>
               );
@@ -165,24 +282,18 @@ export default function FicheEntreprise({ params }: { params: Promise<{ id: stri
         </div>
       </div>
 
-      {/* BLOC CERFA ENTREPRISE */}
+      {/* CERFA */}
       <Card style={{ marginBottom: '24px', borderTop: `4px solid ${COLORS.secondary}` }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '20px' }}>
-          <h2 style={{ fontSize: '15px', fontWeight: '700', color: COLORS.primary }}>
-            Informations CERFA employeur
-          </h2>
+          <h2 style={{ fontSize: '15px', fontWeight: '700', color: COLORS.primary }}>Informations CERFA employeur</h2>
           <span style={{ backgroundColor: COLORS.backgroundGold, color: COLORS.secondary, padding: '4px 12px', borderRadius: '20px', fontSize: '12px', fontWeight: '700' }}>
             Obligatoire CERFA apprentissage
           </span>
         </div>
 
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '24px' }}>
-
-          {/* Colonne 1 — Identification */}
           <div>
-            <h3 style={{ fontSize: '12px', fontWeight: '700', color: COLORS.secondary, textTransform: 'uppercase', marginBottom: '12px', paddingBottom: '6px', borderBottom: `2px solid ${COLORS.backgroundGold}` }}>
-              Identification
-            </h3>
+            <h3 style={{ fontSize: '12px', fontWeight: '700', color: COLORS.secondary, textTransform: 'uppercase', marginBottom: '12px', paddingBottom: '6px', borderBottom: `2px solid ${COLORS.backgroundGold}` }}>Identification</h3>
             {modeEdition ? (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                 {[
@@ -209,11 +320,8 @@ export default function FicheEntreprise({ params }: { params: Promise<{ id: stri
             )}
           </div>
 
-          {/* Colonne 2 — Convention et OPCO */}
           <div>
-            <h3 style={{ fontSize: '12px', fontWeight: '700', color: COLORS.secondary, textTransform: 'uppercase', marginBottom: '12px', paddingBottom: '6px', borderBottom: `2px solid ${COLORS.backgroundGold}` }}>
-              Convention collective et OPCO
-            </h3>
+            <h3 style={{ fontSize: '12px', fontWeight: '700', color: COLORS.secondary, textTransform: 'uppercase', marginBottom: '12px', paddingBottom: '6px', borderBottom: `2px solid ${COLORS.backgroundGold}` }}>Convention collective et OPCO</h3>
             {modeEdition ? (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                 {[
@@ -236,11 +344,8 @@ export default function FicheEntreprise({ params }: { params: Promise<{ id: stri
             )}
           </div>
 
-          {/* Colonne 3 — Contacts RH */}
           <div>
-            <h3 style={{ fontSize: '12px', fontWeight: '700', color: COLORS.secondary, textTransform: 'uppercase', marginBottom: '12px', paddingBottom: '6px', borderBottom: `2px solid ${COLORS.backgroundGold}` }}>
-              Contacts RH
-            </h3>
+            <h3 style={{ fontSize: '12px', fontWeight: '700', color: COLORS.secondary, textTransform: 'uppercase', marginBottom: '12px', paddingBottom: '6px', borderBottom: `2px solid ${COLORS.backgroundGold}` }}>Contacts RH</h3>
             {modeEdition ? (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                 {[
@@ -265,29 +370,17 @@ export default function FicheEntreprise({ params }: { params: Promise<{ id: stri
                 <InfoRow label="BIC" value={e.bic} />
               </>
             )}
-
-            {/* Alerte si champs manquants */}
-            <div style={{ marginTop: '16px', padding: '12px', backgroundColor: '#e6f4f1', borderRadius: '8px' }}>
-              <div style={{ fontSize: '12px', fontWeight: '700', color: COLORS.primary, marginBottom: '4px' }}>
-                ✅ Données CERFA complètes
-              </div>
-              <div style={{ fontSize: '12px', color: COLORS.textMuted }}>
-                Tous les champs obligatoires sont renseignés pour cette entreprise.
-              </div>
-            </div>
           </div>
         </div>
       </Card>
 
       {/* Tuteurs */}
       <Card style={{ marginBottom: '24px' }}>
-        <h2 style={{ fontSize: '15px', fontWeight: '700', color: COLORS.primary, marginBottom: '16px' }}>
-          Tuteurs / maîtres d'apprentissage
-        </h2>
+        <h2 style={{ fontSize: '15px', fontWeight: '700', color: COLORS.primary, marginBottom: '16px' }}>Tuteurs / maîtres d'apprentissage</h2>
         <table style={{ width: '100%', borderCollapse: 'collapse' }}>
           <thead>
             <tr style={{ borderBottom: `2px solid ${COLORS.background}` }}>
-              {['Nom', 'Fonction', 'Email', 'Téléphone', 'Apprentis suivis', 'Statut'].map((col) => (
+              {['Nom', 'Fonction', 'Email', 'Téléphone', 'Statut'].map((col) => (
                 <th key={col} style={{ textAlign: 'left', padding: '8px 12px', fontSize: '11px', color: '#999', fontWeight: '600', textTransform: 'uppercase' }}>{col}</th>
               ))}
             </tr>
@@ -295,7 +388,7 @@ export default function FicheEntreprise({ params }: { params: Promise<{ id: stri
           <tbody>
             {modeEdition ? (
               <tr>
-                <td colSpan={6} style={{ padding: '16px' }}>
+                <td colSpan={5} style={{ padding: '16px' }}>
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '10px' }}>
                     {[
                       { label: 'Nom', champ: 'tuteurNom' },
@@ -303,7 +396,6 @@ export default function FicheEntreprise({ params }: { params: Promise<{ id: stri
                       { label: 'Fonction', champ: 'tuteurFonction' },
                       { label: 'Email', champ: 'tuteurEmail' },
                       { label: 'Téléphone', champ: 'tuteurTelephone' },
-                      { label: 'Niveau diplôme', champ: 'tuteurNiveauDiplome' },
                     ].map(f => (
                       <div key={f.champ}>
                         <label style={{ fontSize: '11px', color: '#888', textTransform: 'uppercase', fontWeight: '600', display: 'block', marginBottom: '3px' }}>{f.label}</label>
@@ -316,10 +408,9 @@ export default function FicheEntreprise({ params }: { params: Promise<{ id: stri
             ) : (
               <tr style={{ borderBottom: `1px solid ${COLORS.border}` }}>
                 <td style={{ padding: '12px', fontSize: '14px', fontWeight: '600' }}>{e.tuteurNom} {e.tuteurPrenom}</td>
-                <td style={{ padding: '12px', fontSize: '13px', color: COLORS.textMuted }}>{e.tuteurFonction}</td>
-                <td style={{ padding: '12px', fontSize: '13px', color: COLORS.textMuted }}>{e.tuteurEmail}</td>
-                <td style={{ padding: '12px', fontSize: '13px', color: COLORS.textMuted }}>{e.tuteurTelephone}</td>
-                <td style={{ padding: '12px', fontSize: '13px', color: COLORS.textMuted }}>{e.tuteurNiveauDiplome}</td>
+                <td style={{ padding: '12px', fontSize: '13px', color: COLORS.textMuted }}>{e.tuteurFonction || '—'}</td>
+                <td style={{ padding: '12px', fontSize: '13px', color: COLORS.textMuted }}>{e.tuteurEmail || '—'}</td>
+                <td style={{ padding: '12px', fontSize: '13px', color: COLORS.textMuted }}>{e.tuteurTelephone || '—'}</td>
                 <td style={{ padding: '12px' }}>
                   <span style={{ backgroundColor: '#e6f4f1', color: '#006B68', padding: '3px 10px', borderRadius: '20px', fontSize: '12px', fontWeight: '600' }}>Actif</span>
                 </td>
@@ -331,25 +422,22 @@ export default function FicheEntreprise({ params }: { params: Promise<{ id: stri
 
       {/* Apprentis rattachés */}
       <Card style={{ marginBottom: '24px' }}>
-        <h2 style={{ fontSize: '15px', fontWeight: '700', color: COLORS.primary, marginBottom: '16px' }}>
-          Apprentis rattachés
-        </h2>
+        <h2 style={{ fontSize: '15px', fontWeight: '700', color: COLORS.primary, marginBottom: '16px' }}>Apprentis rattachés</h2>
         <table style={{ width: '100%', borderCollapse: 'collapse' }}>
           <thead>
             <tr style={{ borderBottom: `2px solid ${COLORS.background}` }}>
-              {['Nom', 'Prénom', 'Session', 'Formation', 'Début', 'Fin', 'Statut', 'Action'].map((col) => (
+              {['Nom', 'Prénom', 'Formation', 'Début', 'Fin', 'Statut', ''].map((col) => (
                 <th key={col} style={{ textAlign: 'left', padding: '8px 12px', fontSize: '11px', color: '#999', fontWeight: '600', textTransform: 'uppercase' }}>{col}</th>
               ))}
             </tr>
           </thead>
           <tbody>
             {APPRENANTS_REELS.filter(a => a.entreprise === e.raisonSociale).length === 0 ? (
-              <tr><td colSpan={8} style={{ padding: '20px', textAlign: 'center', color: COLORS.textMuted, fontStyle: 'italic' }}>Aucun apprenti rattaché</td></tr>
+              <tr><td colSpan={7} style={{ padding: '20px', textAlign: 'center', color: COLORS.textMuted, fontStyle: 'italic' }}>Aucun apprenti rattaché</td></tr>
             ) : APPRENANTS_REELS.filter(a => a.entreprise === e.raisonSociale).map((a, i) => (
               <tr key={i} style={{ borderBottom: `1px solid ${COLORS.border}` }}>
                 <td style={{ padding: '12px', fontSize: '14px', fontWeight: '700' }}>{a.nom}</td>
                 <td style={{ padding: '12px', fontSize: '14px' }}>{a.prenom}</td>
-                <td style={{ padding: '12px', fontSize: '12px', color: COLORS.primary, fontWeight: '600' }}>{a.session || '—'}</td>
                 <td style={{ padding: '12px', fontSize: '13px', color: COLORS.textMuted }}>{a.formation}</td>
                 <td style={{ padding: '12px', fontSize: '13px', color: COLORS.textMuted }}>{a.dateDebutContrat || '—'}</td>
                 <td style={{ padding: '12px', fontSize: '13px', color: COLORS.textMuted }}>{a.dateFinContrat || '—'}</td>
@@ -357,50 +445,7 @@ export default function FicheEntreprise({ params }: { params: Promise<{ id: stri
                   <span style={{ backgroundColor: '#e6f4f1', color: '#006B68', padding: '3px 10px', borderRadius: '20px', fontSize: '12px', fontWeight: '600' }}>{a.statut}</span>
                 </td>
                 <td style={{ padding: '12px' }}>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                    <div style={{ display: 'flex', gap: '4px' }}>
-                      <a href={`/apprenants/${a.id}`} style={{ backgroundColor: COLORS.background, color: COLORS.primary, borderRadius: '6px', padding: '4px 10px', fontSize: '12px', fontWeight: '600', textDecoration: 'none' }}>Voir</a>
-                      <a href={`/documents/convention?apprenant=${a.id}`} style={{ backgroundColor: COLORS.backgroundGold, color: COLORS.secondary, borderRadius: '6px', padding: '4px 10px', fontSize: '12px', fontWeight: '600', textDecoration: 'none' }}>📄 Générer convention</a>
-                    </div>
-                    <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
-                      {[
-                        { id: 'convention_signee', label: '📝 Convention signée' },
-                        { id: 'contrat_signe', label: '📋 Contrat signé' },
-                        { id: 'apc_opco', label: '💰 APC OPCO' },
-                      ].map(doc => {
-                        const saved = typeof window !== 'undefined' ? localStorage.getItem('doc_' + doc.id + '_' + a.id) : null;
-                        const fichier = saved ? JSON.parse(saved) : null;
-                        return (
-                          <label key={doc.id} style={{ backgroundColor: fichier ? '#e6f4f1' : '#f0f0f0', color: fichier ? COLORS.primary : '#555', borderRadius: '6px', padding: '4px 8px', fontSize: '11px', fontWeight: '600', cursor: 'pointer', display: 'inline-block', whiteSpace: 'nowrap' }}
-                            title={fichier ? `✅ ${fichier.nom}` : 'Importer'}>
-                            {fichier ? '✅ ' : '⬆ '}{doc.label}
-                            <input type="file" accept=".pdf,.jpg,.jpeg,.png" style={{ display: 'none' }} onChange={ev => {
-                              const f = ev.target.files?.[0];
-                              if (f) {
-                                const taille = f.size > 1024 * 1024 ? `${(f.size / 1024 / 1024).toFixed(1)} Mo` : `${Math.round(f.size / 1024)} Ko`;
-                                const docData = JSON.stringify({ nom: f.name, taille, date: new Date().toLocaleDateString('fr-FR') });
-                                // Sauvegarder dans la fiche entreprise
-                                localStorage.setItem('doc_' + doc.id + '_' + a.id, docData);
-                                // Lier automatiquement à la fiche apprenant si contrat signé
-                                if (doc.id === 'contrat_signe') {
-                                  const ficheApprenant = JSON.parse(localStorage.getItem('apprenant_' + a.id) ?? '{}');
-                                  ficheApprenant['piece_contrat'] = { nom: f.name, taille, date: new Date().toLocaleDateString('fr-FR'), source: 'Importé depuis fiche entreprise' };
-                                  localStorage.setItem('apprenant_' + a.id, JSON.stringify(ficheApprenant));
-                                }
-                                // Lier convention signée à la fiche apprenant aussi
-                                if (doc.id === 'convention_signee') {
-                                  const ficheApprenant = JSON.parse(localStorage.getItem('apprenant_' + a.id) ?? '{}');
-                                  ficheApprenant['piece_convention'] = { nom: f.name, taille, date: new Date().toLocaleDateString('fr-FR'), source: 'Importé depuis fiche entreprise' };
-                                  localStorage.setItem('apprenant_' + a.id, JSON.stringify(ficheApprenant));
-                                }
-                                alert('✅ Document importé pour ' + a.prenom + ' ' + a.nom + (doc.id === 'contrat_signe' || doc.id === 'convention_signee' ? ' et lié automatiquement à sa fiche apprenant.' : '.'));
-                              }
-                            }} />
-                          </label>
-                        );
-                      })}
-                    </div>
-                  </div>
+                  <a href={`/apprenants/${a.id}`} style={{ backgroundColor: COLORS.background, color: COLORS.primary, borderRadius: '6px', padding: '4px 10px', fontSize: '12px', fontWeight: '600', textDecoration: 'none' }}>Voir →</a>
                 </td>
               </tr>
             ))}
@@ -412,14 +457,14 @@ export default function FicheEntreprise({ params }: { params: Promise<{ id: stri
       <Card>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
           <h2 style={{ fontSize: '15px', fontWeight: '700', color: COLORS.primary }}>📎 Pièces justificatives entreprise</h2>
-          <span style={{ fontSize: '12px', color: '#888' }}>Formats acceptés : PDF, JPG, PNG — Max 5 Mo</span>
+          <span style={{ fontSize: '12px', color: '#888' }}>PDF, JPG, PNG — Max 5 Mo</span>
         </div>
         {[
           { id: 'fiche_renseignement', label: 'Fiche de renseignement', detail: 'Fiche employeur complétée et signée', obligatoire: true },
           { id: 'kbis', label: 'Extrait KBIS', detail: 'Moins de 3 mois', obligatoire: true },
           { id: 'mandat_signe', label: 'Mandat de recrutement signé', detail: 'Mandat signé par le recruteur final', obligatoire: false },
         ].map((piece) => {
-          const fichier = (e as any)['piece_' + piece.id];
+          const fichier = form['piece_' + piece.id];
           return (
             <div key={piece.id} style={{ display: 'flex', alignItems: 'center', gap: '16px', padding: '12px 14px', borderRadius: '10px', marginBottom: '8px', backgroundColor: fichier ? '#e6f4f1' : piece.obligatoire ? '#fffbf0' : '#fafafa', border: `1.5px solid ${fichier ? '#006B68' : piece.obligatoire ? '#C8A23A' : '#e0e0e0'}` }}>
               <div style={{ fontSize: '22px', flexShrink: 0 }}>{fichier ? '✅' : piece.obligatoire ? '⚠️' : '📄'}</div>
@@ -433,23 +478,19 @@ export default function FicheEntreprise({ params }: { params: Promise<{ id: stri
               </div>
               <label style={{ backgroundColor: fichier ? 'white' : COLORS.primary, color: fichier ? COLORS.primary : 'white', border: fichier ? `1.5px solid ${COLORS.primary}` : 'none', borderRadius: '8px', padding: '7px 12px', fontSize: '12px', fontWeight: '600', cursor: 'pointer', display: 'inline-block', whiteSpace: 'nowrap', flexShrink: 0 }}>
                 {fichier ? '🔄 Remplacer' : '⬆ Importer'}
-                <input type="file" accept=".pdf,.jpg,.jpeg,.png" style={{ display: 'none' }} onChange={(e_input) => {
-                  const f = e_input.target.files?.[0];
+                <input type="file" accept=".pdf,.jpg,.jpeg,.png" style={{ display: 'none' }} onChange={(ev) => {
+                  const f = ev.target.files?.[0];
                   if (f) {
                     const taille = f.size > 1024 * 1024 ? `${(f.size / 1024 / 1024).toFixed(1)} Mo` : `${Math.round(f.size / 1024)} Ko`;
-                    const key = 'entreprise_' + e.id;
-                    const saved = JSON.parse(localStorage.getItem(key) ?? '{}');
-                    saved['piece_' + piece.id] = { nom: f.name, taille };
-                    localStorage.setItem(key, JSON.stringify(saved));
+                    const updated = { ...form, ['piece_' + piece.id]: { nom: f.name, taille } };
+                    setForm(updated);
+                    localStorage.setItem('entreprise_' + id, JSON.stringify(updated));
                   }
                 }} />
               </label>
             </div>
           );
         })}
-        <div style={{ marginTop: '12px', padding: '10px 14px', backgroundColor: COLORS.background, borderRadius: '8px', fontSize: '12px', color: '#555' }}>
-          📊 Dossier complet quand les pièces obligatoires sont importées
-        </div>
       </Card>
     </div>
   );

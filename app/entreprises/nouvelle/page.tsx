@@ -49,69 +49,48 @@ function SectionTitle({ children }: { children: React.ReactNode }) {
   );
 }
 
+/**
+ * Génère un ID unique pour une entreprise à partir de sa raison sociale.
+ * Format : 4 premières lettres du nom + numéro (ex: MANELEC → MANE_001)
+ */
+function genererId(raisonSociale: string, idsExistants: string[]): string {
+  const base = raisonSociale.slice(0, 4).toUpperCase().replace(/[^A-Z0-9]/g, '') || 'ENT';
+  let num = 1;
+  let id = `${base}_${String(num).padStart(3, '0')}`;
+  while (idsExistants.includes(id)) {
+    num++;
+    id = `${base}_${String(num).padStart(3, '0')}`;
+  }
+  return id;
+}
+
 export default function NouvelleEntreprise() {
   const router = useRouter();
   const [section, setSection] = useState('identite');
   const [sauvegarde, setSauvegarde] = useState(false);
+  const [erreur, setErreur] = useState('');
 
   const [form, setForm] = useState({
-    // Identification
-    raisonSociale: '',
-    siret: '',
-    codeApe: '',
-    libelleApe: '',
-    formeJuridique: '',
-    effectif: '',
-    adresse: '',
-    codePostal: '',
-    ville: '',
-    pays: 'France',
-    telephone: '',
-    email: '',
-    siteWeb: '',
-    // CERFA employeur
-    idcc: '',
-    libelleConventionCollective: '',
-    opco: '',
-    faf: '',
-    caisseRetraite: '',
-    caisseCongesPayes: '',
-    regimePrevoyance: '',
-    regimeProtectionSociale: '10',
-    secteur: 'prive',
-    employeurPublic: 'non',
+    raisonSociale: '', siret: '', codeApe: '', libelleApe: '',
+    formeJuridique: '', effectif: '', adresse: '', codePostal: '',
+    ville: '', pays: 'France', telephone: '', email: '', siteWeb: '',
+    idcc: '', libelleConventionCollective: '', opco: '', faf: '',
+    caisseRetraite: '', caisseCongesPayes: '', regimePrevoyance: '',
+    regimeProtectionSociale: '10', secteur: 'prive', employeurPublic: 'non',
     travailDangereux: 'non',
-    // Contacts
-    dirigeantCivilite: '',
-    dirigeantNom: '',
-    dirigeantPrenom: '',
-    dirigeantFonction: '',
-    dirigeantTelephone: '',
-    dirigeantEmail: '',
-    tuteurCivilite: '',
-    tuteurNom: '',
-    tuteurPrenom: '',
-    tuteurFonction: '',
-    tuteurTelephone: '',
-    tuteurEmail: '',
-    tuteurNiveauDiplome: '',
+    dirigeantCivilite: '', dirigeantNom: '', dirigeantPrenom: '',
+    dirigeantFonction: '', dirigeantTelephone: '', dirigeantEmail: '',
+    tuteurCivilite: '', tuteurNom: '', tuteurPrenom: '', tuteurFonction: '',
+    tuteurTelephone: '', tuteurEmail: '', tuteurNiveauDiplome: '',
     tuteurAnneeExperience: '',
-    rhNom: '',
-    rhTelephone: '',
-    rhEmail: '',
-    // Convention
-    opcoContact: '',
-    opcoNumeroAdherent: '',
-    facturationEmail: '',
-    iban: '',
-    bic: '',
-    mandatSepa: 'non',
-    tarifHoraire: '',
-    notes: '',
+    rhNom: '', rhTelephone: '', rhEmail: '',
+    opcoContact: '', opcoNumeroAdherent: '', facturationEmail: '',
+    iban: '', bic: '', mandatSepa: 'non', tarifHoraire: '', notes: '',
   });
 
   function update(champ: string, valeur: string) {
     setForm(prev => ({ ...prev, [champ]: valeur }));
+    if (erreur) setErreur('');
   }
 
   const sectionsCompletees: Record<string, boolean> = {
@@ -124,9 +103,61 @@ export default function NouvelleEntreprise() {
   const nbCompletes = Object.values(sectionsCompletees).filter(Boolean).length;
   const progression = Math.round((nbCompletes / SECTIONS.length) * 100);
 
+  /**
+   * ✅ SAUVEGARDE RÉELLE — corrige le bug majeur où rien n'était sauvegardé.
+   *
+   * Cette fonction :
+   * 1. Valide les champs minimum (raison sociale + SIRET)
+   * 2. Génère un ID unique
+   * 3. Sauvegarde dans `easycfa_entreprises_v2` (la liste globale)
+   * 4. Sauvegarde aussi dans `entreprise_<id>` (la fiche détail)
+   * 5. Redirige vers la fiche du nouvel entreprise
+   */
   function sauvegarder() {
-    setSauvegarde(true);
-    setTimeout(() => router.push('/entreprises'), 1500);
+    // Validation minimale
+    if (!form.raisonSociale.trim()) {
+      setErreur('⚠️ La raison sociale est obligatoire.');
+      setSection('identite');
+      return;
+    }
+    if (!form.siret.trim()) {
+      setErreur('⚠️ Le SIRET est obligatoire.');
+      setSection('identite');
+      return;
+    }
+
+    try {
+      // 1. Charger la liste actuelle
+      const listeBrute = localStorage.getItem('easycfa_entreprises_v2');
+      const liste: any[] = listeBrute ? JSON.parse(listeBrute) : [];
+
+      // 2. Générer un ID unique
+      const idsExistants = liste.map(e => e.id);
+      const id = genererId(form.raisonSociale, idsExistants);
+
+      // 3. Construire l'objet
+      const nouveau: any = {
+        id,
+        ...form,
+        dateCreation: new Date().toISOString(),
+      };
+
+      // 4. Ajouter à la liste globale
+      liste.push(nouveau);
+      localStorage.setItem('easycfa_entreprises_v2', JSON.stringify(liste));
+
+      // 5. Sauvegarder aussi la fiche détail
+      localStorage.setItem(`entreprise_${id}`, JSON.stringify(nouveau));
+
+      // 6. Feedback + redirection
+      setSauvegarde(true);
+      setTimeout(() => {
+        router.push(`/entreprises/${id}`);
+      }, 1500);
+    } catch (err) {
+      console.error('Erreur sauvegarde entreprise:', err);
+      setErreur('❌ Erreur lors de la sauvegarde. Voir la console (F12).');
+    }
   }
 
   const btnPrimary: React.CSSProperties = { backgroundColor: COLORS.primary, color: 'white', border: 'none', borderRadius: '8px', padding: '10px 20px', fontSize: '13px', fontWeight: '600', cursor: 'pointer' };
@@ -150,9 +181,16 @@ export default function NouvelleEntreprise() {
         </div>
       </div>
 
+      {/* Message d'erreur */}
+      {erreur && (
+        <div style={{ padding: '14px 16px', backgroundColor: '#fde8e8', border: '2px solid #e53e3e', borderRadius: '10px', marginBottom: '16px', fontSize: '14px', fontWeight: '600', color: '#c53030' }}>
+          {erreur}
+        </div>
+      )}
+
       {sauvegarde && (
         <div style={{ padding: '14px 16px', backgroundColor: '#e6f4f1', border: '2px solid #006B68', borderRadius: '10px', marginBottom: '16px', fontSize: '14px', fontWeight: '600', color: COLORS.primary }}>
-          ✅ Entreprise enregistrée avec succès ! Redirection en cours...
+          ✅ Entreprise enregistrée avec succès ! Redirection vers sa fiche...
         </div>
       )}
 
@@ -162,7 +200,6 @@ export default function NouvelleEntreprise() {
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: '240px 1fr', gap: '24px' }}>
-
         {/* Menu */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
           {SECTIONS.map((s) => {
@@ -178,7 +215,6 @@ export default function NouvelleEntreprise() {
               </button>
             );
           })}
-
           <div style={{ marginTop: '8px', padding: '12px', backgroundColor: COLORS.background, borderRadius: '10px' }}>
             <div style={{ fontSize: '11px', color: '#888', textTransform: 'uppercase', fontWeight: '600', marginBottom: '8px' }}>Sections complètes</div>
             <div style={{ fontSize: '20px', fontWeight: '800', color: COLORS.primary }}>{nbCompletes}/{SECTIONS.length}</div>
@@ -191,15 +227,12 @@ export default function NouvelleEntreprise() {
         {/* Contenu */}
         <div style={{ backgroundColor: 'white', borderRadius: '12px', padding: '28px', boxShadow: '0 1px 4px rgba(0,0,0,0.08)' }}>
 
-          {/* ===== IDENTIFICATION ===== */}
           {section === 'identite' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
               <h2 style={{ fontSize: '17px', fontWeight: '700', color: COLORS.primary }}>🏢 Identification de l'entreprise</h2>
-
               <Champ label="Raison sociale" required>
                 <input style={inputStyle} value={form.raisonSociale} onChange={e => update('raisonSociale', e.target.value.toUpperCase())} placeholder="RAISON SOCIALE" />
               </Champ>
-
               <Grille cols={2}>
                 <Champ label="Numéro SIRET" required>
                   <input style={inputStyle} value={form.siret} onChange={e => update('siret', e.target.value)} placeholder="XXX XXX XXX XXXXX" maxLength={14} />
@@ -218,12 +251,10 @@ export default function NouvelleEntreprise() {
                     <option value="Association">Association (loi 1901)</option>
                     <option value="Collectivite">Collectivité territoriale</option>
                     <option value="Etablissement public">Établissement public</option>
-                    <option value="UNIFORMATION">UNIFORMATION (Cohésion sociale)</option>
                     <option value="Autre">Autre</option>
                   </select>
                 </Champ>
               </Grille>
-
               <Grille cols={2}>
                 <Champ label="Code APE / NAF" required>
                   <input style={inputStyle} value={form.codeApe} onChange={e => update('codeApe', e.target.value)} placeholder="Ex: 8559A" maxLength={5} />
@@ -232,7 +263,6 @@ export default function NouvelleEntreprise() {
                   <input style={inputStyle} value={form.libelleApe} onChange={e => update('libelleApe', e.target.value)} placeholder="Ex: Formation continue d'adultes" />
                 </Champ>
               </Grille>
-
               <Champ label="Effectif de l'entreprise">
                 <select style={inputStyle} value={form.effectif} onChange={e => update('effectif', e.target.value)}>
                   <option value="">Choisir...</option>
@@ -245,13 +275,10 @@ export default function NouvelleEntreprise() {
                   <option value="7">250 salariés et plus</option>
                 </select>
               </Champ>
-
               <SectionTitle>Adresse du siège social</SectionTitle>
-
               <Champ label="Adresse" required>
                 <input style={inputStyle} value={form.adresse} onChange={e => update('adresse', e.target.value)} placeholder="Numéro et nom de rue" />
               </Champ>
-
               <Grille cols={3}>
                 <Champ label="Code postal" required>
                   <input style={inputStyle} value={form.codePostal} onChange={e => update('codePostal', e.target.value)} placeholder="97400" />
@@ -262,7 +289,6 @@ export default function NouvelleEntreprise() {
                   </Champ>
                 </div>
               </Grille>
-
               <Grille cols={3}>
                 <Champ label="Téléphone">
                   <input style={inputStyle} value={form.telephone} onChange={e => update('telephone', e.target.value)} placeholder="02 62 XX XX XX" />
@@ -274,20 +300,16 @@ export default function NouvelleEntreprise() {
                   <input style={inputStyle} value={form.siteWeb} onChange={e => update('siteWeb', e.target.value)} placeholder="www.entreprise.fr" />
                 </Champ>
               </Grille>
-
               <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '8px' }}>
                 <button onClick={() => setSection('cerfa')} style={btnPrimary}>Section suivante →</button>
               </div>
             </div>
           )}
 
-          {/* ===== CERFA EMPLOYEUR ===== */}
           {section === 'cerfa' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
               <h2 style={{ fontSize: '17px', fontWeight: '700', color: COLORS.primary }}>📋 Informations CERFA employeur</h2>
-
               <SectionTitle>Convention collective et branche</SectionTitle>
-
               <Grille cols={2}>
                 <Champ label="IDCC — Code convention collective" required>
                   <input style={inputStyle} value={form.idcc} onChange={e => update('idcc', e.target.value)} placeholder="Ex: 0016" maxLength={4} />
@@ -296,23 +318,22 @@ export default function NouvelleEntreprise() {
                   <input style={inputStyle} value={form.libelleConventionCollective} onChange={e => update('libelleConventionCollective', e.target.value)} placeholder="Ex: Commerce de détail" />
                 </Champ>
               </Grille>
-
               <Grille cols={2}>
                 <Champ label="OPCO de rattachement" required>
                   <select style={inputStyle} value={form.opco} onChange={e => update('opco', e.target.value)}>
                     <option value="">Choisir...</option>
-                    <option value="AKTO">AKTO (Services à forte intensité de main d'oeuvre)</option>
-                    <option value="AFDAS">AFDAS (Culture, communication, médias)</option>
-                    <option value="ATLAS">ATLAS (Finance, conseil, expertise)</option>
-                    <option value="CONSTRUCTYS">CONSTRUCTYS (Construction)</option>
-                    <option value="EP">OPCO EP (Entreprises de proximité)</option>
-                    <option value="MOBILITES">OPCO Mobilités (Transport)</option>
-                    <option value="2I">OPCO 2i (Industries)</option>
+                    <option value="AKTO">AKTO</option>
+                    <option value="AFDAS">AFDAS</option>
+                    <option value="ATLAS">ATLAS</option>
+                    <option value="CONSTRUCTYS">CONSTRUCTYS</option>
+                    <option value="EP">OPCO EP</option>
+                    <option value="MOBILITES">OPCO Mobilités</option>
+                    <option value="2I">OPCO 2i</option>
                     <option value="SANTE">OPCO Santé</option>
-                    <option value="UNIFORMATION">UNIFORMATION (Cohésion sociale)</option>
-                    <option value="OCAPIAT">OCAPIAT (Agriculture)</option>
-                    <option value="OPCOMMERCE">OPCOMMERCE (Commerce)</option>
-                    <option value="FIF-PL">FIF-PL (Professions libérales)</option>
+                    <option value="UNIFORMATION">UNIFORMATION</option>
+                    <option value="OCAPIAT">OCAPIAT</option>
+                    <option value="OPCOMMERCE">OPCOMMERCE</option>
+                    <option value="FIF-PL">FIF-PL</option>
                     <option value="Autre">Autre</option>
                   </select>
                 </Champ>
@@ -320,9 +341,7 @@ export default function NouvelleEntreprise() {
                   <input style={inputStyle} value={form.faf} onChange={e => update('faf', e.target.value)} placeholder="Si applicable" />
                 </Champ>
               </Grille>
-
               <SectionTitle>Régime et protection sociale</SectionTitle>
-
               <Grille cols={2}>
                 <Champ label="Régime de protection sociale" required>
                   <select style={inputStyle} value={form.regimeProtectionSociale} onChange={e => update('regimeProtectionSociale', e.target.value)}>
@@ -341,7 +360,6 @@ export default function NouvelleEntreprise() {
                   <input style={inputStyle} value={form.caisseRetraite} onChange={e => update('caisseRetraite', e.target.value)} placeholder="Ex: AGIRC-ARRCO" />
                 </Champ>
               </Grille>
-
               <Grille cols={2}>
                 <Champ label="Caisse de congés payés">
                   <input style={inputStyle} value={form.caisseCongesPayes} onChange={e => update('caisseCongesPayes', e.target.value)} placeholder="Si applicable (BTP...)" />
@@ -350,9 +368,7 @@ export default function NouvelleEntreprise() {
                   <input style={inputStyle} value={form.regimePrevoyance} onChange={e => update('regimePrevoyance', e.target.value)} placeholder="Nom de l'organisme" />
                 </Champ>
               </Grille>
-
               <SectionTitle>Caractéristiques de l'employeur</SectionTitle>
-
               <Grille cols={3}>
                 <Champ label="Secteur">
                   <select style={inputStyle} value={form.secteur} onChange={e => update('secteur', e.target.value)}>
@@ -373,13 +389,11 @@ export default function NouvelleEntreprise() {
                   </select>
                 </Champ>
               </Grille>
-
               {form.travailDangereux === 'oui' && (
                 <div style={{ padding: '12px 16px', backgroundColor: '#fde8e8', borderRadius: '8px', borderLeft: '4px solid #e53e3e', fontSize: '13px', color: '#c53030', fontWeight: '600' }}>
                   ⚠️ Travaux dangereux — Une dérogation préfectorale est nécessaire pour les apprentis mineurs. Contacter la DREETS.
                 </div>
               )}
-
               <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '8px' }}>
                 <button onClick={() => setSection('identite')} style={btnSecondary}>← Section précédente</button>
                 <button onClick={() => setSection('contacts')} style={btnPrimary}>Section suivante →</button>
@@ -387,13 +401,10 @@ export default function NouvelleEntreprise() {
             </div>
           )}
 
-          {/* ===== CONTACTS ===== */}
           {section === 'contacts' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
               <h2 style={{ fontSize: '17px', fontWeight: '700', color: COLORS.primary }}>👥 Contacts de l'entreprise</h2>
-
               <SectionTitle>Dirigeant / Signataire du contrat</SectionTitle>
-
               <Grille cols={3}>
                 <Champ label="Civilité">
                   <select style={inputStyle} value={form.dirigeantCivilite} onChange={e => update('dirigeantCivilite', e.target.value)}>
@@ -409,7 +420,6 @@ export default function NouvelleEntreprise() {
                   <input style={inputStyle} value={form.dirigeantPrenom} onChange={e => update('dirigeantPrenom', e.target.value)} placeholder="Prénom" />
                 </Champ>
               </Grille>
-
               <Grille cols={3}>
                 <Champ label="Fonction / Qualité">
                   <input style={inputStyle} value={form.dirigeantFonction} onChange={e => update('dirigeantFonction', e.target.value)} placeholder="Ex: Gérant, DRH..." />
@@ -421,13 +431,10 @@ export default function NouvelleEntreprise() {
                   <input type="email" style={inputStyle} value={form.dirigeantEmail} onChange={e => update('dirigeantEmail', e.target.value)} placeholder="dirigeant@entreprise.fr" />
                 </Champ>
               </Grille>
-
               <SectionTitle>Maître d'apprentissage / Tuteur</SectionTitle>
-
               <div style={{ padding: '10px 14px', backgroundColor: '#fef6e4', borderRadius: '8px', fontSize: '12px', color: '#7a5c00', marginBottom: '4px' }}>
                 💡 Le maître d'apprentissage doit justifier d'une expérience professionnelle de 2 ans minimum et d'un niveau de qualification suffisant.
               </div>
-
               <Grille cols={3}>
                 <Champ label="Civilité">
                   <select style={inputStyle} value={form.tuteurCivilite} onChange={e => update('tuteurCivilite', e.target.value)}>
@@ -443,7 +450,6 @@ export default function NouvelleEntreprise() {
                   <input style={inputStyle} value={form.tuteurPrenom} onChange={e => update('tuteurPrenom', e.target.value)} placeholder="Prénom" />
                 </Champ>
               </Grille>
-
               <Grille cols={3}>
                 <Champ label="Fonction dans l'entreprise">
                   <input style={inputStyle} value={form.tuteurFonction} onChange={e => update('tuteurFonction', e.target.value)} placeholder="Ex: Comptable, RH..." />
@@ -455,7 +461,6 @@ export default function NouvelleEntreprise() {
                   <input type="email" style={inputStyle} value={form.tuteurEmail} onChange={e => update('tuteurEmail', e.target.value)} placeholder="tuteur@entreprise.fr" />
                 </Champ>
               </Grille>
-
               <Grille cols={2}>
                 <Champ label="Niveau de diplôme du tuteur">
                   <select style={inputStyle} value={form.tuteurNiveauDiplome} onChange={e => update('tuteurNiveauDiplome', e.target.value)}>
@@ -472,9 +477,7 @@ export default function NouvelleEntreprise() {
                   <input style={inputStyle} value={form.tuteurAnneeExperience} onChange={e => update('tuteurAnneeExperience', e.target.value)} placeholder="Ex: 5 ans" />
                 </Champ>
               </Grille>
-
               <SectionTitle>Contact RH (optionnel)</SectionTitle>
-
               <Grille cols={3}>
                 <Champ label="Nom du contact RH">
                   <input style={inputStyle} value={form.rhNom} onChange={e => update('rhNom', e.target.value)} placeholder="Nom Prénom" />
@@ -486,7 +489,6 @@ export default function NouvelleEntreprise() {
                   <input type="email" style={inputStyle} value={form.rhEmail} onChange={e => update('rhEmail', e.target.value)} placeholder="rh@entreprise.fr" />
                 </Champ>
               </Grille>
-
               <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '8px' }}>
                 <button onClick={() => setSection('cerfa')} style={btnSecondary}>← Section précédente</button>
                 <button onClick={() => setSection('convention')} style={btnPrimary}>Section suivante →</button>
@@ -494,13 +496,10 @@ export default function NouvelleEntreprise() {
             </div>
           )}
 
-          {/* ===== CONVENTION ===== */}
           {section === 'convention' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
               <h2 style={{ fontSize: '17px', fontWeight: '700', color: COLORS.primary }}>📄 Convention et facturation</h2>
-
               <SectionTitle>Contact OPCO</SectionTitle>
-
               <Grille cols={2}>
                 <Champ label="Interlocuteur OPCO">
                   <input style={inputStyle} value={form.opcoContact} onChange={e => update('opcoContact', e.target.value)} placeholder="Nom du conseiller OPCO" />
@@ -509,17 +508,13 @@ export default function NouvelleEntreprise() {
                   <input style={inputStyle} value={form.opcoNumeroAdherent} onChange={e => update('opcoNumeroAdherent', e.target.value)} placeholder="Numéro d'adhérent" />
                 </Champ>
               </Grille>
-
               <SectionTitle>Facturation</SectionTitle>
-
               <Champ label="Email de facturation" required>
                 <input type="email" style={inputStyle} value={form.facturationEmail} onChange={e => update('facturationEmail', e.target.value)} placeholder="facturation@entreprise.fr" />
               </Champ>
-
               <div style={{ padding: '12px 16px', backgroundColor: COLORS.background, borderRadius: '8px', fontSize: '13px', color: '#555' }}>
-                💡 Les factures des frais pédagogiques sont adressées directement à l'OPCO. Les informations bancaires ci-dessous concernent uniquement les éventuels frais annexes.
+                💡 Les factures des frais pédagogiques sont adressées directement à l'OPCO.
               </div>
-
               <Grille cols={2}>
                 <Champ label="IBAN (frais annexes)">
                   <input style={inputStyle} value={form.iban} onChange={e => update('iban', e.target.value)} placeholder="FR76 XXXX XXXX XXXX XXXX XXXX XXX" />
@@ -528,7 +523,6 @@ export default function NouvelleEntreprise() {
                   <input style={inputStyle} value={form.bic} onChange={e => update('bic', e.target.value)} placeholder="XXXXXXXX" />
                 </Champ>
               </Grille>
-
               <Champ label="Mandat SEPA signé">
                 <select style={inputStyle} value={form.mandatSepa} onChange={e => update('mandatSepa', e.target.value)}>
                   <option value="non">Non</option>
@@ -536,19 +530,10 @@ export default function NouvelleEntreprise() {
                   <option value="en-cours">En cours de signature</option>
                 </select>
               </Champ>
-
               <SectionTitle>Notes internes</SectionTitle>
-
               <Champ label="Notes / Observations">
-                <textarea
-                  style={{ ...inputStyle, minHeight: '100px', resize: 'vertical' }}
-                  value={form.notes}
-                  onChange={e => update('notes', e.target.value)}
-                  placeholder="Informations complémentaires sur l'entreprise..."
-                />
+                <textarea style={{ ...inputStyle, minHeight: '100px', resize: 'vertical' }} value={form.notes} onChange={e => update('notes', e.target.value)} placeholder="Informations complémentaires..." />
               </Champ>
-
-              {/* Récapitulatif */}
               <div style={{ backgroundColor: COLORS.background, borderRadius: '10px', padding: '16px', marginTop: '8px' }}>
                 <div style={{ fontSize: '13px', fontWeight: '700', color: COLORS.primary, marginBottom: '12px' }}>
                   📋 Récapitulatif du dossier entreprise
@@ -569,7 +554,6 @@ export default function NouvelleEntreprise() {
                   ))}
                 </div>
               </div>
-
               <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '8px' }}>
                 <button onClick={() => setSection('contacts')} style={btnSecondary}>← Section précédente</button>
                 <button onClick={sauvegarder} style={{ ...btnPrimary, backgroundColor: progression === 100 ? COLORS.primary : COLORS.secondary }}>
@@ -578,7 +562,6 @@ export default function NouvelleEntreprise() {
               </div>
             </div>
           )}
-
         </div>
       </div>
     </div>
