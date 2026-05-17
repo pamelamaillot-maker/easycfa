@@ -694,7 +694,7 @@ export default function FicheApprenant({ params }: { params: Promise<{ id: strin
   const enCours = form.statut === 'En cours';
   const statutBg = enCours ? '#e6f4f1' : p2s ? '#fef6e4' : '#fde8e8';
   const statutColor = enCours ? '#006B68' : p2s ? '#C8A23A' : '#e53e3e';
-  const statutLabel = enCours ? 'CA' : p2s ? 'P2S' : form.maintienFormation === 'OUI' ? 'RUPTURE MEF' : 'RUPTURE FMEF';
+  const statutLabel = form.statut === 'Terminé' ? 'TERMINÉ' : estEnRupture ? (form.maintienFormation === 'OUI' ? 'RUPTURE MEF' : 'RUPTURE FMEF') : p2s ? 'P2S' : enCours ? 'CA' : '—';
 
   const champsSifaManquants = verifierConformiteSifa(form);
   const estMineurApp = estMineur(form);
@@ -759,6 +759,12 @@ export default function FicheApprenant({ params }: { params: Promise<{ id: strin
       const listeFiltree = liste.filter((a: any) => a.id !== id);
       localStorage.setItem('easycfa_apprenants_v2', JSON.stringify(listeFiltree));
       localStorage.removeItem(`apprenant_${id}`);
+      // Nettoyage clés annexes éventuelles
+      Object.keys(localStorage).forEach(k => {
+        if (k === `apprenant_${id}` || k.startsWith(`entretien_${id}`)) {
+          localStorage.removeItem(k);
+        }
+      });
       supprimerEntretiensApprenant(id);
       router.push('/apprenants');
     } catch (err) {
@@ -908,6 +914,70 @@ export default function FicheApprenant({ params }: { params: Promise<{ id: strin
       {estEnRupture && (
         <div style={{ backgroundColor: '#fde8e8', borderRadius: '10px', padding: '14px 16px', marginBottom: '16px' }}>
           <span style={{ color: '#c53030', fontWeight: '600', fontSize: '14px' }}>❌ Contrat rompu le {form.dateRupture} — Maintien en formation : {form.maintienFormation || 'Non renseigné'}</span>
+          {form.maintienFormation === 'OUI' && form.dateRupture && (() => {
+            const parts = form.dateRupture.split('/');
+            if (parts.length !== 3) return null;
+            const dateRup = new Date(`${parts[2]}-${parts[1]}-${parts[0]}`);
+            const dateLimite = new Date(dateRup); dateLimite.setMonth(dateLimite.getMonth() + 6);
+            const aujourdhui = new Date();
+            const joursRestants = Math.ceil((dateLimite.getTime() - aujourdhui.getTime()) / (1000 * 60 * 60 * 24));
+            const dateLimiteFR = dateLimite.toLocaleDateString('fr-FR');
+            if (joursRestants < 0) {
+              return <div style={{ marginTop: '8px', padding: '8px 12px', backgroundColor: '#fee', border: '2px solid #c53030', borderRadius: '6px', fontSize: '13px', color: '#c53030', fontWeight: '700' }}>🚨 Délai de maintien dépassé depuis {Math.abs(joursRestants)} jour{Math.abs(joursRestants) > 1 ? 's' : ''} (limite : {dateLimiteFR}) — Archivage requis</div>;
+            }
+            const couleur = joursRestants <= 30 ? '#c53030' : joursRestants <= 60 ? '#C8A23A' : '#006B68';
+            const bg = joursRestants <= 30 ? '#fee' : joursRestants <= 60 ? '#fef6e4' : '#e6f4f1';
+            return <div style={{ marginTop: '8px', padding: '8px 12px', backgroundColor: bg, border: `1.5px solid ${couleur}`, borderRadius: '6px', fontSize: '13px', color: couleur, fontWeight: '700' }}>⏰ Maintien en formation : {joursRestants} jour{joursRestants > 1 ? 's' : ''} restant{joursRestants > 1 ? 's' : ''} (jusqu'au {dateLimiteFR})</div>;
+          })()}
+          {form.maintienFormation === 'OUI' && (
+            <div style={{ marginTop: '10px', display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+              <button
+                onClick={() => {
+                  if (!confirm(`L'apprenti(e) ${form.prenom} ${form.nom} a trouvé une nouvelle entreprise ?\n\nCela va :\n- Clôturer la fiche actuelle (statut "Terminé")\n- Créer une nouvelle fiche apprenti pré-remplie pour le nouveau contrat`)) return;
+                  const nettoyer = (s: string) => (s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^A-Za-z]/g, '').toUpperCase();
+                  const nouvelId = `${nettoyer(form.nom).substring(0,3)}${nettoyer(form.prenom).substring(0,2)}_${Date.now().toString().slice(-4)}`;
+                  const nouvelleFiche = { ...form, id: nouvelId, statut: 'En cours', entreprise: '', entrepriseId: '', dateDebutContrat: '', dateFinContrat: '', dateRupture: '', maintienFormation: '', contratPrecedent: id, archive: false };
+                  localStorage.setItem('apprenant_' + nouvelId, JSON.stringify(nouvelleFiche));
+                  try {
+                    const liste = JSON.parse(localStorage.getItem('easycfa_apprenants_v2') || '[]');
+                    liste.push(nouvelleFiche);
+                    localStorage.setItem('easycfa_apprenants_v2', JSON.stringify(liste));
+                  } catch {}
+                  const ancienneCloturee = { ...form, statut: 'Terminé', contratSuivant: nouvelId };
+                  setForm(ancienneCloturee); setApprenant(ancienneCloturee);
+                  localStorage.setItem('apprenant_' + id, JSON.stringify(ancienneCloturee));
+                  try {
+                    const liste = JSON.parse(localStorage.getItem('easycfa_apprenants_v2') || '[]');
+                    const idx = liste.findIndex((a: any) => a.id === id);
+                    if (idx >= 0) liste[idx] = { ...liste[idx], ...ancienneCloturee };
+                    localStorage.setItem('easycfa_apprenants_v2', JSON.stringify(liste));
+                  } catch {}
+                  router.push('/apprenants/' + nouvelId);
+                }}
+                style={{ backgroundColor: '#16a34a', color: 'white', border: 'none', borderRadius: '6px', padding: '7px 14px', fontSize: '12px', fontWeight: '700', cursor: 'pointer' }}
+              >
+                🆕 Trouvé nouvelle entreprise → créer nouveau contrat
+              </button>
+              <button
+                onClick={() => {
+                  if (!confirm(`Fin de maintien en formation pour ${form.prenom} ${form.nom} ?\n\nCela va :\n- Passer la fiche en "Rupture FMEF"\n- Le dossier sera archivé`)) return;
+                  const updated = { ...form, maintienFormation: 'NON', archive: true };
+                  setForm(updated); setApprenant(updated);
+                  localStorage.setItem('apprenant_' + id, JSON.stringify(updated));
+                  try {
+                    const liste = JSON.parse(localStorage.getItem('easycfa_apprenants_v2') || '[]');
+                    const idx = liste.findIndex((a: any) => a.id === id);
+                    if (idx >= 0) liste[idx] = { ...liste[idx], ...updated };
+                    localStorage.setItem('easycfa_apprenants_v2', JSON.stringify(liste));
+                  } catch {}
+                  router.push('/apprenants');
+                }}
+                style={{ backgroundColor: '#dc2626', color: 'white', border: 'none', borderRadius: '6px', padding: '7px 14px', fontSize: '12px', fontWeight: '700', cursor: 'pointer' }}
+              >
+                🚫 Fin de maintien — Archiver le dossier
+              </button>
+            </div>
+          )}
         </div>
       )}
 

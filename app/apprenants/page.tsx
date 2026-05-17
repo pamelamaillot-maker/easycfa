@@ -19,6 +19,7 @@ function getStatut(a: any): { code: string; label: string; bg: string; color: st
 
 function estArchive(a: any): boolean {
   if (a.archive === true) return true;
+  if (a.statut === 'Terminé') return true;
   if (a.statut !== 'Rupture' || a.maintienFormation === 'OUI') return false;
   if (!a.dateRupture) return false;
   try {
