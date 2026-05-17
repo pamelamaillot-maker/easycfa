@@ -147,9 +147,11 @@ export default function Dashboard() {
     const apps = chargerApprenants();
     const sess = chargerSessions();
     const apcsList = chargerApcs();
+    const mandatsList = chargerMandats();
     setApprenants(apps);
     setSessions(sess);
     setApcs(apcsList);
+    setMandats(mandatsList);
 
     // Charger entretiens en retard pour les apprenants en cours
     const retards: any[] = [];
@@ -185,7 +187,9 @@ export default function Dashboard() {
   const sifaManquants = enCours.filter(a => verifierConformiteSifa(a).length > 0);
 
   // MANDATS = nombre de dossiers APC en attente ou accordés (non soldés)
-  const mandatsEnCours = apcs.filter(a => a.statut !== 'Soldé' && a.statut !== 'Refusé');
+  const mandatsEnCours = mandats.filter((m: any) => m.statut === 'En attente' || m.statut === 'Actif' || m.statut === "En cours d'entretiens");
+  const mandatsTermines = mandats.filter((m: any) => m.statut === 'Pourvu');
+  const mandatsAnnules = mandats.filter((m: any) => m.statut === 'Annulé');
 
   // FACTURATION — calculs
   const moisActuel = new Date().getMonth();
@@ -286,8 +290,18 @@ export default function Dashboard() {
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '12px', marginBottom: '24px' }}>
         <CarteKPI
           icone="📝" label="Mandats en cours"
-          valeur={mandatsEnCours.length} sous="dossiers actifs"
-          couleur="#7c3aed" href="/precomptabilite"
+          valeur={mandatsEnCours.length} sous="En attente + Actif + Entretiens"
+          couleur="#7c3aed" href="/recrutement"
+        />
+        <CarteKPI
+          icone="✅" label="Mandats terminés"
+          valeur={mandatsTermines.length} sous="Pourvus"
+          couleur="#16a34a" href="/recrutement"
+        />
+        <CarteKPI
+          icone="🚫" label="Mandats annulés"
+          valeur={mandatsAnnules.length} sous="Annulés"
+          couleur="#dc2626" href="/recrutement"
         />
         <CarteKPI
           icone="💶" label="À facturer ce mois"
