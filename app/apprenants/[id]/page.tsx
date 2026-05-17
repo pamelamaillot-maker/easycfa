@@ -1068,6 +1068,31 @@ export default function FicheApprenant({ params }: { params: Promise<{ id: strin
             <Champ label="Fin formation (JJ/MM/AAAA)" champ="dateFinFormation" form={form} setForm={setForm} placeholder="JJ/MM/AAAA" />
             <Champ label="N° dossier OPCO" champ="numeroDossierOpco" form={form} setForm={setForm} placeholder="Ex: 123456789" />
             <Champ label="N° DECA (APC)" champ="numeroDeca" form={form} setForm={setForm} placeholder="Ex: 974202XXXXXXXXX" />
+            <ChampSelect label="Situation avant contrat" champ="situationAvant" form={form} setForm={setForm} options={[
+              { value: '1 Scolaire', label: '1 - Scolaire' },
+              { value: '4 Contrat d\'apprentissage', label: '4 - Contrat d\'apprentissage' },
+              { value: '7 En formation au CFA sous le statut de stagiaire de la formation professionnelle, avant la conclusion d\'un CA', label: '7 - Stagiaire FP avant CA' },
+              { value: '11 Personne à la recherche d\'un emploi (inscrite ou non à France Travail)', label: '11 - Demandeur d\'emploi' },
+            ]} />
+            <ChampSelect label="Dernier diplôme obtenu" champ="dernierDiplome" form={form} setForm={setForm} options={[
+              { value: 'Brevet des collèges', label: 'Brevet des collèges' },
+              { value: 'CAP', label: 'CAP' },
+              { value: 'BEP', label: 'BEP' },
+              { value: 'BAC', label: 'BAC' },
+              { value: 'BTS', label: 'BTS' },
+              { value: 'LICENCE', label: 'LICENCE' },
+              { value: 'MASTER', label: 'MASTER' },
+              { value: 'TP SC', label: 'TP Secrétaire Comptable' },
+              { value: 'TP AD', label: 'TP Assistant(e) de Direction' },
+              { value: 'TP ARH', label: 'TP Assistant(e) RH' },
+              { value: 'TP GCF', label: 'TP Gestionnaire Comptable et Fiscal' },
+              { value: 'TP CATL', label: 'TP CATL' },
+              { value: 'Autre', label: 'Autre' },
+            ]} />
+            <ChampSelect label="RQTH (OUI/NON)" champ="rqth" form={form} setForm={setForm} options={[
+              { value: 'OUI', label: 'OUI' },
+              { value: 'NON', label: 'NON' },
+            ]} />
 
             <div style={{ gridColumn: 'span 3' }}>
               <label style={{ fontSize: '11px', color: '#888', textTransform: 'uppercase', fontWeight: '600', display: 'block', marginBottom: '4px' }}>
@@ -1108,6 +1133,9 @@ export default function FicheApprenant({ params }: { params: Promise<{ id: strin
               { label: 'Fin formation', value: form.dateFinFormation },
               { label: 'N° dossier OPCO', value: form.numeroDossierOpco },
               { label: 'N° DECA (APC)', value: form.numeroDeca },
+              { label: 'Situation avant contrat', value: form.situationAvant },
+              { label: 'Dernier diplôme obtenu', value: form.dernierDiplome },
+              { label: 'RQTH', value: form.rqth },
               { label: '📅 Session de formation', value: sessionActuelle ? `Session #${sessionActuelle.id} — ${libelleSession(sessionActuelle)}` : '— Non assignée' },
             ].map((info) => (
               <div key={info.label} style={{ backgroundColor: COLORS.background, borderRadius: '8px', padding: '12px' }}>
