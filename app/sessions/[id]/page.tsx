@@ -43,6 +43,9 @@ export default function FicheSession({ params }: { params: Promise<{ id: string 
   const [session, setSession] = useState<any>(null);
   const [apprenants, setApprenants] = useState<any[]>([]);
   const [chargement, setChargement] = useState(true);
+  const [modeEditionPlanning, setModeEditionPlanning] = useState(false);
+  const [planningBrouillon, setPlanningBrouillon] = useState<any[]>([]);
+  const [sauvegardePlanning, setSauvegardePlanning] = useState(false);
 
   useEffect(() => {
     const s = trouverSession(id);
@@ -60,6 +63,34 @@ export default function FicheSession({ params }: { params: Promise<{ id: string 
 
   const btnPrimary: React.CSSProperties = { backgroundColor: COLORS.primary, color: 'white', border: 'none', borderRadius: '8px', padding: '9px 16px', fontSize: '13px', fontWeight: '600', cursor: 'pointer', textDecoration: 'none', display: 'inline-block' };
   const btnSecondary: React.CSSProperties = { backgroundColor: 'white', color: COLORS.primary, border: `1.5px solid ${COLORS.primary}`, borderRadius: '8px', padding: '9px 16px', fontSize: '13px', fontWeight: '600', cursor: 'pointer', textDecoration: 'none', display: 'inline-block' };
+
+  function entrerEdition() {
+    setPlanningBrouillon(session.planning ? JSON.parse(JSON.stringify(session.planning)) : []);
+    setModeEditionPlanning(true);
+  }
+
+  function annulerEdition() {
+    setPlanningBrouillon([]);
+    setModeEditionPlanning(false);
+  }
+
+  function sauvegarderPlanning() {
+    try {
+      const liste = JSON.parse(localStorage.getItem('easycfa_sessions_v2') || '[]');
+      const idx = liste.findIndex((s: any) => String(s.id) === id);
+      if (idx >= 0) {
+        liste[idx].planning = planningBrouillon;
+        localStorage.setItem('easycfa_sessions_v2', JSON.stringify(liste));
+        setSession({ ...session, planning: planningBrouillon });
+      }
+      setModeEditionPlanning(false);
+      setSauvegardePlanning(true);
+      setTimeout(() => setSauvegardePlanning(false), 3000);
+    } catch (err) {
+      console.error('Erreur sauvegarde planning:', err);
+      alert('Erreur lors de la sauvegarde du planning.');
+    }
+  }
 
   if (chargement) return <div style={{ padding: '32px', textAlign: 'center', color: COLORS.textMuted }}>Chargement...</div>;
   if (!session) return <div style={{ padding: '32px', color: COLORS.primary }}>Session introuvable (ID : {id}).</div>;
@@ -127,12 +158,34 @@ export default function FicheSession({ params }: { params: Promise<{ id: string 
         </div>
       </Card>
 
+      {sauvegardePlanning && (
+        <div style={{ padding: '12px 16px', backgroundColor: '#e6f4f1', border: '2px solid #006B68', borderRadius: '10px', marginBottom: '16px', fontSize: '14px', fontWeight: '600', color: COLORS.primary }}>
+          ✅ Planning mis à jour avec succès
+        </div>
+      )}
+
+      {sauvegardePlanning && (
+        <div style={{ padding: '12px 16px', backgroundColor: '#e6f4f1', border: '2px solid #006B68', borderRadius: '10px', marginBottom: '16px', fontSize: '14px', fontWeight: '600', color: COLORS.primary }}>
+          ✅ Planning mis à jour avec succès
+        </div>
+      )}
+
       {/* 📅 Planning de la session */}
       <Card style={{ marginBottom: '24px', borderTop: `4px solid ${COLORS.secondary}` }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-          <h2 style={{ fontSize: '16px', fontWeight: '700', color: COLORS.primary }}>
-            📅 Planning ({session.planning?.length || 0} entrées)
-          </h2>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+            <h2 style={{ fontSize: '16px', fontWeight: '700', color: COLORS.primary }}>
+              📅 Planning ({modeEditionPlanning ? planningBrouillon.length : (session.planning?.length || 0)} entrées)
+            </h2>
+            {modeEditionPlanning ? (
+              <>
+                <button onClick={sauvegarderPlanning} style={btnPrimary}>✅ Enregistrer le planning</button>
+                <button onClick={annulerEdition} style={btnSecondary}>Annuler</button>
+              </>
+            ) : (
+              <button onClick={entrerEdition} style={btnSecondary}>✏️ Modifier le planning</button>
+            )}
+          </div>
           {session.planning?.length > 0 && (() => {
             const stats: Record<string, number> = {};
             session.planning.forEach((p: any) => { stats[p.type] = (stats[p.type] || 0) + 1; });

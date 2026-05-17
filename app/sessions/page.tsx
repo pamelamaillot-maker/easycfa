@@ -178,6 +178,9 @@ export default function Sessions() {
   const [formateurs, setFormateurs] = useState<any[]>([]);
   const [vuePlanning, setVuePlanning] = useState<'liste' | 'mois'>('liste');
   const [refreshKey, setRefreshKey] = useState(0); // pour rafraîchir l'affichage des apprenants
+  const [modeEditionPlanning, setModeEditionPlanning] = useState(false);
+  const [planningBrouillon, setPlanningBrouillon] = useState<any[]>([]);
+  const [sauvegardePlanning, setSauvegardePlanning] = useState(false);
 
   useEffect(() => {
     try {
@@ -332,6 +335,45 @@ export default function Sessions() {
 
   const nbInscrits = selectionne?.apprenantIds.length ?? 0;
   const totalCapacite = apprenantsDispo.length;
+
+  function entrerEditionPlanning() {
+    if (!selectionne) return;
+    setPlanningBrouillon(JSON.parse(JSON.stringify(selectionne.planning || [])));
+    setModeEditionPlanning(true);
+  }
+
+  function annulerEditionPlanning() {
+    setPlanningBrouillon([]);
+    setModeEditionPlanning(false);
+  }
+
+  function sauvegarderPlanningEdit() {
+    if (!selectionne) return;
+    try {
+      const liste = sessions.map(s => s.id === selectionne.id ? { ...s, planning: planningBrouillon } : s);
+      setSessions(liste);
+      setSelectionne({ ...selectionne, planning: planningBrouillon });
+      localStorage.setItem('easycfa_sessions_v2', JSON.stringify(liste));
+      setModeEditionPlanning(false);
+      setSauvegardePlanning(true);
+      setTimeout(() => setSauvegardePlanning(false), 3000);
+    } catch (err) {
+      console.error('Erreur sauvegarde planning:', err);
+      alert('Erreur lors de la sauvegarde du planning.');
+    }
+  }
+
+  function modifierEntreePlanning(index: number, champ: string, valeur: any) {
+    setPlanningBrouillon(prev => prev.map((p, i) => i === index ? { ...p, [champ]: valeur } : p));
+  }
+
+  function ajouterEntreePlanning() {
+    setPlanningBrouillon(prev => [...prev, { date: '', type: 'cours', semaine: prev.length + 1 }]);
+  }
+
+  function supprimerEntreePlanning(index: number) {
+    setPlanningBrouillon(prev => prev.filter((_, i) => i !== index));
+  }
 
   return (
     <div>
@@ -491,7 +533,8 @@ export default function Sessions() {
                       </div>
                     </div>
 
-                    <div style={{ display: 'flex', gap: '10px', marginBottom: '12px', flexWrap: 'wrap' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px', gap: '10px', flexWrap: 'wrap' }}>
+                      <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
                       {[
                         { label: 'Cours', color: config.couleur, bg: config.couleur + '20' },
                         { label: 'Révisions', color: '#7c3aed', bg: '#ede9fe' },
@@ -502,14 +545,37 @@ export default function Sessions() {
                           <span style={{ fontSize: '11px', color: '#555' }}>{l.label}</span>
                         </div>
                       ))}
+                      </div>
+                      {modeEditionPlanning ? (
+                        <div style={{ display: 'flex', gap: '6px' }}>
+                          <button onClick={sauvegarderPlanningEdit} style={btnPrimary}>✅ Enregistrer</button>
+                          <button onClick={annulerEditionPlanning} style={btnSecondary}>Annuler</button>
+                        </div>
+                      ) : (
+                        <button onClick={entrerEditionPlanning} style={btnSecondary}>✏️ Modifier le planning</button>
+                      )}
                     </div>
 
                     {vuePlanning === 'liste' ? (
                       <div style={{ maxHeight: '400px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                        {selectionne.planning.map((p, i) => {
+                        {(modeEditionPlanning ? planningBrouillon : selectionne.planning).map((p, i) => {
                           const typeColor = p.type === 'cours' ? config.couleur : p.type === 'revision' ? '#7c3aed' : '#0891b2';
                           const typeBg = p.type === 'cours' ? config.couleur + '15' : p.type === 'revision' ? '#ede9fe' : '#e0f2fe';
                           const typeLabel = p.type === 'cours' ? '📖 Cours' : p.type === 'revision' ? '📝 Révisions' : '🎓 Examen';
+                          if (modeEditionPlanning) {
+                            return (
+                              <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '6px 10px', borderRadius: '6px', backgroundColor: typeBg, border: `1px solid ${typeColor}30` }}>
+                                <input type="text" placeholder="JJ/MM/AAAA" value={p.date} onChange={ev => modifierEntreePlanning(i, 'date', ev.target.value)} style={{ fontSize: '11px', fontWeight: '700', color: typeColor, width: '90px', flexShrink: 0, border: `1px solid ${typeColor}40`, borderRadius: '4px', padding: '3px 6px' }} />
+                                <select value={p.type} onChange={ev => modifierEntreePlanning(i, 'type', ev.target.value)} style={{ fontSize: '11px', fontWeight: '600', color: typeColor, width: '100px', flexShrink: 0, border: `1px solid ${typeColor}40`, borderRadius: '4px', padding: '3px 6px', backgroundColor: 'white' }}>
+                                  <option value="cours">📖 Cours</option>
+                                  <option value="revision">📝 Révisions</option>
+                                  <option value="examen">🎓 Examen</option>
+                                </select>
+                                <input type="number" min="1" value={p.semaine} onChange={ev => modifierEntreePlanning(i, 'semaine', parseInt(ev.target.value) || 0)} style={{ fontSize: '11px', color: '#555', width: '60px', flexShrink: 0, border: `1px solid ${typeColor}40`, borderRadius: '4px', padding: '3px 6px' }} placeholder="Sem." />
+                                <button onClick={() => supprimerEntreePlanning(i)} style={{ marginLeft: 'auto', backgroundColor: '#fee', color: '#c53030', border: '1px solid #fcc', borderRadius: '4px', padding: '3px 8px', fontSize: '11px', fontWeight: '700', cursor: 'pointer' }}>🗑️</button>
+                              </div>
+                            );
+                          }
                           return (
                             <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '6px 10px', borderRadius: '6px', backgroundColor: typeBg, border: `1px solid ${typeColor}30` }}>
                               <span style={{ fontSize: '10px', fontWeight: '700', color: typeColor, width: '80px', flexShrink: 0 }}>{p.date}</span>
@@ -518,6 +584,9 @@ export default function Sessions() {
                             </div>
                           );
                         })}
+                        {modeEditionPlanning && (
+                          <button onClick={ajouterEntreePlanning} style={{ marginTop: '8px', padding: '8px 12px', backgroundColor: '#e6f4f1', color: '#006B68', border: '1.5px dashed #006B68', borderRadius: '6px', fontSize: '12px', fontWeight: '700', cursor: 'pointer' }}>+ Ajouter une date</button>
+                        )}
                       </div>
                     ) : (
                       <div style={{ maxHeight: '400px', overflowY: 'auto' }}>
