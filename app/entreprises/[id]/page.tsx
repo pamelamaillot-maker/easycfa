@@ -18,6 +18,35 @@ const DOC_STATUT: Record<string, { bg: string; color: string }> = {
 const btnPrimary: React.CSSProperties = { backgroundColor: COLORS.primary, color: 'white', border: 'none', borderRadius: '8px', padding: '9px 16px', fontSize: '13px', fontWeight: '600', cursor: 'pointer' };
 const btnSecondary: React.CSSProperties = { backgroundColor: 'white', color: COLORS.primary, border: `1.5px solid ${COLORS.primary}`, borderRadius: '8px', padding: '9px 16px', fontSize: '13px', fontWeight: '600', cursor: 'pointer' };
 
+/** ✅ Charge tous les apprentis depuis les 3 sources (mock + liste persistée + fiches individuelles) */
+function chargerTousApprenants(): any[] {
+  if (typeof window === 'undefined') return APPRENANTS_REELS as any[];
+  const ids = new Set();
+  const liste: any[] = [];
+  // 1. Mock
+  (APPRENANTS_REELS as any[]).forEach(a => { liste.push(a); ids.add(a.id); });
+  // 2. Liste persistée
+  try {
+    const persistee = JSON.parse(localStorage.getItem('easycfa_apprenants_v2') || '[]');
+    persistee.forEach((a: any) => { if (!ids.has(a.id)) { liste.push(a); ids.add(a.id); } });
+  } catch {}
+  // 3. Fusion avec fiches individuelles
+  return liste.map(a => {
+    try {
+      const fiche = localStorage.getItem(`apprenant_${a.id}`);
+      if (fiche) return { ...a, ...JSON.parse(fiche) };
+    } catch {}
+    return a;
+  });
+}
+
+/** ✅ Compare 2 noms d'entreprise en ignorant casse, accents, espaces */
+function memeEntreprise(n1: string, n2: string): boolean {
+  if (!n1 || !n2) return false;
+  const norm = (s: string) => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/\s+/g, ' ').trim();
+  return norm(n1) === norm(n2);
+}
+
 /** Recherche une entreprise dans toutes les sources */
 function trouverEntreprise(id: string): any | null {
   if (typeof window === 'undefined') {
@@ -253,10 +282,11 @@ export default function FicheEntreprise({ params }: { params: Promise<{ id: stri
           <Card>
             <h2 style={{ fontSize: '15px', fontWeight: '700', color: COLORS.primary, marginBottom: '12px' }}>Récapitulatif apprentis</h2>
             {(() => {
-              const tous = APPRENANTS_REELS.filter(a => a.entreprise === e.raisonSociale);
+              const tous = chargerTousApprenants().filter(a => (a.entrepriseId && a.entrepriseId === id) || memeEntreprise(a.entreprise, e.raisonSociale));
               const enCours = tous.filter(a => a.statut === 'En cours');
               const p2s = tous.filter(a => a.statut === 'P2S');
               const rupture = tous.filter(a => a.statut === 'Rupture');
+              const termine = tous.filter(a => a.statut === 'Terminé');
               return (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                   <div style={{ backgroundColor: '#e6f4f1', borderRadius: '8px', padding: '10px 14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -270,6 +300,10 @@ export default function FicheEntreprise({ params }: { params: Promise<{ id: stri
                   <div style={{ backgroundColor: '#fde8e8', borderRadius: '8px', padding: '10px 14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <span style={{ fontSize: '13px', fontWeight: '600', color: '#e53e3e' }}>❌ Rupture</span>
                     <span style={{ fontSize: '18px', fontWeight: '800', color: '#e53e3e' }}>{rupture.length}</span>
+                  </div>
+                  <div style={{ backgroundColor: '#f3f4f6', borderRadius: '8px', padding: '10px 14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span style={{ fontSize: '13px', fontWeight: '600', color: '#6b7280' }}>📋 Terminé</span>
+                    <span style={{ fontSize: '18px', fontWeight: '800', color: '#6b7280' }}>{termine.length}</span>
                   </div>
                   <div style={{ backgroundColor: COLORS.background, borderRadius: '8px', padding: '10px 14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <span style={{ fontSize: '13px', fontWeight: '600', color: '#555' }}>📊 Total</span>
@@ -432,9 +466,12 @@ export default function FicheEntreprise({ params }: { params: Promise<{ id: stri
             </tr>
           </thead>
           <tbody>
-            {APPRENANTS_REELS.filter(a => a.entreprise === e.raisonSociale).length === 0 ? (
-              <tr><td colSpan={7} style={{ padding: '20px', textAlign: 'center', color: COLORS.textMuted, fontStyle: 'italic' }}>Aucun apprenti rattaché</td></tr>
-            ) : APPRENANTS_REELS.filter(a => a.entreprise === e.raisonSociale).map((a, i) => (
+            {(() => {
+              const apprentisListe = chargerTousApprenants().filter(a => (a.entrepriseId && a.entrepriseId === id) || memeEntreprise(a.entreprise, e.raisonSociale));
+              if (apprentisListe.length === 0) {
+                return <tr><td colSpan={7} style={{ padding: '20px', textAlign: 'center', color: COLORS.textMuted, fontStyle: 'italic' }}>Aucun apprenti rattaché</td></tr>;
+              }
+              return apprentisListe.map((a, i) => (
               <tr key={i} style={{ borderBottom: `1px solid ${COLORS.border}` }}>
                 <td style={{ padding: '12px', fontSize: '14px', fontWeight: '700' }}>{a.nom}</td>
                 <td style={{ padding: '12px', fontSize: '14px' }}>{a.prenom}</td>
@@ -448,7 +485,8 @@ export default function FicheEntreprise({ params }: { params: Promise<{ id: stri
                   <a href={`/apprenants/${a.id}`} style={{ backgroundColor: COLORS.background, color: COLORS.primary, borderRadius: '6px', padding: '4px 10px', fontSize: '12px', fontWeight: '600', textDecoration: 'none' }}>Voir →</a>
                 </td>
               </tr>
-            ))}
+            ));
+            })()}
           </tbody>
         </table>
       </Card>

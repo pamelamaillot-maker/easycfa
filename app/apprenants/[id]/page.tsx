@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { APPRENANTS_REELS, DERNIERE_SITUATION_SIFA, verifierConformiteSifa, estMineur } from '../../../data/mockApprenants_reels';
+import { ENTREPRISES_REELS } from '../../../data/mockEntreprises_reels';
 import { SESSIONS } from '../../../data/mockData';
 import { COLORS } from '../../../lib/constants';
 import Card from '../../../components/Card';
@@ -65,16 +66,24 @@ function trouverApprenant(id: string): any | null {
 }
 
 function chargerEntreprises(): string[] {
-  if (typeof window === 'undefined') return [];
+  const set = new Set<string>();
+  // 1. Entreprises du seed (mock)
+  (ENTREPRISES_REELS as any[]).forEach((e: any) => { if (e.raisonSociale && e.raisonSociale.trim()) set.add(e.raisonSociale.trim()); });
+  if (typeof window === 'undefined') return Array.from(set).sort((a, b) => a.localeCompare(b, 'fr'));
+  // 2. Entreprises persistées (nouvelles créées via /entreprises/nouvelle)
+  try {
+    const ents = JSON.parse(localStorage.getItem('easycfa_entreprises_v2') || '[]');
+    ents.forEach((e: any) => { if (e.raisonSociale && e.raisonSociale.trim()) set.add(e.raisonSociale.trim()); });
+  } catch {}
+  // 2. Anciennes entreprises issues des APC (rétrocompatibilité)
   try {
     const apcs = JSON.parse(localStorage.getItem('easycfa_apcs_v2') || '[]');
-    const set = new Set<string>();
     apcs.forEach((apc: any) => {
       const nom = apc.entrepriseNom || apc.entreprise;
       if (nom && typeof nom === 'string' && nom.trim()) set.add(nom.trim());
     });
-    return Array.from(set).sort((a, b) => a.localeCompare(b, 'fr'));
-  } catch { return []; }
+  } catch {}
+  return Array.from(set).sort((a, b) => a.localeCompare(b, 'fr'));
 }
 
 function chargerSessions(): any[] {
