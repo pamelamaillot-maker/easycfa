@@ -564,23 +564,34 @@ export default function Sessions() {
                           const typeLabel = p.type === 'cours' ? '📖 Cours' : p.type === 'revision' ? '📝 Révisions' : '🎓 Examen';
                           if (modeEditionPlanning) {
                             return (
-                              <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '6px 10px', borderRadius: '6px', backgroundColor: typeBg, border: `1px solid ${typeColor}30` }}>
+                              <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 10px', borderRadius: '6px', backgroundColor: typeBg, border: `1px solid ${typeColor}30`, flexWrap: 'wrap' }}>
                                 <input type="text" placeholder="JJ/MM/AAAA" value={p.date} onChange={ev => modifierEntreePlanning(i, 'date', ev.target.value)} style={{ fontSize: '11px', fontWeight: '700', color: typeColor, width: '90px', flexShrink: 0, border: `1px solid ${typeColor}40`, borderRadius: '4px', padding: '3px 6px' }} />
-                                <select value={p.type} onChange={ev => modifierEntreePlanning(i, 'type', ev.target.value)} style={{ fontSize: '11px', fontWeight: '600', color: typeColor, width: '100px', flexShrink: 0, border: `1px solid ${typeColor}40`, borderRadius: '4px', padding: '3px 6px', backgroundColor: 'white' }}>
+                                <select value={p.type} onChange={ev => modifierEntreePlanning(i, 'type', ev.target.value)} style={{ fontSize: '11px', fontWeight: '600', color: typeColor, width: '110px', flexShrink: 0, border: `1px solid ${typeColor}40`, borderRadius: '4px', padding: '3px 6px', backgroundColor: 'white' }}>
                                   <option value="cours">📖 Cours</option>
                                   <option value="revision">📝 Révisions</option>
                                   <option value="examen">🎓 Examen</option>
                                 </select>
-                                <input type="number" min="1" value={p.semaine} onChange={ev => modifierEntreePlanning(i, 'semaine', parseInt(ev.target.value) || 0)} style={{ fontSize: '11px', color: '#555', width: '60px', flexShrink: 0, border: `1px solid ${typeColor}40`, borderRadius: '4px', padding: '3px 6px' }} placeholder="Sem." />
+                                <select value={p.formateurId || ''} onChange={ev => {
+                                  const f = formateurs.find(fo => fo.id === ev.target.value);
+                                  modifierEntreePlanning(i, 'formateurId', ev.target.value);
+                                  modifierEntreePlanning(i, 'formateurNom', f ? `${f.prenom} ${f.nom}` : '');
+                                }} style={{ fontSize: '11px', color: '#555', width: '160px', flexShrink: 0, border: `1px solid ${typeColor}40`, borderRadius: '4px', padding: '3px 6px', backgroundColor: 'white' }}>
+                                  <option value="">— Formateur —</option>
+                                  {formateurs.map(f => <option key={f.id} value={f.id}>{f.prenom} {f.nom}</option>)}
+                                </select>
+                                <input type="text" placeholder="Module / Thème" value={p.module || ''} onChange={ev => modifierEntreePlanning(i, 'module', ev.target.value)} style={{ fontSize: '11px', color: '#555', flex: 1, minWidth: '120px', border: `1px solid ${typeColor}40`, borderRadius: '4px', padding: '3px 6px' }} />
+                                <input type="number" min="1" value={p.semaine} onChange={ev => modifierEntreePlanning(i, 'semaine', parseInt(ev.target.value) || 0)} style={{ fontSize: '11px', color: '#555', width: '55px', flexShrink: 0, border: `1px solid ${typeColor}40`, borderRadius: '4px', padding: '3px 6px' }} placeholder="Sem." />
                                 <button onClick={() => supprimerEntreePlanning(i)} style={{ marginLeft: 'auto', backgroundColor: '#fee', color: '#c53030', border: '1px solid #fcc', borderRadius: '4px', padding: '3px 8px', fontSize: '11px', fontWeight: '700', cursor: 'pointer' }}>🗑️</button>
                               </div>
                             );
                           }
                           return (
-                            <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '6px 10px', borderRadius: '6px', backgroundColor: typeBg, border: `1px solid ${typeColor}30` }}>
+                            <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '6px 10px', borderRadius: '6px', backgroundColor: typeBg, border: `1px solid ${typeColor}30`, flexWrap: 'wrap' }}>
                               <span style={{ fontSize: '10px', fontWeight: '700', color: typeColor, width: '80px', flexShrink: 0 }}>{p.date}</span>
-                              <span style={{ fontSize: '10px', color: typeColor, fontWeight: '600', width: '80px', flexShrink: 0 }}>{typeLabel}</span>
-                              <span style={{ fontSize: '10px', color: '#888' }}>7h · Sem. {p.semaine}</span>
+                              <span style={{ fontSize: '10px', color: typeColor, fontWeight: '600', width: '90px', flexShrink: 0 }}>{typeLabel}</span>
+                              {p.formateurNom && <span style={{ fontSize: '10px', color: '#555', fontWeight: '600' }}>👨‍🏫 {p.formateurNom}</span>}
+                              {p.module && <span style={{ fontSize: '10px', color: '#555', fontStyle: 'italic' }}>📚 {p.module}</span>}
+                              <span style={{ fontSize: '10px', color: '#888', marginLeft: 'auto' }}>7h · Sem. {p.semaine}</span>
                             </div>
                           );
                         })}
