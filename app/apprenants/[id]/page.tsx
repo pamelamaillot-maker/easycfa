@@ -911,9 +911,9 @@ export default function FicheApprenant({ params }: { params: Promise<{ id: strin
         </div>
       )}
 
-      {estEnRupture && (
-        <div style={{ backgroundColor: '#fde8e8', borderRadius: '10px', padding: '14px 16px', marginBottom: '16px' }}>
-          <span style={{ color: '#c53030', fontWeight: '600', fontSize: '14px' }}>❌ Contrat rompu le {form.dateRupture} — Maintien en formation : {form.maintienFormation || 'Non renseigné'}</span>
+      {form.dateRupture && (
+        <div style={{ backgroundColor: form.statut === 'Terminé' ? '#f3f4f6' : '#fde8e8', borderRadius: '10px', padding: '14px 16px', marginBottom: '16px', border: form.statut === 'Terminé' ? '1px solid #d1d5db' : 'none' }}>
+          <span style={{ color: form.statut === 'Terminé' ? '#6b7280' : '#c53030', fontWeight: '600', fontSize: '14px' }}>{form.statut === 'Terminé' ? '📋' : '❌'} Contrat rompu le {form.dateRupture} — Maintien en formation : {form.maintienFormation || 'Non renseigné'}{form.contratSuivant ? ` — Repris via contrat ${form.contratSuivant}` : ''}</span>
           {form.maintienFormation === 'OUI' && form.dateRupture && (() => {
             const parts = form.dateRupture.split('/');
             if (parts.length !== 3) return null;

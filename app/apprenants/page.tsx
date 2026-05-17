@@ -76,7 +76,8 @@ export default function Apprenants() {
   const [filtreStatut, setFiltreStatut] = useState('Tous');
   const [filtreFormation, setFiltreFormation] = useState('Toutes');
   const [apprenantsMerges, setApprenantsMerges] = useState<any[]>(APPRENANTS_REELS as any[]);
-
+  const [rechercheArchives, setRechercheArchives] = useState('');
+  
   // ✅ CORRECTION : lit aussi easycfa_apprenants_v2 (donc les nouveaux apprenants créés)
   useEffect(() => {
     setApprenantsMerges(chargerApprenantsMerges());
@@ -231,8 +232,15 @@ export default function Apprenants() {
       {archives.length > 0 && (
         <Card>
           <h2 style={{ fontSize: '15px', fontWeight: '700', color: '#888', marginBottom: '16px' }}>
-            🗄️ Archivés — RUPTURE FMEF + 1 mois ({archives.length})
+            🗄️ Archivés ({archives.length}) — ✅ Terminés : {archives.filter(a => a.statut === 'Terminé').length} | 🚫 Rupture FMEF : {archives.filter(a => a.statut === 'Rupture').length}
           </h2>
+          <input
+            type="text"
+            placeholder="🔍 Rechercher dans les archives (nom, prénom, formation, entreprise)"
+            value={rechercheArchives}
+            onChange={(e) => setRechercheArchives(e.target.value)}
+            style={{ width: '100%', padding: '8px 12px', fontSize: '13px', border: '1.5px solid #e0e0e0', borderRadius: '8px', marginBottom: '12px', boxSizing: 'border-box' }}
+          />
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
               <tr style={{ borderBottom: `2px solid ${COLORS.background}` }}>
@@ -242,7 +250,11 @@ export default function Apprenants() {
               </tr>
             </thead>
             <tbody>
-              {archives.map((a) => (
+              {archives.filter(a => {
+                const q = rechercheArchives.toLowerCase();
+                if (!q) return true;
+                return (a.nom ?? '').toLowerCase().includes(q) || (a.prenom ?? '').toLowerCase().includes(q) || (a.formation ?? '').toLowerCase().includes(q) || (a.entreprise ?? '').toLowerCase().includes(q);
+              }).map((a) => (
                 <tr key={a.id} style={{ borderBottom: `1px solid ${COLORS.border}`, opacity: 0.6 }}>
                   <td style={{ padding: '12px', fontSize: '13px', fontWeight: '700', color: '#888' }}>{a.nom}</td>
                   <td style={{ padding: '12px', fontSize: '13px', color: '#888' }}>{a.prenom}</td>
