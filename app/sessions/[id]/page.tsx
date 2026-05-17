@@ -1,19 +1,76 @@
 'use client';
-import { SESSIONS, APPRENANTS } from '../../../data/mockData';
+import { SESSIONS } from '../../../data/mockData';
+import { APPRENANTS_REELS } from '../../../data/mockApprenants_reels';
 import Badge from '../../../components/Badge';
 import Card from '../../../components/Card';
 import { COLORS } from '../../../lib/constants';
-import React, { use } from 'react';
+import React, { use, useState, useEffect } from 'react';
+
+// ✅ Charge la session depuis localStorage avec fallback sur le seed
+function trouverSession(id: string): any | null {
+  if (typeof window === 'undefined') {
+    return (SESSIONS as any[]).find(s => String(s.id) === id) || null;
+  }
+  try {
+    const liste = JSON.parse(localStorage.getItem('easycfa_sessions_v2') || '[]');
+    const trouve = liste.find((s: any) => String(s.id) === id);
+    if (trouve) return trouve;
+  } catch {}
+  return (SESSIONS as any[]).find(s => String(s.id) === id) || null;
+}
+
+// ✅ Charge tous les apprenants depuis localStorage + seed
+function chargerTousApprenants(): any[] {
+  if (typeof window === 'undefined') return APPRENANTS_REELS as any[];
+  const ids = new Set();
+  const liste: any[] = [];
+  (APPRENANTS_REELS as any[]).forEach(a => { liste.push(a); ids.add(a.id); });
+  try {
+    const persistee = JSON.parse(localStorage.getItem('easycfa_apprenants_v2') || '[]');
+    persistee.forEach((a: any) => { if (!ids.has(a.id)) { liste.push(a); ids.add(a.id); } });
+  } catch {}
+  return liste.map(a => {
+    try {
+      const fiche = localStorage.getItem(`apprenant_${a.id}`);
+      if (fiche) return { ...a, ...JSON.parse(fiche) };
+    } catch {}
+    return a;
+  });
+}
 
 export default function FicheSession({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
-  const session = SESSIONS.find(s => s.id === Number(id));
-  const apprenants = APPRENANTS[id] ?? [];
+  const [session, setSession] = useState<any>(null);
+  const [apprenants, setApprenants] = useState<any[]>([]);
+  const [chargement, setChargement] = useState(true);
 
-  if (!session) return <div style={{ padding: '32px', color: COLORS.primary }}>Session introuvable.</div>;
+  useEffect(() => {
+    const s = trouverSession(id);
+    setSession(s);
+    if (s) {
+      const tous = chargerTousApprenants();
+      // Lien par apprenantIds (vraies sessions localStorage) OU par session legacy (seed)
+      const lies = s.apprenantIds && Array.isArray(s.apprenantIds)
+        ? tous.filter(a => s.apprenantIds.includes(a.id))
+        : [];
+      setApprenants(lies);
+    }
+    setChargement(false);
+  }, [id]);
 
   const btnPrimary: React.CSSProperties = { backgroundColor: COLORS.primary, color: 'white', border: 'none', borderRadius: '8px', padding: '9px 16px', fontSize: '13px', fontWeight: '600', cursor: 'pointer', textDecoration: 'none', display: 'inline-block' };
   const btnSecondary: React.CSSProperties = { backgroundColor: 'white', color: COLORS.primary, border: `1.5px solid ${COLORS.primary}`, borderRadius: '8px', padding: '9px 16px', fontSize: '13px', fontWeight: '600', cursor: 'pointer', textDecoration: 'none', display: 'inline-block' };
+
+  if (chargement) return <div style={{ padding: '32px', textAlign: 'center', color: COLORS.textMuted }}>Chargement...</div>;
+  if (!session) return <div style={{ padding: '32px', color: COLORS.primary }}>Session introuvable (ID : {id}).</div>;
+
+  // Normalisation des champs (compatibilité seed vs localStorage)
+  const dateDebut = session.dateDebut || session.debut || '—';
+  const dateFin = session.dateFin || session.fin || '—';
+  const nomSession = session.numero || session.nom || session.formation || `Session ${id}`;
+  const formateur = session.formateur || '—';
+  const salle = session.salle || '—';
+  const statut = session.statut || 'En cours';
 
   return (
     <div>
@@ -24,8 +81,8 @@ export default function FicheSession({ params }: { params: Promise<{ id: string 
         </a>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '12px' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-            <h1 style={{ fontSize: '24px', fontWeight: '700', color: COLORS.primary }}>{session.nom}</h1>
-            <Badge statut={session.statut} />
+            <h1 style={{ fontSize: '24px', fontWeight: '700', color: COLORS.primary }}>{nomSession}</h1>
+            <Badge statut={statut} />
           </div>
           <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
             <a href="/emargement" style={btnPrimary}>📋 Feuille émargement</a>
@@ -42,10 +99,10 @@ export default function FicheSession({ params }: { params: Promise<{ id: string 
         </h2>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '16px', marginBottom: '16px' }}>
           {[
-            { label: 'Date de début', value: session.debut },
-            { label: 'Date de fin', value: session.fin },
-            { label: 'Formateur', value: session.formateur },
-            { label: 'Salle', value: session.salle },
+            { label: 'Date de début', value: dateDebut },
+            { label: 'Date de fin', value: dateFin },
+            { label: 'Formateur', value: formateur },
+            { label: 'Salle', value: salle },
           ].map((info) => (
             <div key={info.label} style={{ backgroundColor: COLORS.background, borderRadius: '8px', padding: '16px' }}>
               <div style={{ fontSize: '11px', color: '#888', marginBottom: '4px', textTransform: 'uppercase' }}>{info.label}</div>
@@ -58,9 +115,9 @@ export default function FicheSession({ params }: { params: Promise<{ id: string 
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '16px' }}>
           {[
             { label: 'Apprenants inscrits', value: String(apprenants.length), color: COLORS.primary },
-            { label: 'Taux de présence', value: '92%', color: COLORS.primary },
-            { label: 'Documents générés', value: '4', color: COLORS.secondary },
-            { label: 'Alertes en cours', value: '1', color: '#e53e3e' },
+            { label: 'Planning (entrées)', value: String(session.planning?.length || 0), color: COLORS.primary },
+            { label: 'Modules', value: String(session.modules?.length || 0), color: COLORS.secondary },
+            { label: 'Statut', value: statut, color: '#16a34a' },
           ].map((stat) => (
             <div key={stat.label} style={{ backgroundColor: 'white', borderRadius: '8px', padding: '16px', border: '1px solid #e0e0e0', textAlign: 'center' }}>
               <div style={{ fontSize: '24px', fontWeight: '800', color: stat.color }}>{stat.value}</div>
@@ -68,6 +125,141 @@ export default function FicheSession({ params }: { params: Promise<{ id: string 
             </div>
           ))}
         </div>
+      </Card>
+
+      {/* 📅 Planning de la session */}
+      <Card style={{ marginBottom: '24px', borderTop: `4px solid ${COLORS.secondary}` }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+          <h2 style={{ fontSize: '16px', fontWeight: '700', color: COLORS.primary }}>
+            📅 Planning ({session.planning?.length || 0} entrées)
+          </h2>
+          {session.planning?.length > 0 && (() => {
+            const stats: Record<string, number> = {};
+            session.planning.forEach((p: any) => { stats[p.type] = (stats[p.type] || 0) + 1; });
+            return (
+              <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                {Object.entries(stats).map(([type, n]) => {
+                  const couleurs: Record<string, { bg: string; col: string; emoji: string }> = {
+                    cours: { bg: '#e6f4f1', col: '#006B68', emoji: '📚' },
+                    revision: { bg: '#fef6e4', col: '#C8A23A', emoji: '📖' },
+                    examen: { bg: '#fde8e8', col: '#e53e3e', emoji: '🎓' },
+                  };
+                  const c = couleurs[type] || { bg: '#f3f4f6', col: '#555', emoji: '📌' };
+                  return <span key={type} style={{ backgroundColor: c.bg, color: c.col, padding: '4px 10px', borderRadius: '20px', fontSize: '12px', fontWeight: '700' }}>{c.emoji} {type} : {n}</span>;
+                })}
+              </div>
+            );
+          })()}
+        </div>
+        {session.planning?.length > 0 ? (
+          <div style={{ maxHeight: '400px', overflowY: 'auto', border: `1px solid ${COLORS.border}`, borderRadius: '8px' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <thead style={{ position: 'sticky', top: 0, backgroundColor: COLORS.background, zIndex: 1 }}>
+                <tr style={{ borderBottom: `2px solid ${COLORS.background}` }}>
+                  {['#', 'Date', 'Type', 'Semaine'].map((col) => (
+                    <th key={col} style={{ textAlign: 'left', padding: '10px 12px', fontSize: '11px', color: '#999', fontWeight: '600', textTransform: 'uppercase' }}>{col}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {[...session.planning].sort((a: any, b: any) => {
+                  const da = a.date.split('/').reverse().join('-');
+                  const db = b.date.split('/').reverse().join('-');
+                  return da.localeCompare(db);
+                }).map((p: any, i: number) => {
+                  const couleurs: Record<string, { bg: string; col: string; emoji: string }> = {
+                    cours: { bg: '#e6f4f1', col: '#006B68', emoji: '📚' },
+                    revision: { bg: '#fef6e4', col: '#C8A23A', emoji: '📖' },
+                    examen: { bg: '#fde8e8', col: '#e53e3e', emoji: '🎓' },
+                  };
+                  const c = couleurs[p.type] || { bg: '#f3f4f6', col: '#555', emoji: '📌' };
+                  return (
+                    <tr key={i} style={{ borderBottom: `1px solid ${COLORS.border}` }}>
+                      <td style={{ padding: '8px 12px', fontSize: '12px', color: '#aaa' }}>{i + 1}</td>
+                      <td style={{ padding: '8px 12px', fontSize: '13px', fontWeight: '600' }}>{p.date}</td>
+                      <td style={{ padding: '8px 12px' }}>
+                        <span style={{ backgroundColor: c.bg, color: c.col, padding: '3px 10px', borderRadius: '20px', fontSize: '11px', fontWeight: '700' }}>{c.emoji} {p.type}</span>
+                      </td>
+                      <td style={{ padding: '8px 12px', fontSize: '12px', color: COLORS.textMuted }}>S{p.semaine}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <div style={{ padding: '32px', textAlign: 'center', color: COLORS.textMuted, fontSize: '14px' }}>
+            Aucune entrée dans le planning.
+          </div>
+        )}{/* 📅 Planning de la session */}
+      <Card style={{ marginBottom: '24px', borderTop: `4px solid ${COLORS.secondary}` }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+          <h2 style={{ fontSize: '16px', fontWeight: '700', color: COLORS.primary }}>
+            📅 Planning ({session.planning?.length || 0} entrées)
+          </h2>
+          {session.planning?.length > 0 && (() => {
+            const stats: Record<string, number> = {};
+            session.planning.forEach((p: any) => { stats[p.type] = (stats[p.type] || 0) + 1; });
+            return (
+              <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                {Object.entries(stats).map(([type, n]) => {
+                  const couleurs: Record<string, { bg: string; col: string; emoji: string }> = {
+                    cours: { bg: '#e6f4f1', col: '#006B68', emoji: '📚' },
+                    revision: { bg: '#fef6e4', col: '#C8A23A', emoji: '📖' },
+                    examen: { bg: '#fde8e8', col: '#e53e3e', emoji: '🎓' },
+                  };
+                  const c = couleurs[type] || { bg: '#f3f4f6', col: '#555', emoji: '📌' };
+                  return <span key={type} style={{ backgroundColor: c.bg, color: c.col, padding: '4px 10px', borderRadius: '20px', fontSize: '12px', fontWeight: '700' }}>{c.emoji} {type} : {n}</span>;
+                })}
+              </div>
+            );
+          })()}
+        </div>
+        {session.planning?.length > 0 ? (
+          <div style={{ maxHeight: '400px', overflowY: 'auto', border: `1px solid ${COLORS.border}`, borderRadius: '8px' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <thead style={{ position: 'sticky', top: 0, backgroundColor: COLORS.background, zIndex: 1 }}>
+                <tr style={{ borderBottom: `2px solid ${COLORS.background}` }}>
+                  {['#', 'Date', 'Type', 'Semaine'].map((col) => (
+                    <th key={col} style={{ textAlign: 'left', padding: '10px 12px', fontSize: '11px', color: '#999', fontWeight: '600', textTransform: 'uppercase' }}>{col}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {[...session.planning].sort((a: any, b: any) => {
+                  const da = a.date.split('/').reverse().join('-');
+                  const db = b.date.split('/').reverse().join('-');
+                  return da.localeCompare(db);
+                }).map((p: any, i: number) => {
+                  const couleurs: Record<string, { bg: string; col: string; emoji: string }> = {
+                    cours: { bg: '#e6f4f1', col: '#006B68', emoji: '📚' },
+                    revision: { bg: '#fef6e4', col: '#C8A23A', emoji: '📖' },
+                    examen: { bg: '#fde8e8', col: '#e53e3e', emoji: '🎓' },
+                  };
+                  const c = couleurs[p.type] || { bg: '#f3f4f6', col: '#555', emoji: '📌' };
+                  return (
+                    <tr key={i} style={{ borderBottom: `1px solid ${COLORS.border}` }}>
+                      <td style={{ padding: '8px 12px', fontSize: '12px', color: '#aaa' }}>{i + 1}</td>
+                      <td style={{ padding: '8px 12px', fontSize: '13px', fontWeight: '600' }}>{p.date}</td>
+                      <td style={{ padding: '8px 12px' }}>
+                        <span style={{ backgroundColor: c.bg, color: c.col, padding: '3px 10px', borderRadius: '20px', fontSize: '11px', fontWeight: '700' }}>{c.emoji} {p.type}</span>
+                      </td>
+                      <td style={{ padding: '8px 12px', fontSize: '12px', color: COLORS.textMuted }}>S{p.semaine}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <div style={{ padding: '32px', textAlign: 'center', color: COLORS.textMuted, fontSize: '14px' }}>
+            Aucune entrée dans le planning.
+          </div>
+        )}
+      </Card>
+
+      {/* Apprenants */}
+      <Card style={{ marginBottom: '24px' }}>
       </Card>
 
       {/* Apprenants */}
@@ -78,44 +270,36 @@ export default function FicheSession({ params }: { params: Promise<{ id: string 
           </h2>
           <div style={{ display: 'flex', gap: '8px' }}>
             <a href="/apprenants" style={btnPrimary}>+ Ajouter un apprenant</a>
-            <span style={btnSecondary}>⬇ Exporter liste</span>
           </div>
         </div>
         <table style={{ width: '100%', borderCollapse: 'collapse' }}>
           <thead>
             <tr style={{ borderBottom: `2px solid ${COLORS.background}` }}>
-              {['#', 'Nom', 'Prénom', 'Entreprise', 'Contrat', 'Présence', 'Documents', ''].map((col) => (
+              {['#', 'Nom', 'Prénom', 'Entreprise', 'Statut', ''].map((col) => (
                 <th key={col} style={{ textAlign: 'left', padding: '8px 12px', fontSize: '12px', color: '#999', fontWeight: '600', textTransform: 'uppercase' }}>{col}</th>
               ))}
             </tr>
           </thead>
           <tbody>
             {apprenants.length > 0 ? apprenants.map((a, i) => (
-              <tr key={i} style={{ borderBottom: `1px solid ${COLORS.border}` }}>
+              <tr key={a.id || i} style={{ borderBottom: `1px solid ${COLORS.border}` }}>
                 <td style={{ padding: '12px', fontSize: '13px', color: '#aaa' }}>{i + 1}</td>
                 <td style={{ padding: '12px', fontSize: '14px', fontWeight: '700' }}>{a.nom}</td>
                 <td style={{ padding: '12px', fontSize: '14px', color: COLORS.textMuted }}>{a.prenom}</td>
-                <td style={{ padding: '12px', fontSize: '13px', color: COLORS.textMuted }}>—</td>
+                <td style={{ padding: '12px', fontSize: '13px', color: COLORS.textMuted }}>{a.entreprise || '—'}</td>
                 <td style={{ padding: '12px' }}>
-                  <span style={{ backgroundColor: '#e6f4f1', color: '#006B68', padding: '3px 8px', borderRadius: '20px', fontSize: '11px', fontWeight: '600' }}>Signé</span>
+                  <span style={{ backgroundColor: a.statut === 'Terminé' ? '#f3f4f6' : a.statut === 'Rupture' ? '#fde8e8' : '#e6f4f1', color: a.statut === 'Terminé' ? '#6b7280' : a.statut === 'Rupture' ? '#e53e3e' : '#006B68', padding: '3px 10px', borderRadius: '20px', fontSize: '11px', fontWeight: '600' }}>{a.statut || 'En cours'}</span>
                 </td>
                 <td style={{ padding: '12px' }}>
-                  <span style={{ backgroundColor: '#e6f4f1', color: '#006B68', padding: '3px 8px', borderRadius: '20px', fontSize: '11px', fontWeight: '600' }}>92%</span>
-                </td>
-                <td style={{ padding: '12px' }}>
-                  <span style={{ backgroundColor: COLORS.backgroundGold, color: COLORS.secondary, padding: '3px 8px', borderRadius: '20px', fontSize: '11px', fontWeight: '600' }}>3/5</span>
-                </td>
-                <td style={{ padding: '12px' }}>
-                  <a href={`/apprenants/${a.nom?.toLowerCase().replace(/\s/g, '-')}`} style={{ color: COLORS.primary, fontSize: '13px', fontWeight: '600', textDecoration: 'none' }}>
+                  <a href={`/apprenants/${a.id}`} style={{ color: COLORS.primary, fontSize: '13px', fontWeight: '600', textDecoration: 'none' }}>
                     Voir →
                   </a>
                 </td>
               </tr>
             )) : (
               <tr>
-                <td colSpan={8} style={{ padding: '32px', textAlign: 'center', color: COLORS.textMuted, fontSize: '14px' }}>
-                  Aucun apprenant inscrit dans cette session.{' '}
-                  <a href="/apprenants" style={{ color: COLORS.primary, fontWeight: '600' }}>Ajouter un apprenant</a>
+                <td colSpan={6} style={{ padding: '32px', textAlign: 'center', color: COLORS.textMuted, fontSize: '14px' }}>
+                  Aucun apprenant inscrit dans cette session.
                 </td>
               </tr>
             )}
