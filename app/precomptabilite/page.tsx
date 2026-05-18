@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { APPRENANTS_REELS } from '../../data/mockApprenants_reels';
+import { useAcces, tracerAction } from '../../lib/useAcces';
 import Card from '../../components/Card';
 
 const inputStyle: React.CSSProperties = { border: '1.5px solid #e0e0e0', borderRadius: '8px', padding: '7px 10px', fontSize: '12px', width: '100%', boxSizing: 'border-box', backgroundColor: 'white' };
@@ -95,6 +96,7 @@ function genererEcheances(apc: Partial<APC>): Echeance[] {
 }
 
 export default function Facturation() {
+  const { estAdmin, utilisateur } = useAcces();
   const [apcs, setApcs] = useState<APC[]>([]);
   const [apcSel, setApcSel] = useState<APC|null>(null);
   const [modale, setModale] = useState(false);
@@ -106,6 +108,7 @@ export default function Facturation() {
   const [recherche, setRecherche] = useState('');
   const [form, setForm] = useState<Partial<APC>>({statut:'En attente',annee:'2026',echeances:[]});
   const [drilldown, setDrilldown] = useState<{titre: string; lignes: any[]} | null>(null);
+  const [voirArchives, setVoirArchives] = useState(false);
 
   useEffect(()=>{
     try { const s=localStorage.getItem('easycfa_apcs_v2'); if(s) setApcs(JSON.parse(s)); } catch {}
@@ -139,6 +142,39 @@ export default function Facturation() {
     const u={...apcSel,[champ]:val}; setApcSel(u); save(apcs.map(a=>a.id===u.id?u:a));
   }
 
+  function marquerRelance(facture: any, envoyee: boolean) {
+    const dateJour = envoyee ? new Date().toLocaleDateString('fr-FR') : '';
+    const updated = apcs.map(a => {
+      if (a.opco !== facture.opco) return a;
+      return {
+        ...a,
+        echeances: a.echeances.map(e => {
+          if (e.numeroFacture === facture.numeroFacture && e.dateFacture === facture.dateFacture) {
+            return { ...e, relanceEnvoyee: envoyee, dateRelance: dateJour };
+          }
+          return e;
+        }),
+      };
+    });
+    save(updated);
+  }
+
+  function modifierDateRelance(facture: any, nouvelleDate: string) {
+    const updated = apcs.map(a => {
+      if (a.opco !== facture.opco) return a;
+      return {
+        ...a,
+        echeances: a.echeances.map(e => {
+          if (e.numeroFacture === facture.numeroFacture && e.dateFacture === facture.dateFacture) {
+            return { ...e, dateRelance: nouvelleDate };
+          }
+          return e;
+        }),
+      };
+    });
+    save(updated);
+  }
+
   function majEch(eid:string,champ:string,val:any) {
     if (!apcSel) return;
     const echs=apcSel.echeances.map(e=>{
@@ -160,6 +196,15 @@ export default function Facturation() {
     if (!confirm('Supprimer ce dossier ?')) return;
     save(apcs.filter(a=>a.id!==id)); if(apcSel?.id===id) setApcSel(null);
   }
+
+  // Détecte si un dossier est archivable : Statut Soldé + toutes échéances payées
+  function estArchive(a: APC): boolean {
+    if (a.statut !== 'Soldé') return false;
+    if (!a.echeances || a.echeances.length === 0) return false;
+    return a.echeances.every(e => !!e.datePaiement);
+  }
+  const apcsActifs = apcs.filter(a => !estArchive(a));
+  const apcsArchives = apcs.filter(a => estArchive(a));
 
   // Calculs globaux — filtrés par année sélectionnée
   const anneeAffichee = filtreAnnee || new Date().getFullYear().toString();
@@ -183,8 +228,8 @@ export default function Facturation() {
     return j<=3&&j>=0;
   }).map(e=>({apprenti:a.apprenantPrenom+' '+a.apprenantNom,opco:a.opco,label:e.label,date:e.dateEcheance30j,jours:Math.ceil((new Date(parseInt(e.dateEcheance30j.split('/')[2]),parseInt(e.dateEcheance30j.split('/')[1])-1,parseInt(e.dateEcheance30j.split('/')[0])).getTime()-new Date().getTime())/86400000)})));
 
-  // Filtres dossiers
-  const apcsFiltres=apcs.filter(a=>{
+  // Filtres dossiers — exclut les archivés (Soldés + tout payé)
+  const apcsFiltres=apcsActifs.filter(a=>{
     const mO=!filtreOpco||a.opco===filtreOpco;
     const mF=!filtreFormation||a.formation===filtreFormation;
     const mS=!filtreStatut||a.statut===filtreStatut;
@@ -215,13 +260,15 @@ export default function Facturation() {
         }
         parOpco[a.opco].push({
           apprenant: `${a.apprenantPrenom} ${a.apprenantNom}`,
-          formation: a.formation, entreprise: a.entreprise,
+          formation: a.formation, entreprise: a.entreprise, opco: a.opco,
           numeroDossierOpco: a.numeroDossierOpco,
           type: e.type, label: e.label,
           numeroFacture: e.numeroFacture, dateFacture: e.dateFacture,
           dateDepotOpco: e.dateDepotOpco, dateEcheance30j: e.dateEcheance30j,
           montantPrevu: e.montantPrevu,
           joursDepuis, joursRestants30j,
+          relanceEnvoyee: (e as any).relanceEnvoyee || false,
+          dateRelance: (e as any).dateRelance || '',
         });
       });
     });
@@ -357,7 +404,20 @@ export default function Facturation() {
       const p=e.datePaiement.split('/');
       return p.length===3&&p[2]===an;
     }).reduce((se,e)=>se+(e.montantPaye||0),0),0);
-    return {an,nb:l.length,att:l.filter(a=>a.statut==='En attente').length,accord:l.reduce((s,a)=>s+a.coutPedagoAccorde+a.premierEquipement+a.fraisRepas,0),fact,enc};
+    // Non encaissé au 31/12/N = factures émises en N (ou avant) mais payées en N+1+ ou pas encore
+    const anNum = parseInt(an);
+    const nonEnc = apcs.reduce((s,a)=>s+a.echeances.filter(e=>{
+      if (!e.dateFacture) return false;
+      const pF = e.dateFacture.split('/');
+      if (pF.length !== 3) return false;
+      const anFact = parseInt(pF[2]);
+      if (anFact > anNum) return false;
+      if (!e.datePaiement) return true;
+      const pP = e.datePaiement.split('/');
+      if (pP.length !== 3) return false;
+      return parseInt(pP[2]) > anNum;
+    }).reduce((se,e)=>se+e.montantPrevu,0),0);
+    return {an,nb:l.length,att:l.filter(a=>a.statut==='En attente').length,accord:l.reduce((s,a)=>s+a.coutPedagoAccorde+a.premierEquipement+a.fraisRepas,0),fact,enc,nonEnc};
   }).filter(s=>s.nb>0||s.fact>0||s.enc>0);
 
   const formationsList=[...new Set(apcs.map(a=>a.formation))].filter(Boolean).sort();
@@ -384,19 +444,6 @@ export default function Facturation() {
         </div>
       </div>
 
-      {/* Alertes J-3 */}
-      {alertes.length>0&&(
-        <div style={{backgroundColor:'#fde8e8',border:'1.5px solid #e53e3e',borderRadius:'10px',padding:'12px 16px',marginBottom:'14px'}}>
-          <div style={{fontSize:'13px',fontWeight:'700',color:'#e53e3e',marginBottom:'6px'}}>🔴 {alertes.length} échéance(s) arrivant à terme dans 3 jours ou moins !</div>
-          {alertes.map((a,i)=>(
-            <div key={i} style={{fontSize:'11px',color:'#c53030',marginBottom:'2px'}}>
-              ⚠️ <strong>{a.apprenti}</strong> — {a.opco} — {a.label} — le <strong>{a.date}</strong>
-              {a.jours===0?<span style={{fontWeight:'700'}}> (AUJOURD'HUI !)</span>:<span> (J-{a.jours})</span>}
-            </div>
-          ))}
-        </div>
-      )}
-
       {/* Stats globales */}
       <div style={{display:'grid',gridTemplateColumns:'repeat(5,1fr)',gap:'10px',marginBottom:'8px'}}>
         {[
@@ -404,7 +451,6 @@ export default function Facturation() {
           {label:'Total accordé',v:totalAccorde.toLocaleString('fr-FR',{minimumFractionDigits:2})+' €',c:'#7c3aed'},
           {label:'Total facturé',v:totalFacture.toLocaleString('fr-FR',{minimumFractionDigits:2})+' €',c:'#0891b2'},
           {label:'Total encaissé',v:totalEncaisse.toLocaleString('fr-FR',{minimumFractionDigits:2})+' €',c:'#16a34a'},
-          {label:'En attente règl.',v:totalEnAttente.toLocaleString('fr-FR',{minimumFractionDigits:2})+' €',c:'#e53e3e'},
         ].map(s=>(
           <div key={s.label} style={{backgroundColor:'white',borderRadius:'10px',padding:'12px',textAlign:'center',borderTop:'4px solid '+s.c,boxShadow:'0 1px 4px rgba(0,0,0,0.06)'}}>
             <div style={{fontSize:'13px',fontWeight:'800',color:s.c}}>{s.v}</div>
@@ -675,6 +721,65 @@ export default function Facturation() {
         </div>
       )}
 
+      {/* ── DOSSIERS ARCHIVÉS (Soldés + tout payé) ── */}
+      {onglet==='dossiers' && apcsArchives.length > 0 && (
+        <Card style={{marginTop:'14px', border: '1.5px dashed #ccc'}}>
+          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'10px'}}>
+            <div>
+              <h2 style={{fontSize:'14px',fontWeight:'700',color:'#666'}}>🗄️ Dossiers archivés ({apcsArchives.length})</h2>
+              <p style={{fontSize:'11px',color:'#888',marginTop:'2px',fontStyle:'italic'}}>Dossiers Soldés avec toutes les échéances payées</p>
+            </div>
+            <button onClick={() => setVoirArchives(!voirArchives)} style={btnSecondary}>
+              {voirArchives ? '🔼 Masquer les archivés' : '🔽 Voir les archivés'}
+            </button>
+          </div>
+          {voirArchives && (
+            <div style={{overflowX:'auto'}}>
+              <table style={{width:'100%',borderCollapse:'collapse',fontSize:'11px'}}>
+                <thead>
+                  <tr style={{backgroundColor:'#f0f0f0'}}>
+                    {['Apprenant','Formation','OPCO','Année','Accordé (€)','Encaissé (€)', estAdmin ? 'Action' : ''].filter(Boolean).map(c => (
+                      <th key={c} style={{padding:'8px 10px',fontSize:'10px',color:'#666',fontWeight:'700',textTransform:'uppercase',textAlign:c.includes('€')?'right':'left'}}>{c}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {apcsArchives.map((a,i) => {
+                    const enc = a.echeances.reduce((s,e)=>s+(e.montantPaye||0),0);
+                    const accord = a.coutPedagoAccorde + a.premierEquipement + a.fraisRepas;
+                    return (
+                      <tr key={a.id} style={{borderBottom:'1px solid #f0f0f0',backgroundColor:i%2===0?'white':'#fafafa',opacity:0.75}}>
+                        <td style={{padding:'8px 10px',fontWeight:'600',color:'#555'}}>{a.apprenantPrenom} {a.apprenantNom}</td>
+                        <td style={{padding:'8px 10px',color:'#777'}}>{a.formation}</td>
+                        <td style={{padding:'8px 10px',color:'#777'}}>{a.opco}</td>
+                        <td style={{padding:'8px 10px',color:'#777'}}>{a.annee}</td>
+                        <td style={{padding:'8px 10px',textAlign:'right',color:'#777'}}>{accord.toLocaleString('fr-FR',{minimumFractionDigits:2})}</td>
+                        <td style={{padding:'8px 10px',textAlign:'right',color:'#16a34a',fontWeight:'700'}}>{enc.toLocaleString('fr-FR',{minimumFractionDigits:2})}</td>
+                        {estAdmin && (
+                          <td style={{padding:'8px 10px'}}>
+                            <button onClick={() => {
+                              if (!confirm(`Désarchiver le dossier de ${a.apprenantPrenom} ${a.apprenantNom} ?\n\nIl repassera en statut "Accordé" et redeviendra actif.`)) return;
+                              const updated = apcs.map(x => x.id === a.id ? {...x, statut: 'Accordé' as const} : x);
+                              save(updated);
+                              tracerAction('DESARCHIVAGE', 'apc', a.id, `${a.apprenantPrenom} ${a.apprenantNom} — ${a.opco}`, utilisateur);
+                            }} style={{backgroundColor:'#fef6e4',color:'#7a5c00',border:'1px solid #C8A23A',borderRadius:'4px',padding:'3px 8px',fontSize:'10px',fontWeight:'700',cursor:'pointer'}}>
+                              ♻️ Désarchiver
+                            </button>
+                          </td>
+                        )}
+                        {!estAdmin && (
+                          <td style={{padding:'8px 10px',fontSize:'10px',color:'#aaa',fontStyle:'italic'}}>Lecture seule</td>
+                        )}
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </Card>
+      )}
+
       {/* ── PAR OPCO ── */}
       {onglet==='opco'&&(
         <div style={{display:'flex',flexDirection:'column',gap:'14px'}}>
@@ -684,14 +789,14 @@ export default function Facturation() {
             <table style={{width:'100%',borderCollapse:'collapse',minWidth:'700px'}}>
               <thead>
                 <tr style={{backgroundColor:'#006B68'}}>
-                  {['OPCO','Dossiers','En attente','Accordé (€)','Facturé (€)','Reste à fact. (€)','Encaissé (€)','En att. règl. (€)'].map((c,i)=>(
+                  {['OPCO','Dossiers','En attente','Accordé (€)','Facturé (€)','Reste à fact. (€)','Encaissé (€)'].map((c,i)=>(
                     <th key={c} style={{...thStyle,textAlign:i===0?'left':'right',padding:'10px'}}>{c}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
                 {statsOpco.map((s,i)=>{
-                  const reste=s.accord-s.fact, att=s.fact-s.enc;
+                  const reste=s.accord-s.fact;
                   return (
                     <tr key={s.opco} style={{borderBottom:'1px solid #f0f0f0',backgroundColor:i%2===0?'white':'#EAF4F3'}}>
                       <td style={{padding:'10px',fontSize:'12px',fontWeight:'700',color:'#006B68'}}>{s.opco}</td>
@@ -701,14 +806,13 @@ export default function Facturation() {
                       <td style={{...tdNum(s.fact,'#0891b2',true)}}>{s.fact.toLocaleString('fr-FR',{minimumFractionDigits:2})}</td>
                       <td style={{...tdNum(reste,reste>0?'#C8A23A':'#16a34a',true)}}>{reste.toLocaleString('fr-FR',{minimumFractionDigits:2})}</td>
                       <td style={{...tdNum(s.enc,'#16a34a',true)}}>{s.enc.toLocaleString('fr-FR',{minimumFractionDigits:2})}</td>
-                      <td style={{...tdNum(att,att>0?'#e53e3e':'#16a34a',true)}}>{att.toLocaleString('fr-FR',{minimumFractionDigits:2})}</td>
                     </tr>
                   );
                 })}
                 <tr style={{backgroundColor:'#006B68'}}>
                   {[
                     {v:'TOTAL',c:'white',al:'left'},{v:apcs.length,c:'white'},{v:apcs.filter(a=>a.statut==='En attente').length,c:'#fef6e4'},
-                    {v:totalAccorde,c:'#C8A23A'},{v:totalFacture,c:'#C8A23A'},{v:totalReste,c:'#C8A23A'},{v:totalEncaisse,c:'#C8A23A'},{v:totalEnAttente,c:'#fca5a5'},
+                    {v:totalAccorde,c:'#C8A23A'},{v:totalFacture,c:'#C8A23A'},{v:totalReste,c:'#C8A23A'},{v:totalEncaisse,c:'#C8A23A'},
                   ].map((t,i)=>(
                     <td key={i} style={{padding:'10px',fontSize:'12px',fontWeight:'700',color:t.c,textAlign:(t as any).al||'right'}}>
                       {typeof t.v==='number'&&i>1?t.v.toLocaleString('fr-FR',{minimumFractionDigits:2}):t.v}
@@ -739,7 +843,7 @@ export default function Facturation() {
                     <table style={{width:'100%',borderCollapse:'collapse',fontSize:'11px'}}>
                       <thead>
                         <tr style={{backgroundColor:'#f9f9f9'}}>
-                          {['Apprenant','Formation','N° dossier OPCO','Nature','Libellé','N° facture','Date facture','Dépôt OPCO','Échéance 30j','Statut','Montant (€)'].map(c=>(
+                          {['Apprenant','Formation','N° dossier OPCO','Nature','Libellé','N° facture','Date facture','Dépôt OPCO','Échéance 30j','Statut','Montant (€)','Relance'].map(c=>(
                             <th key={c} style={{padding:'6px 8px',fontSize:'10px',color:'#666',fontWeight:'700',textTransform:'uppercase',textAlign:c.includes('Montant')?'right':'left'}}>{c}</th>
                           ))}
                         </tr>
@@ -772,6 +876,14 @@ export default function Facturation() {
                                 <span style={{backgroundColor:statutBg,color:statutColor,padding:'2px 6px',borderRadius:'10px',fontSize:'10px',fontWeight:'700'}}>{statutLabel}</span>
                               </td>
                               <td style={{padding:'6px 8px',textAlign:'right',fontWeight:'700',color:'#c53030'}}>{f.montantPrevu.toLocaleString('fr-FR',{minimumFractionDigits:2})}</td>
+                              <td style={{padding:'6px 8px'}}>
+                                <div style={{display:'flex',gap:'4px',alignItems:'center'}}>
+                                  <input type="checkbox" checked={!!f.relanceEnvoyee} onChange={ev => marquerRelance(f, ev.target.checked)} style={{cursor:'pointer'}} />
+                                  {f.relanceEnvoyee && (
+                                    <input type="text" value={f.dateRelance || ''} onChange={ev => modifierDateRelance(f, ev.target.value)} placeholder="JJ/MM/AAAA" style={{fontSize:'10px',padding:'2px 4px',border:'1px solid #ccc',borderRadius:'3px',width:'85px'}} />
+                                  )}
+                                </div>
+                              </td>
                             </tr>
                           );
                         })}
@@ -892,8 +1004,7 @@ export default function Facturation() {
                   {[
                     {label:'Facturé (€)',key:'fact',color:'#0891b2',mode:'fact' as const},
                     {label:'Encaissé (€)',key:'enc',color:'#16a34a',mode:'enc' as const},
-                    {label:'En att. règl. (€)',key:'att',color:'#e53e3e',mode:'att' as const},
-                  ].map((row,ri)=>{
+                    ].map((row,ri)=>{
                     const total=statsMois.reduce((s,m)=>s+(m as any)[row.key],0);
                     return (
                       <tr key={row.label} style={{borderBottom:'1px solid #f0f0f0',backgroundColor:ri%2===0?'white':'#EAF4F3'}}>
@@ -951,14 +1062,14 @@ export default function Facturation() {
           <table style={{width:'100%',borderCollapse:'collapse'}}>
             <thead>
               <tr style={{backgroundColor:'#006B68'}}>
-                {['Année','Dossiers','En attente','Accordé (€)','Facturé (€)','Reste à fact. (€)','Encaissé (€)','En att. règl. (€)'].map((c,i)=>(
+                {['Année','Dossiers','En attente','Accordé (€)','Facturé (€)','Reste à fact. (€)','Encaissé (€)','Non encaissé au 31/12 (€)'].map((c,i)=>(
                   <th key={c} style={{...thStyle,textAlign:i===0?'left':'right',padding:'10px'}}>{c}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
               {statsAnnee.map((s,i)=>{
-                const reste=s.accord-s.fact, att=s.fact-s.enc;
+                const reste=s.accord-s.fact;
                 return (
                   <tr key={s.an} style={{borderBottom:'1px solid #f0f0f0',backgroundColor:i%2===0?'white':'#EAF4F3'}}>
                     <td style={{padding:'10px',fontSize:'13px',fontWeight:'800',color:'#006B68'}}>{s.an}</td>
@@ -968,14 +1079,14 @@ export default function Facturation() {
                     <td style={{...tdNum(s.fact,'#0891b2',true)}}>{s.fact.toLocaleString('fr-FR',{minimumFractionDigits:2})}</td>
                     <td style={{...tdNum(reste,reste>0?'#C8A23A':'#16a34a',true)}}>{reste.toLocaleString('fr-FR',{minimumFractionDigits:2})}</td>
                     <td style={{...tdNum(s.enc,'#16a34a',true)}}>{s.enc.toLocaleString('fr-FR',{minimumFractionDigits:2})}</td>
-                    <td style={{...tdNum(att,att>0?'#e53e3e':'#16a34a',true)}}>{att.toLocaleString('fr-FR',{minimumFractionDigits:2})}</td>
+                    <td style={{...tdNum(s.nonEnc,s.nonEnc>0?'#C8A23A':'#16a34a',true)}}>{s.nonEnc.toLocaleString('fr-FR',{minimumFractionDigits:2})}</td>
                   </tr>
                 );
               })}
               <tr style={{backgroundColor:'#006B68'}}>
                 {[
                   {v:'TOTAL',c:'white',al:'left'},{v:apcs.length,c:'white'},{v:apcs.filter(a=>a.statut==='En attente').length,c:'#fef6e4'},
-                  {v:totalAccorde,c:'#C8A23A'},{v:totalFacture,c:'#C8A23A'},{v:totalReste,c:'#C8A23A'},{v:totalEncaisse,c:'#C8A23A'},{v:totalEnAttente,c:'#fca5a5'},
+                  {v:totalAccorde,c:'#C8A23A'},{v:totalFacture,c:'#C8A23A'},{v:totalReste,c:'#C8A23A'},{v:totalEncaisse,c:'#C8A23A'},{v:statsAnnee.reduce((s,a)=>s+a.nonEnc,0),c:'#fca5a5'},
                 ].map((t,i)=>(
                   <td key={i} style={{padding:'10px',fontSize:'12px',fontWeight:'700',color:t.c,textAlign:(t as any).al||'right'}}>
                     {typeof t.v==='number'&&i>1?t.v.toLocaleString('fr-FR',{minimumFractionDigits:2}):t.v}
