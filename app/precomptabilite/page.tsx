@@ -105,6 +105,7 @@ export default function Facturation() {
   const [filtreAnnee, setFiltreAnnee] = useState(new Date().getFullYear().toString());
   const [recherche, setRecherche] = useState('');
   const [form, setForm] = useState<Partial<APC>>({statut:'En attente',annee:'2026',echeances:[]});
+  const [drilldown, setDrilldown] = useState<{titre: string; lignes: any[]} | null>(null);
 
   useEffect(()=>{
     try { const s=localStorage.getItem('easycfa_apcs_v2'); if(s) setApcs(JSON.parse(s)); } catch {}
@@ -191,6 +192,50 @@ export default function Facturation() {
     return mO&&mF&&mS&&mR;
   });
 
+  // Factures impayées par OPCO (dateFacture remplie + datePaiement vide)
+  function getFacturesImpayeesParOpco(): Record<string, any[]> {
+    const parOpco: Record<string, any[]> = {};
+    apcs.forEach(a => {
+      a.echeances.forEach(e => {
+        if (!e.dateFacture || e.datePaiement) return;
+        if (!parOpco[a.opco]) parOpco[a.opco] = [];
+        const p = e.dateFacture.split('/');
+        let joursDepuis: number | null = null;
+        let joursRestants30j: number | null = null;
+        if (p.length === 3) {
+          const dF = new Date(parseInt(p[2]),parseInt(p[1])-1,parseInt(p[0]));
+          joursDepuis = Math.floor((Date.now() - dF.getTime()) / 86400000);
+        }
+        if (e.dateEcheance30j) {
+          const p30 = e.dateEcheance30j.split('/');
+          if (p30.length === 3) {
+            const d30 = new Date(parseInt(p30[2]),parseInt(p30[1])-1,parseInt(p30[0]));
+            joursRestants30j = Math.ceil((d30.getTime() - Date.now()) / 86400000);
+          }
+        }
+        parOpco[a.opco].push({
+          apprenant: `${a.apprenantPrenom} ${a.apprenantNom}`,
+          formation: a.formation, entreprise: a.entreprise,
+          numeroDossierOpco: a.numeroDossierOpco,
+          type: e.type, label: e.label,
+          numeroFacture: e.numeroFacture, dateFacture: e.dateFacture,
+          dateDepotOpco: e.dateDepotOpco, dateEcheance30j: e.dateEcheance30j,
+          montantPrevu: e.montantPrevu,
+          joursDepuis, joursRestants30j,
+        });
+      });
+    });
+    Object.keys(parOpco).forEach(opco => {
+      parOpco[opco].sort((a,b) => {
+        const pa = (a.dateFacture||'').split('/'), pb = (b.dateFacture||'').split('/');
+        if (pa.length !== 3 || pb.length !== 3) return 0;
+        return new Date(parseInt(pa[2]),parseInt(pa[1])-1,parseInt(pa[0])).getTime() - new Date(parseInt(pb[2]),parseInt(pb[1])-1,parseInt(pb[0])).getTime();
+      });
+    });
+    return parOpco;
+  }
+  const facturesImpayeesParOpco = getFacturesImpayeesParOpco();
+
   // Stats OPCO
   const opcosList=[...new Set(apcs.map(a=>a.opco))].filter(Boolean).sort();
   const statsOpco=opcosList.map(opco=>{
@@ -204,19 +249,103 @@ export default function Facturation() {
     };
   });
 
-  // Stats mois
-  const statsMois=MOIS_NOMS.map((_,mi)=>{
-    const fact=apcs.reduce((s,a)=>s+a.echeances.filter(e=>{
-      if(!e.dateFacture) return false;
+  // Fonction utilitaire pour le drill-down : retourne les échéances + infos APC
+  function getEcheancesFiltrees(opts: {mode: 'fact'|'enc'|'att'|'prev'; type?: string; mois?: number; annee?: string}): any[] {
+    const lignes: any[] = [];
+    apcs.forEach(a => {
+      a.echeances.forEach(e => {
+        if (opts.type && e.type !== opts.type) return;
+        // Mode "prev" : échéances avec dateEcheance mais sans dateFacture (à facturer)
+        if (opts.mode === 'prev') {
+          if (e.dateFacture || !e.dateEcheance) return;
+          const p = e.dateEcheance.split('/');
+          if (p.length !== 3) return;
+          if (opts.annee && p[2] !== opts.annee) return;
+          if (opts.mois !== undefined && parseInt(p[1])-1 !== opts.mois) return;
+          lignes.push({
+            apprenant: `${a.apprenantPrenom} ${a.apprenantNom}`,
+            formation: a.formation, entreprise: a.entreprise, opco: a.opco,
+            type: e.type, label: e.label,
+            numeroFacture: e.numeroFacture || '(à émettre)', dateFacture: e.dateEcheance, datePaiement: '',
+            montantPrevu: e.montantPrevu, montantPaye: 0,
+          });
+          return;
+        }
+        // Mode "att" : factures émises non encore payées
+        if (opts.mode === 'att') {
+          if (!e.dateFacture || e.datePaiement) return;
+          const p = e.dateFacture.split('/');
+          if (p.length !== 3) return;
+          if (opts.annee && p[2] !== opts.annee) return;
+          if (opts.mois !== undefined && parseInt(p[1])-1 !== opts.mois) return;
+          lignes.push({
+            apprenant: `${a.apprenantPrenom} ${a.apprenantNom}`,
+            formation: a.formation, entreprise: a.entreprise, opco: a.opco,
+            type: e.type, label: e.label,
+            numeroFacture: e.numeroFacture, dateFacture: e.dateFacture, datePaiement: e.datePaiement,
+            montantPrevu: e.montantPrevu, montantPaye: e.montantPaye || 0,
+          });
+          return;
+        }
+        const dateRef = opts.mode === 'fact' ? e.dateFacture : e.datePaiement;
+        if (!dateRef) return;
+        const p = dateRef.split('/');
+        if (p.length !== 3) return;
+        if (opts.annee && p[2] !== opts.annee) return;
+        if (opts.mois !== undefined && parseInt(p[1])-1 !== opts.mois) return;
+        lignes.push({
+          apprenant: `${a.apprenantPrenom} ${a.apprenantNom}`,
+          formation: a.formation,
+          entreprise: a.entreprise,
+          opco: a.opco,
+          type: e.type,
+          label: e.label,
+          numeroFacture: e.numeroFacture,
+          dateFacture: e.dateFacture,
+          datePaiement: e.datePaiement,
+          montantPrevu: e.montantPrevu,
+          montantPaye: e.montantPaye || 0,
+        });
+      });
+    });
+    return lignes.sort((a,b) => {
+      const da = (opts.mode === 'fact' ? a.dateFacture : a.datePaiement) || '';
+      const db = (opts.mode === 'fact' ? b.dateFacture : b.datePaiement) || '';
+      const pa = da.split('/'), pb = db.split('/');
+      if (pa.length !== 3 || pb.length !== 3) return 0;
+      return new Date(parseInt(pa[2]),parseInt(pa[1])-1,parseInt(pa[0])).getTime() - new Date(parseInt(pb[2]),parseInt(pb[1])-1,parseInt(pb[0])).getTime();
+    });
+  }
+
+  // Stats mois — ventilation par type (pedago/equipement/repas)
+  function sommeFactureMoisType(mi: number, type: string): number {
+    return apcs.reduce((s,a)=>s+a.echeances.filter(e=>{
+      if(!e.dateFacture||e.type!==type) return false;
       const p=e.dateFacture.split('/');
       return p.length===3&&parseInt(p[1])-1===mi&&p[2]===filtreAnnee;
     }).reduce((se,e)=>se+e.montantPrevu,0),0);
-    const enc=apcs.reduce((s,a)=>s+a.echeances.filter(e=>{
-      if(!e.datePaiement) return false;
+  }
+  function sommeEncMoisType(mi: number, type: string): number {
+    return apcs.reduce((s,a)=>s+a.echeances.filter(e=>{
+      if(!e.datePaiement||e.type!==type) return false;
       const p=e.datePaiement.split('/');
       return p.length===3&&parseInt(p[1])-1===mi&&p[2]===filtreAnnee;
     }).reduce((se,e)=>se+(e.montantPaye||0),0),0);
-    return {fact,enc,att:fact-enc};
+  }
+  // Prévisionnel : échéances avec dateEcheance définie mais SANS dateFacture
+  function sommePrevMoisType(mi: number, type: string): number {
+    return apcs.reduce((s,a)=>s+a.echeances.filter(e=>{
+      if(e.dateFacture||e.type!==type||!e.dateEcheance) return false;
+      const p=e.dateEcheance.split('/');
+      return p.length===3&&parseInt(p[1])-1===mi&&p[2]===filtreAnnee;
+    }).reduce((se,e)=>se+e.montantPrevu,0),0);
+  }
+  const statsMois=MOIS_NOMS.map((_,mi)=>{
+    const factP=sommeFactureMoisType(mi,'pedago'), factE=sommeFactureMoisType(mi,'equipement'), factR=sommeFactureMoisType(mi,'repas');
+    const encP=sommeEncMoisType(mi,'pedago'), encE=sommeEncMoisType(mi,'equipement'), encR=sommeEncMoisType(mi,'repas');
+    const prevP=sommePrevMoisType(mi,'pedago'), prevE=sommePrevMoisType(mi,'equipement'), prevR=sommePrevMoisType(mi,'repas');
+    const fact=factP+factE+factR, enc=encP+encE+encR, prev=prevP+prevE+prevR;
+    return {fact,enc,att:fact-enc,prev,factP,factE,factR,encP,encE,encR,prevP,prevE,prevR};
   });
 
   // Stats année
@@ -292,12 +421,16 @@ export default function Facturation() {
         const factPeda = apcsAnnee.reduce((s,a)=>s+a.echeances.filter(e=>e.numeroFacture&&e.type==='pedago').reduce((se,e)=>se+e.montantPrevu,0),0);
         const factEquip = apcsAnnee.reduce((s,a)=>s+a.echeances.filter(e=>e.numeroFacture&&e.type==='equipement').reduce((se,e)=>se+e.montantPrevu,0),0);
         const factRepas = apcsAnnee.reduce((s,a)=>s+a.echeances.filter(e=>e.numeroFacture&&e.type==='repas').reduce((se,e)=>se+e.montantPrevu,0),0);
+        const matchPaiementAnnee = (e: any) => { if(!e.datePaiement) return false; const p=e.datePaiement.split('/'); return p.length===3 && p[2]===anneeAffichee; };
+        const encPeda = apcs.reduce((s,a)=>s+a.echeances.filter(e=>e.type==='pedago'&&matchPaiementAnnee(e)).reduce((se,e)=>se+(e.montantPaye||0),0),0);
+        const encEquip = apcs.reduce((s,a)=>s+a.echeances.filter(e=>e.type==='equipement'&&matchPaiementAnnee(e)).reduce((se,e)=>se+(e.montantPaye||0),0),0);
+        const encRepas = apcs.reduce((s,a)=>s+a.echeances.filter(e=>e.type==='repas'&&matchPaiementAnnee(e)).reduce((se,e)=>se+(e.montantPaye||0),0),0);
         return (
           <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:'8px',marginBottom:'16px'}}>
             {[
-              {label:'Frais pédagogiques',accord:totalPeda,facture:factPeda,color:'#006B68',icon:'📚'},
-              {label:'1er équipement',accord:totalEquip,facture:factEquip,color:'#7c3aed',icon:'🎒'},
-              {label:'Frais de repas',accord:totalRepas,facture:factRepas,color:'#C8A23A',icon:'🍽'},
+              {label:'Frais pédagogiques',accord:totalPeda,facture:factPeda,encaisse:encPeda,color:'#006B68',icon:'📚'},
+              {label:'1er équipement',accord:totalEquip,facture:factEquip,encaisse:encEquip,color:'#7c3aed',icon:'🎒'},
+              {label:'Frais de repas',accord:totalRepas,facture:factRepas,encaisse:encRepas,color:'#C8A23A',icon:'🍽'},
             ].map(s=>(
               <div key={s.label} style={{backgroundColor:'white',borderRadius:'10px',padding:'12px 14px',borderLeft:'4px solid '+s.color,boxShadow:'0 1px 4px rgba(0,0,0,0.06)',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
                 <div>
@@ -312,8 +445,12 @@ export default function Facturation() {
                       <div style={{fontSize:'13px',fontWeight:'800',color:'#0891b2'}}>{s.facture.toLocaleString('fr-FR',{minimumFractionDigits:2})} €</div>
                     </div>
                     <div>
-                      <div style={{fontSize:'9px',color:'#888',textTransform:'uppercase',fontWeight:'600'}}>Reste</div>
-                      <div style={{fontSize:'13px',fontWeight:'800',color:(s.accord-s.facture)>0?'#C8A23A':'#16a34a'}}>{(s.accord-s.facture).toLocaleString('fr-FR',{minimumFractionDigits:2})} €</div>
+                      <div style={{fontSize:'9px',color:'#888',textTransform:'uppercase',fontWeight:'600'}}>Encaissé</div>
+                      <div style={{fontSize:'13px',fontWeight:'800',color:'#16a34a'}}>{s.encaisse.toLocaleString('fr-FR',{minimumFractionDigits:2})} €</div>
+                    </div>
+                    <div>
+                      <div style={{fontSize:'9px',color:'#888',textTransform:'uppercase',fontWeight:'600'}}>Reste à enc.</div>
+                      <div style={{fontSize:'13px',fontWeight:'800',color:(s.facture-s.encaisse)>0?'#e53e3e':'#16a34a'}}>{(s.facture-s.encaisse).toLocaleString('fr-FR',{minimumFractionDigits:2})} €</div>
                     </div>
                   </div>
                 </div>
@@ -540,6 +677,7 @@ export default function Facturation() {
 
       {/* ── PAR OPCO ── */}
       {onglet==='opco'&&(
+        <div style={{display:'flex',flexDirection:'column',gap:'14px'}}>
         <Card>
           <h2 style={{fontSize:'14px',fontWeight:'700',color:'#006B68',marginBottom:'14px'}}>🏦 Synthèse par OPCO</h2>
           <div style={{overflowX:'auto'}}>
@@ -581,6 +719,71 @@ export default function Facturation() {
             </table>
           </div>
         </Card>
+
+        {/* Section Factures impayées par OPCO */}
+        {Object.keys(facturesImpayeesParOpco).length > 0 && (
+          <Card style={{border:'2px solid #e53e3e'}}>
+            <h2 style={{fontSize:'14px',fontWeight:'800',color:'#e53e3e',marginBottom:'10px'}}>
+              ⚠️ Factures impayées par OPCO ({Object.values(facturesImpayeesParOpco).reduce((s,arr)=>s+arr.length,0)} facture(s) — Total : {Object.values(facturesImpayeesParOpco).reduce((s,arr)=>s+arr.reduce((sa,f)=>sa+f.montantPrevu,0),0).toLocaleString('fr-FR',{minimumFractionDigits:2})} €)
+            </h2>
+            <p style={{fontSize:'11px',color:'#888',marginBottom:'10px',fontStyle:'italic'}}>Factures émises (avec n° et date) mais sans paiement enregistré.</p>
+            {Object.entries(facturesImpayeesParOpco).sort().map(([opco, factures]) => {
+              const totalOpco = factures.reduce((s,f)=>s+f.montantPrevu,0);
+              return (
+                <div key={opco} style={{marginBottom:'14px',borderRadius:'8px',border:'1.5px solid #fcc',overflow:'hidden'}}>
+                  <div style={{backgroundColor:'#fde8e8',padding:'8px 12px',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+                    <span style={{fontSize:'13px',fontWeight:'800',color:'#c53030'}}>🏦 {opco} — {factures.length} facture(s) impayée(s)</span>
+                    <span style={{fontSize:'13px',fontWeight:'800',color:'#c53030'}}>{totalOpco.toLocaleString('fr-FR',{minimumFractionDigits:2})} €</span>
+                  </div>
+                  <div style={{overflowX:'auto'}}>
+                    <table style={{width:'100%',borderCollapse:'collapse',fontSize:'11px'}}>
+                      <thead>
+                        <tr style={{backgroundColor:'#f9f9f9'}}>
+                          {['Apprenant','Formation','N° dossier OPCO','Nature','Libellé','N° facture','Date facture','Dépôt OPCO','Échéance 30j','Statut','Montant (€)'].map(c=>(
+                            <th key={c} style={{padding:'6px 8px',fontSize:'10px',color:'#666',fontWeight:'700',textTransform:'uppercase',textAlign:c.includes('Montant')?'right':'left'}}>{c}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {factures.map((f,i)=>{
+                          let statutBg = '#fff', statutColor = '#888', statutLabel = '—';
+                          if (f.joursRestants30j !== null) {
+                            if (f.joursRestants30j < 0) { statutBg = '#fee'; statutColor = '#c53030'; statutLabel = `🔴 Dépassé +${Math.abs(f.joursRestants30j)}j`; }
+                            else if (f.joursRestants30j <= 3) { statutBg = '#fef6e4'; statutColor = '#7a5c00'; statutLabel = `⚠️ J-${f.joursRestants30j}`; }
+                            else { statutBg = '#e6f4f1'; statutColor = '#006B68'; statutLabel = `J-${f.joursRestants30j}`; }
+                          } else if (f.joursDepuis !== null) {
+                            statutLabel = `Facturé il y a ${f.joursDepuis}j`;
+                            if (f.joursDepuis > 30) { statutBg = '#fee'; statutColor = '#c53030'; statutLabel = `🔴 +${f.joursDepuis}j sans dépôt OPCO`; }
+                          }
+                          return (
+                            <tr key={i} style={{borderBottom:'1px solid #f0f0f0',backgroundColor:i%2===0?'white':'#fafafa'}}>
+                              <td style={{padding:'6px 8px',fontWeight:'700'}}>{f.apprenant}</td>
+                              <td style={{padding:'6px 8px'}}>{f.formation}</td>
+                              <td style={{padding:'6px 8px',fontSize:'10px',color:'#888'}}>{f.numeroDossierOpco || '—'}</td>
+                              <td style={{padding:'6px 8px'}}>
+                                <span style={{backgroundColor:f.type==='pedago'?'#e6f4f1':f.type==='equipement'?'#ede9fe':'#fef6e4',color:f.type==='pedago'?'#006B68':f.type==='equipement'?'#7c3aed':'#C8A23A',padding:'2px 6px',borderRadius:'10px',fontSize:'9px',fontWeight:'600'}}>{f.type}</span>
+                              </td>
+                              <td style={{padding:'6px 8px'}}>{f.label}</td>
+                              <td style={{padding:'6px 8px',fontWeight:'600'}}>{f.numeroFacture}</td>
+                              <td style={{padding:'6px 8px'}}>{f.dateFacture}</td>
+                              <td style={{padding:'6px 8px'}}>{f.dateDepotOpco || '—'}</td>
+                              <td style={{padding:'6px 8px'}}>{f.dateEcheance30j || '—'}</td>
+                              <td style={{padding:'6px 8px'}}>
+                                <span style={{backgroundColor:statutBg,color:statutColor,padding:'2px 6px',borderRadius:'10px',fontSize:'10px',fontWeight:'700'}}>{statutLabel}</span>
+                              </td>
+                              <td style={{padding:'6px 8px',textAlign:'right',fontWeight:'700',color:'#c53030'}}>{f.montantPrevu.toLocaleString('fr-FR',{minimumFractionDigits:2})}</td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              );
+            })}
+          </Card>
+        )}
+        </div>
       )}
 
       {/* ── PAR MOIS ── */}
@@ -594,8 +797,88 @@ export default function Facturation() {
               </button>
             ))}
           </div>
+
+          {/* 3 tableaux par nature */}
+          {[
+            {nat:'pedago',label:'📚 Frais pédagogiques',color:'#006B68',kFact:'factP',kEnc:'encP'},
+            {nat:'equipement',label:'🎒 1er équipement',color:'#7c3aed',kFact:'factE',kEnc:'encE'},
+            {nat:'repas',label:'🍽 Frais de repas',color:'#C8A23A',kFact:'factR',kEnc:'encR'},
+          ].map(nature => (
+            <Card key={nature.nat} style={{marginBottom:'14px'}}>
+              <h2 style={{fontSize:'13px',fontWeight:'700',color:nature.color,marginBottom:'10px'}}>{nature.label} — {filtreAnnee}</h2>
+              <div style={{overflowX:'auto'}}>
+                <table style={{width:'100%',borderCollapse:'collapse',minWidth:'900px'}}>
+                  <thead>
+                    <tr style={{backgroundColor:nature.color}}>
+                      <th style={{...thStyle,textAlign:'left',padding:'8px 10px',width:'130px'}}>Indicateur</th>
+                      {MOIS_NOMS.map(m=><th key={m} style={{...thStyle,padding:'6px 4px',fontSize:'10px'}}>{m}</th>)}
+                      <th style={{...thStyle,color:'#C8A23A',padding:'8px 10px'}}>TOTAL</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {[
+                      {label:'Facturé (€)',key:nature.kFact,c:'#0891b2',mode:'fact' as const},
+                      {label:'Encaissé (€)',key:nature.kEnc,c:'#16a34a',mode:'enc' as const},
+                    ].map((row,ri)=>{
+                      const total = statsMois.reduce((s,m)=>s+(m as any)[row.key],0);
+                      return (
+                        <tr key={row.label} style={{borderBottom:'1px solid #f0f0f0',backgroundColor:ri%2===0?'white':'#EAF4F3'}}>
+                          <td style={{padding:'8px 10px',fontSize:'11px',fontWeight:'700',color:row.c}}>{row.label}</td>
+                          {statsMois.map((m,mi)=>{
+                            const v=(m as any)[row.key];
+                            if (v === 0) return <td key={mi} style={{padding:'6px 4px',fontSize:'10px',textAlign:'right',color:'#ddd'}}>—</td>;
+                            return <td key={mi} onClick={() => setDrilldown({titre:`${row.label} ${nature.label} — ${MOIS_NOMS[mi]} ${filtreAnnee}`, lignes: getEcheancesFiltrees({mode:row.mode,type:nature.nat,mois:mi,annee:filtreAnnee})})} style={{padding:'6px 4px',fontSize:'10px',textAlign:'right',color:row.c,fontWeight:'600',cursor:'pointer',textDecoration:'underline'}}>{v.toLocaleString('fr-FR',{minimumFractionDigits:0})}</td>;
+                          })}
+                          <td onClick={() => setDrilldown({titre:`${row.label} ${nature.label} — Total ${filtreAnnee}`, lignes: getEcheancesFiltrees({mode:row.mode,type:nature.nat,annee:filtreAnnee})})} style={{padding:'8px 10px',fontSize:'11px',textAlign:'right',fontWeight:'800',color:row.c,cursor:'pointer',textDecoration:'underline'}}>{total.toLocaleString('fr-FR',{minimumFractionDigits:2})}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </Card>
+          ))}
+
+          {/* Tableau Prévisionnel à facturer */}
+          <Card style={{marginBottom:'14px',border:'2px dashed #C8A23A'}}>
+            <h2 style={{fontSize:'14px',fontWeight:'700',color:'#C8A23A',marginBottom:'10px'}}>🔮 Prévisionnel à facturer — {filtreAnnee}</h2>
+            <p style={{fontSize:'11px',color:'#888',marginBottom:'10px',fontStyle:'italic'}}>Échéances planifiées (dateEcheance) sans facture encore émise. Clique sur un montant pour voir le détail.</p>
+            <div style={{overflowX:'auto'}}>
+              <table style={{width:'100%',borderCollapse:'collapse',minWidth:'900px'}}>
+                <thead>
+                  <tr style={{backgroundColor:'#C8A23A'}}>
+                    <th style={{...thStyle,textAlign:'left',padding:'8px 10px',width:'180px'}}>Nature</th>
+                    {MOIS_NOMS.map(m=><th key={m} style={{...thStyle,padding:'6px 4px',fontSize:'10px'}}>{m}</th>)}
+                    <th style={{...thStyle,color:'white',padding:'8px 10px'}}>TOTAL</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {[
+                    {label:'📚 Pédagogiques',key:'prevP',type:'pedago',c:'#006B68'},
+                    {label:'🎒 1er équipement',key:'prevE',type:'equipement',c:'#7c3aed'},
+                    {label:'🍽 Frais de repas',key:'prevR',type:'repas',c:'#C8A23A'},
+                    {label:'TOTAL',key:'prev',type:null,c:'#7a5c00',bold:true},
+                  ].map((row,ri)=>{
+                    const total = statsMois.reduce((s,m)=>s+(m as any)[row.key],0);
+                    return (
+                      <tr key={row.label} style={{borderBottom:'1px solid #f0f0f0',backgroundColor:row.bold?'#fef6e4':(ri%2===0?'white':'#EAF4F3')}}>
+                        <td style={{padding:'8px 10px',fontSize:'11px',fontWeight:row.bold?'800':'700',color:row.c}}>{row.label}</td>
+                        {statsMois.map((m,mi)=>{
+                          const v=(m as any)[row.key];
+                          if (v === 0) return <td key={mi} style={{padding:'6px 4px',fontSize:'10px',textAlign:'right',color:'#ddd'}}>—</td>;
+                          return <td key={mi} onClick={() => setDrilldown({titre:`🔮 Prévisionnel ${row.label} — ${MOIS_NOMS[mi]} ${filtreAnnee}`, lignes: getEcheancesFiltrees({mode:'prev',type:row.type||undefined,mois:mi,annee:filtreAnnee})})} style={{padding:'6px 4px',fontSize:'10px',textAlign:'right',color:row.c,fontWeight:row.bold?'800':'600',cursor:'pointer',textDecoration:'underline'}}>{v.toLocaleString('fr-FR',{minimumFractionDigits:0})}</td>;
+                        })}
+                        <td onClick={() => setDrilldown({titre:`🔮 Prévisionnel ${row.label} — Total ${filtreAnnee}`, lignes: getEcheancesFiltrees({mode:'prev',type:row.type||undefined,annee:filtreAnnee})})} style={{padding:'8px 10px',fontSize:'11px',textAlign:'right',fontWeight:'800',color:row.c,cursor:'pointer',textDecoration:'underline'}}>{total.toLocaleString('fr-FR',{minimumFractionDigits:2})}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </Card>
+
           <Card>
-            <h2 style={{fontSize:'14px',fontWeight:'700',color:'#006B68',marginBottom:'14px'}}>📅 Chiffre d'affaires mensuel — {filtreAnnee}</h2>
+            <h2 style={{fontSize:'14px',fontWeight:'700',color:'#006B68',marginBottom:'14px'}}>📅 TOTAL toutes natures confondues — {filtreAnnee}</h2>
             <div style={{overflowX:'auto'}}>
               <table style={{width:'100%',borderCollapse:'collapse',minWidth:'900px'}}>
                 <thead>
@@ -607,9 +890,9 @@ export default function Facturation() {
                 </thead>
                 <tbody>
                   {[
-                    {label:'Facturé (€)',key:'fact',color:'#0891b2'},
-                    {label:'Encaissé (€)',key:'enc',color:'#16a34a'},
-                    {label:'En att. règl. (€)',key:'att',color:'#e53e3e'},
+                    {label:'Facturé (€)',key:'fact',color:'#0891b2',mode:'fact' as const},
+                    {label:'Encaissé (€)',key:'enc',color:'#16a34a',mode:'enc' as const},
+                    {label:'En att. règl. (€)',key:'att',color:'#e53e3e',mode:'att' as const},
                   ].map((row,ri)=>{
                     const total=statsMois.reduce((s,m)=>s+(m as any)[row.key],0);
                     return (
@@ -617,9 +900,15 @@ export default function Facturation() {
                         <td style={{padding:'10px',fontSize:'12px',fontWeight:'700',color:row.color}}>{row.label}</td>
                         {statsMois.map((m,mi)=>{
                           const v=(m as any)[row.key];
-                          return <td key={mi} style={{padding:'7px 6px',fontSize:'11px',textAlign:'right',color:v>0?row.color:v<0?'#e53e3e':'#ddd',fontWeight:v!==0?'600':'400'}}>{v!==0?v.toLocaleString('fr-FR',{minimumFractionDigits:0}):'—'}</td>;
+                          if (v === 0) return <td key={mi} style={{padding:'7px 6px',fontSize:'11px',textAlign:'right',color:'#ddd'}}>—</td>;
+                          if (row.mode) return <td key={mi} onClick={() => setDrilldown({titre:`${row.label} toutes natures — ${MOIS_NOMS[mi]} ${filtreAnnee}`, lignes: getEcheancesFiltrees({mode:row.mode!,mois:mi,annee:filtreAnnee})})} style={{padding:'7px 6px',fontSize:'11px',textAlign:'right',color:row.color,fontWeight:'600',cursor:'pointer',textDecoration:'underline'}}>{v.toLocaleString('fr-FR',{minimumFractionDigits:0})}</td>;
+                          return <td key={mi} style={{padding:'7px 6px',fontSize:'11px',textAlign:'right',color:v>0?row.color:v<0?'#e53e3e':'#ddd',fontWeight:v!==0?'600':'400'}}>{v.toLocaleString('fr-FR',{minimumFractionDigits:0})}</td>;
                         })}
-                        <td style={{padding:'10px',fontSize:'12px',textAlign:'right',fontWeight:'800',color:row.color}}>{total.toLocaleString('fr-FR',{minimumFractionDigits:2})}</td>
+                        {row.mode ? (
+                          <td onClick={() => setDrilldown({titre:`${row.label} toutes natures — Total ${filtreAnnee}`, lignes: getEcheancesFiltrees({mode:row.mode!,annee:filtreAnnee})})} style={{padding:'10px',fontSize:'12px',textAlign:'right',fontWeight:'800',color:row.color,cursor:'pointer',textDecoration:'underline'}}>{total.toLocaleString('fr-FR',{minimumFractionDigits:2})}</td>
+                        ) : (
+                          <td style={{padding:'10px',fontSize:'12px',textAlign:'right',fontWeight:'800',color:row.color}}>{total.toLocaleString('fr-FR',{minimumFractionDigits:2})}</td>
+                        )}
                       </tr>
                     );
                   })}
@@ -696,6 +985,60 @@ export default function Facturation() {
             </tbody>
           </table>
         </Card>
+      )}
+
+      {/* Modale Drill-down — détail des montants */}
+      {drilldown && (
+        <div style={{position:'fixed',inset:0,backgroundColor:'rgba(0,0,0,0.5)',display:'flex',alignItems:'center',justifyContent:'center',zIndex:1000,padding:'20px'}}>
+          <div style={{backgroundColor:'white',borderRadius:'12px',padding:'24px',width:'95%',maxWidth:'1100px',maxHeight:'88vh',overflowY:'auto',boxShadow:'0 8px 32px rgba(0,0,0,0.2)'}}>
+            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'14px'}}>
+              <h2 style={{fontSize:'16px',fontWeight:'800',color:'#006B68'}}>🔍 {drilldown.titre}</h2>
+              <button onClick={() => setDrilldown(null)} style={{backgroundColor:'#f0f0f0',border:'none',borderRadius:'6px',padding:'6px 12px',cursor:'pointer',fontSize:'13px',fontWeight:'600'}}>✕ Fermer</button>
+            </div>
+            {drilldown.lignes.length === 0 ? (
+              <div style={{padding:'40px',textAlign:'center',color:'#888',fontStyle:'italic'}}>Aucune ligne trouvée.</div>
+            ) : (
+              <>
+                <div style={{fontSize:'12px',color:'#666',marginBottom:'10px'}}>
+                  <strong>{drilldown.lignes.length}</strong> ligne(s) — Total :
+                  <strong style={{color:'#006B68',marginLeft:'8px'}}>
+                    {drilldown.lignes.reduce((s,l) => s + (l.__col === 'enc' ? l.montantPaye : l.montantPrevu), 0).toLocaleString('fr-FR',{minimumFractionDigits:2})} €
+                  </strong>
+                </div>
+                <div style={{overflowX:'auto'}}>
+                  <table style={{width:'100%',borderCollapse:'collapse',fontSize:'12px'}}>
+                    <thead>
+                      <tr style={{backgroundColor:'#006B68'}}>
+                        {['Apprenant','Formation','Entreprise','OPCO','Nature','Libellé','N° Facture','Date facture','Date paiement','Mt prévu (€)','Mt payé (€)'].map(c=>(
+                          <th key={c} style={{padding:'8px 10px',fontSize:'10px',color:'white',fontWeight:'700',textTransform:'uppercase',textAlign:c.includes('Mt')?'right':'left'}}>{c}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {drilldown.lignes.map((l,i)=>(
+                        <tr key={i} style={{borderBottom:'1px solid #f0f0f0',backgroundColor:i%2===0?'white':'#EAF4F3'}}>
+                          <td style={{padding:'8px 10px',fontWeight:'700'}}>{l.apprenant}</td>
+                          <td style={{padding:'8px 10px'}}>{l.formation}</td>
+                          <td style={{padding:'8px 10px'}}>{l.entreprise}</td>
+                          <td style={{padding:'8px 10px'}}>{l.opco}</td>
+                          <td style={{padding:'8px 10px'}}>
+                            <span style={{backgroundColor:l.type==='pedago'?'#e6f4f1':l.type==='equipement'?'#ede9fe':'#fef6e4',color:l.type==='pedago'?'#006B68':l.type==='equipement'?'#7c3aed':'#C8A23A',padding:'2px 6px',borderRadius:'10px',fontSize:'10px',fontWeight:'600'}}>{l.type}</span>
+                          </td>
+                          <td style={{padding:'8px 10px'}}>{l.label}</td>
+                          <td style={{padding:'8px 10px',fontWeight:'600'}}>{l.numeroFacture || '—'}</td>
+                          <td style={{padding:'8px 10px'}}>{l.dateFacture || '—'}</td>
+                          <td style={{padding:'8px 10px'}}>{l.datePaiement || '—'}</td>
+                          <td style={{padding:'8px 10px',textAlign:'right',fontWeight:'600',color:'#0891b2'}}>{l.montantPrevu.toLocaleString('fr-FR',{minimumFractionDigits:2})}</td>
+                          <td style={{padding:'8px 10px',textAlign:'right',fontWeight:'700',color:l.montantPaye>0?'#16a34a':'#888'}}>{l.montantPaye.toLocaleString('fr-FR',{minimumFractionDigits:2})}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
       )}
 
       {/* Modale création */}
