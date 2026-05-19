@@ -5,6 +5,7 @@ import Badge from '../../../components/Badge';
 import Card from '../../../components/Card';
 import { COLORS } from '../../../lib/constants';
 import React, { use, useState, useEffect } from 'react';
+import { chargerSession as chargerSessionSupabase, modifierSession } from '../../../data/sessionsSupabase';
 
 // ✅ Charge la session depuis localStorage avec fallback sur le seed
 function trouverSession(id: string): any | null {
@@ -48,17 +49,30 @@ export default function FicheSession({ params }: { params: Promise<{ id: string 
   const [sauvegardePlanning, setSauvegardePlanning] = useState(false);
 
   useEffect(() => {
-    const s = trouverSession(id);
-    setSession(s);
-    if (s) {
-      const tous = chargerTousApprenants();
-      // Lien par apprenantIds (vraies sessions localStorage) OU par session legacy (seed)
-      const lies = s.apprenantIds && Array.isArray(s.apprenantIds)
-        ? tous.filter(a => s.apprenantIds.includes(a.id))
-        : [];
-      setApprenants(lies);
-    }
-    setChargement(false);
+    (async () => {
+      // 1. Tentative Supabase d'abord
+      let s: any = null;
+      try {
+        s = await chargerSessionSupabase(id);
+        if (s) console.log(`[FicheSession ${id}] Chargée depuis Supabase ✅`);
+      } catch (e) {
+        console.error('[FicheSession] Erreur Supabase, fallback localStorage', e);
+      }
+      // 2. Fallback localStorage
+      if (!s) {
+        s = trouverSession(id);
+        if (s) console.warn(`[FicheSession ${id}] Chargée depuis localStorage (fallback)`);
+      }
+      setSession(s);
+      if (s) {
+        const tous = chargerTousApprenants();
+        const lies = s.apprenantIds && Array.isArray(s.apprenantIds)
+          ? tous.filter(a => s.apprenantIds.includes(a.id))
+          : [];
+        setApprenants(lies);
+      }
+      setChargement(false);
+    })();
   }, [id]);
 
   const btnPrimary: React.CSSProperties = { backgroundColor: COLORS.primary, color: 'white', border: 'none', borderRadius: '8px', padding: '9px 16px', fontSize: '13px', fontWeight: '600', cursor: 'pointer', textDecoration: 'none', display: 'inline-block' };
@@ -74,15 +88,20 @@ export default function FicheSession({ params }: { params: Promise<{ id: string 
     setModeEditionPlanning(false);
   }
 
-  function sauvegarderPlanning() {
+  async function sauvegarderPlanning() {
     try {
+      // Supabase d'abord
+      const res = await modifierSession(id, { planning: planningBrouillon } as any);
+      if (!res.success) alert(`⚠️ Erreur Supabase : ${res.error}`);
+      else console.log(`[FicheSession ${id}] Planning sauvegardé dans Supabase ✅`);
+      // localStorage en miroir
       const liste = JSON.parse(localStorage.getItem('easycfa_sessions_v2') || '[]');
       const idx = liste.findIndex((s: any) => String(s.id) === id);
       if (idx >= 0) {
         liste[idx].planning = planningBrouillon;
         localStorage.setItem('easycfa_sessions_v2', JSON.stringify(liste));
-        setSession({ ...session, planning: planningBrouillon });
       }
+      setSession({ ...session, planning: planningBrouillon });
       setModeEditionPlanning(false);
       setSauvegardePlanning(true);
       setTimeout(() => setSauvegardePlanning(false), 3000);

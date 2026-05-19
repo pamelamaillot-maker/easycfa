@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { COLORS } from '../../../lib/constants';
+import { creerEntreprise } from '../../../data/entreprisesSupabase';
 
 const SECTIONS = [
   { id: 'identite', label: '🏢 Identification', description: 'Infos légales entreprise' },
@@ -113,7 +114,7 @@ export default function NouvelleEntreprise() {
    * 4. Sauvegarde aussi dans `entreprise_<id>` (la fiche détail)
    * 5. Redirige vers la fiche du nouvel entreprise
    */
-  function sauvegarder() {
+  async function sauvegarder() {
     // Validation minimale
     if (!form.raisonSociale.trim()) {
       setErreur('⚠️ La raison sociale est obligatoire.');
@@ -127,7 +128,7 @@ export default function NouvelleEntreprise() {
     }
 
     try {
-      // 1. Charger la liste actuelle
+      // 1. Charger la liste actuelle (pour générer un ID unique)
       const listeBrute = localStorage.getItem('easycfa_entreprises_v2');
       const liste: any[] = listeBrute ? JSON.parse(listeBrute) : [];
 
@@ -142,11 +143,28 @@ export default function NouvelleEntreprise() {
         dateCreation: new Date().toISOString(),
       };
 
-      // 4. Ajouter à la liste globale
+      // 4. SUPABASE : version nettoyée (sans les champs orphelins)
+      const pourSupabase: any = { ...nouveau };
+      // Retirer les champs qui ne sont pas dans la table Supabase
+      ['libelleApe', 'pays', 'siteWeb', 'libelleConventionCollective', 'faf',
+       'caisseRetraite', 'caisseCongesPayes', 'regimePrevoyance',
+       'employeurPublic', 'travailDangereux',
+       'dirigeantCivilite', 'dirigeantTelephone',
+       'tuteurCivilite', 'tuteurAnneeExperience',
+       'rhTelephone', 'opcoContact', 'mandatSepa', 'tarifHoraire', 'notes']
+        .forEach(k => delete pourSupabase[k]);
+
+      const res = await creerEntreprise(pourSupabase);
+      if (!res.success) {
+        console.error('[NouvelleEntreprise] Erreur Supabase:', res.error);
+        alert(`⚠️ Erreur Supabase : ${res.error}\nL'entreprise a quand même été créée localement.`);
+      } else {
+        console.log(`[NouvelleEntreprise] ${id} créée dans Supabase ✅`);
+      }
+
+      // 5. localStorage en miroir (avec TOUS les champs)
       liste.push(nouveau);
       localStorage.setItem('easycfa_entreprises_v2', JSON.stringify(liste));
-
-      // 5. Sauvegarder aussi la fiche détail
       localStorage.setItem(`entreprise_${id}`, JSON.stringify(nouveau));
 
       // 6. Feedback + redirection

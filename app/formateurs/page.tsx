@@ -2,6 +2,12 @@
 
 import { useState, useEffect } from 'react';
 import { COLORS } from '../../lib/constants';
+import { 
+  chargerFormateurs as chargerFormateursSupabase,
+  creerFormateur as creerFormateurSupabase,
+  modifierFormateur,
+  supprimerFormateur as supprimerFormateurSupabase,
+} from '../../data/formateursSupabase';
 import Card from '../../components/Card';
 import { useAcces } from '../../lib/useAcces';
 import {
@@ -435,18 +441,35 @@ export default function Formateurs() {
   }, [selectionne?.id]);
 
   useEffect(() => {
-    try {
-      const saved = localStorage.getItem('easycfa_formateurs');
-      if (saved) setFormateurs(JSON.parse(saved));
-    } catch {}
+    (async () => {
+      try {
+        const fromSupabase = await chargerFormateursSupabase();
+        if (fromSupabase.length > 0) {
+          console.log(`[Formateurs] ${fromSupabase.length} formateurs chargés depuis Supabase ✅`);
+          setFormateurs(fromSupabase as any[]);
+          return;
+        }
+        console.warn('[Formateurs] Supabase vide, fallback localStorage');
+      } catch (e) {
+        console.error('[Formateurs] Erreur Supabase, fallback localStorage', e);
+      }
+      // Fallback localStorage
+      try {
+        const saved = localStorage.getItem('easycfa_formateurs');
+        if (saved) setFormateurs(JSON.parse(saved));
+      } catch {}
+    })();
   }, []);
 
   function sauvegarder(liste: Formateur[]) {
+    // 1. UI immédiate + localStorage en miroir
     setFormateurs(liste);
     localStorage.setItem('easycfa_formateurs', JSON.stringify(liste));
+    // 2. Supabase : on délègue aux fonctions spécifiques (creer/modifier/supprimer)
+    //    qui sont appelées en amont. Ici on ne fait QUE le miroir local.
   }
 
-  function creerFormateur() {
+  async function creerFormateur() {
     if (!form.nom || !form.prenom) return;
     const nouveau: Formateur = {
       id: Date.now().toString(),
@@ -463,15 +486,25 @@ export default function Formateurs() {
       suiviMensuel: [],
       pieces: form.pieces ?? { cni: null, cv: null, kbis: null, recepisse_nda: null, attestation: null, rc_pro: null, rib: null, contrat_prestation: null },
     };
+    // Supabase d'abord
+    const res = await creerFormateurSupabase(nouveau as any);
+    if (!res.success) alert(`⚠️ Erreur Supabase : ${res.error}`);
+    else console.log(`[Formateurs] ${nouveau.id} créé dans Supabase ✅`);
+    // localStorage + UI
     sauvegarder([...formateurs, nouveau]);
     setModale(false);
     setForm({ statut: 'Actif', specialites: [], pieces: { cni: null, cv: null, kbis: null, recepisse_nda: null, attestation: null, rc_pro: null } });
     setSelectionne(nouveau);
   }
 
-  function mettreAJour(champ: string, valeur: any) {
+  async function mettreAJour(champ: string, valeur: any) {
     if (!selectionne) return;
     const updated = { ...selectionne, [champ]: valeur };
+    // Supabase d'abord (uniquement le champ modifié)
+    const res = await modifierFormateur(selectionne.id, { [champ]: valeur } as any);
+    if (!res.success) alert(`⚠️ Erreur Supabase : ${res.error}`);
+    else console.log(`[Formateurs ${selectionne.id}] ${champ} mis à jour dans Supabase ✅`);
+    // UI + localStorage
     setSelectionne(updated);
     sauvegarder(formateurs.map(f => f.id === updated.id ? updated : f));
   }
@@ -484,8 +517,13 @@ export default function Formateurs() {
     sauvegarder(formateurs.map(f => f.id === updated.id ? updated : f));
   }
 
-  function supprimerFormateur(id: string) {
+  async function supprimerFormateur(id: string) {
     if (!confirm('Supprimer ce formateur ?')) return;
+    // Supabase d'abord
+    const res = await supprimerFormateurSupabase(id);
+    if (!res.success) alert(`⚠️ Erreur Supabase : ${res.error}`);
+    else console.log(`[Formateurs ${id}] Supprimé de Supabase ✅`);
+    // UI + localStorage
     sauvegarder(formateurs.filter(f => f.id !== id));
     if (selectionne?.id === id) setSelectionne(null);
   }

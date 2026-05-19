@@ -4,6 +4,12 @@ import { useState, useEffect } from 'react';
 import { ENTREPRISES_REELS } from '../../data/mockEntreprises_reels';
 import { APPRENANTS_REELS } from '../../data/mockApprenants_reels';
 import { COLORS } from '../../lib/constants';
+import { 
+  chargerMandats as chargerMandatsSupabase,
+  creerMandat as creerMandatSupabase,
+  modifierMandat,
+  supprimerMandat as supprimerMandatSupabase,
+} from '../../data/mandatsSupabase';
 import Card from '../../components/Card';
 
 const FORMATIONS = ['SC', 'GCF', 'AD', 'ARH', 'CATL', 'EC', 'CV', 'FPA'];
@@ -57,10 +63,23 @@ export default function Recrutement() {
   const [nouveauCandidat, setNouveauCandidat] = useState({ nom: '', prenom: '', statut: 'P2S', notes: '' });
 
   useEffect(() => {
-    try {
-      const saved = localStorage.getItem('easycfa_mandats');
-      if (saved) setMandats(JSON.parse(saved));
-    } catch {}
+    (async () => {
+      try {
+        const fromSupabase = await chargerMandatsSupabase();
+        if (fromSupabase.length > 0) {
+          console.log(`[Mandats] ${fromSupabase.length} mandats chargés depuis Supabase ✅`);
+          setMandats(fromSupabase as any[]);
+          return;
+        }
+        console.warn('[Mandats] Supabase vide, fallback localStorage');
+      } catch (e) {
+        console.error('[Mandats] Erreur Supabase, fallback localStorage', e);
+      }
+      try {
+        const saved = localStorage.getItem('easycfa_mandats');
+        if (saved) setMandats(JSON.parse(saved));
+      } catch {}
+    })();
   }, []);
 
   function sauvegarderMandats(liste: Mandat[]) {
@@ -68,7 +87,7 @@ export default function Recrutement() {
     localStorage.setItem('easycfa_mandats', JSON.stringify(liste));
   }
 
-  function creerMandat() {
+  async function creerMandat() {
     if (!form.entrepriseNom || !form.formation) return;
     const nouveau: Mandat = {
       id: Date.now().toString(),
@@ -93,6 +112,11 @@ export default function Recrutement() {
       candidats: [],
       notes: form.notes ?? '',
     };
+    // Supabase d'abord
+    const res = await creerMandatSupabase(nouveau as any);
+    if (!res.success) alert(`⚠️ Erreur Supabase : ${res.error}`);
+    else console.log(`[Mandats] ${nouveau.id} créé dans Supabase ✅`);
+    // localStorage + UI
     sauvegarderMandats([...mandats, nouveau]);
     setModale(false);
     setForm({ statut: 'En attente', nbPostes: 1 });
@@ -116,23 +140,31 @@ export default function Recrutement() {
     }, 500);
   }
 
-  function mettreAJourFiche(champ: string, valeur: any) {
+  async function mettreAJourFiche(champ: string, valeur: any) {
     if (!ficheOuverte) return;
     const updated = { ...ficheOuverte, [champ]: valeur };
+    // Supabase d'abord
+    const res = await modifierMandat(ficheOuverte.id, { [champ]: valeur } as any);
+    if (!res.success) alert(`⚠️ Erreur Supabase : ${res.error}`);
+    else console.log(`[Mandats ${ficheOuverte.id}] ${champ} mis à jour dans Supabase ✅`);
+    // UI + localStorage
     setFicheOuverte(updated);
     sauvegarderMandats(mandats.map(m => m.id === updated.id ? updated : m));
   }
 
   function ajouterCandidat() {
     if (!ficheOuverte || !nouveauCandidat.nom) return;
-    const updated = { ...ficheOuverte, candidats: [...(ficheOuverte.candidats ?? []), { ...nouveauCandidat }] };
-    setFicheOuverte(updated);
-    sauvegarderMandats(mandats.map(m => m.id === updated.id ? updated : m));
+    mettreAJourFiche('candidats', [...(ficheOuverte.candidats ?? []), { ...nouveauCandidat }]);
     setNouveauCandidat({ nom: '', prenom: '', statut: 'P2S', notes: '' });
   }
 
-  function supprimerMandat(id: string) {
+  async function supprimerMandat(id: string) {
     if (confirm('Supprimer ce mandat ?')) {
+      // Supabase d'abord
+      const res = await supprimerMandatSupabase(id);
+      if (!res.success) alert(`⚠️ Erreur Supabase : ${res.error}`);
+      else console.log(`[Mandats ${id}] Supprimé de Supabase ✅`);
+      // UI + localStorage
       sauvegarderMandats(mandats.filter(m => m.id !== id));
       if (ficheOuverte?.id === id) setFicheOuverte(null);
     }
@@ -399,9 +431,7 @@ export default function Recrutement() {
                       <span style={{ fontSize: '12px', color: '#555' }}>{a.prenom} {a.nom}</span>
                       <button onClick={() => {
                         const cand = { nom: a.nom, prenom: a.prenom, statut: 'P2S', notes: '' };
-                        const updated = { ...ficheOuverte, candidats: [...(ficheOuverte.candidats ?? []), cand] };
-                        setFicheOuverte(updated);
-                        sauvegarderMandats(mandats.map(m => m.id === updated.id ? updated : m));
+                        mettreAJourFiche('candidats', [...(ficheOuverte.candidats ?? []), cand]);
                       }} style={{ backgroundColor: '#006B68', color: 'white', border: 'none', borderRadius: '6px', padding: '3px 8px', fontSize: '11px', cursor: 'pointer' }}>
                         + Ajouter
                       </button>
@@ -418,9 +448,7 @@ export default function Recrutement() {
                     <div style={{ fontSize: '11px', color: '#888' }}>{cand.statut}{cand.notes ? ' — ' + cand.notes : ''}</div>
                   </div>
                   <button onClick={() => {
-                    const updated = { ...ficheOuverte, candidats: ficheOuverte.candidats.filter((_, j) => j !== i) };
-                    setFicheOuverte(updated);
-                    sauvegarderMandats(mandats.map(m => m.id === updated.id ? updated : m));
+                    mettreAJourFiche('candidats', ficheOuverte.candidats.filter((_, j) => j !== i));
                   }} style={{ backgroundColor: '#fde8e8', color: '#e53e3e', border: 'none', borderRadius: '6px', padding: '3px 8px', fontSize: '11px', cursor: 'pointer' }}>✕</button>
                 </div>
               ))}

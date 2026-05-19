@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { ENTREPRISES_REELS } from '../../data/mockEntreprises_reels';
 import { COLORS } from '../../lib/constants';
+import { chargerEntreprises as chargerEntreprisesSupabase } from '../../data/entreprisesSupabase';
 import Card from '../../components/Card';
 import StatCard from '../../components/StatCard';
 
@@ -74,9 +75,22 @@ export default function Entreprises() {
   const [filtreOpco, setFiltreOpco] = useState('');
   const fileRef = useRef<HTMLInputElement>(null);
 
-  // ✅ Charge les entreprises depuis localStorage au montage
+  // ✅ Charge depuis Supabase d'abord, fallback localStorage
   useEffect(() => {
-    setEntreprises(chargerEntreprisesMerges());
+    (async () => {
+      try {
+        const fromSupabase = await chargerEntreprisesSupabase();
+        if (fromSupabase.length > 0) {
+          console.log(`[Entreprises] ${fromSupabase.length} entreprises chargées depuis Supabase ✅`);
+          setEntreprises(fromSupabase as any[]);
+          return;
+        }
+        console.warn('[Entreprises] Supabase vide, fallback localStorage');
+      } catch (e) {
+        console.error('[Entreprises] Erreur Supabase, fallback localStorage', e);
+      }
+      setEntreprises(chargerEntreprisesMerges());
+    })();
   }, []);
 
   function exporter() {

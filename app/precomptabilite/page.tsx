@@ -3,6 +3,14 @@
 import { useState, useEffect } from 'react';
 import { APPRENANTS_REELS } from '../../data/mockApprenants_reels';
 import { useAcces, tracerAction } from '../../lib/useAcces';
+import { 
+  chargerApcs as chargerApcsSupabase,
+  creerApc as creerApcSupabase,
+  modifierApc,
+  supprimerApc as supprimerApcSupabase,
+  modifierEcheance,
+  creerEcheance,
+} from '../../data/apcsSupabase';
 import Card from '../../components/Card';
 
 const inputStyle: React.CSSProperties = { border: '1.5px solid #e0e0e0', borderRadius: '8px', padding: '7px 10px', fontSize: '12px', width: '100%', boxSizing: 'border-box', backgroundColor: 'white' };
@@ -111,12 +119,25 @@ export default function Facturation() {
   const [voirArchives, setVoirArchives] = useState(false);
 
   useEffect(()=>{
-    try { const s=localStorage.getItem('easycfa_apcs_v2'); if(s) setApcs(JSON.parse(s)); } catch {}
+    (async () => {
+      try {
+        const fromSupabase = await chargerApcsSupabase();
+        if (fromSupabase.length > 0) {
+          console.log(`[APCs] ${fromSupabase.length} APCs chargés depuis Supabase ✅`);
+          setApcs(fromSupabase as any[]);
+          return;
+        }
+        console.warn('[APCs] Supabase vide, fallback localStorage');
+      } catch (e) {
+        console.error('[APCs] Erreur Supabase, fallback localStorage', e);
+      }
+      try { const s=localStorage.getItem('easycfa_apcs_v2'); if(s) setApcs(JSON.parse(s)); } catch {}
+    })();
   },[]);
 
   function save(liste: APC[]) { setApcs(liste); localStorage.setItem('easycfa_apcs_v2',JSON.stringify(liste)); }
 
-  function creerAPC() {
+  async function creerAPC() {
     if (!form.apprenantId||!form.opco) return;
     const ap=APPRENANTS_REELS.find(a=>a.id===form.apprenantId);
     const n:APC={
@@ -134,16 +155,48 @@ export default function Facturation() {
       nbJoursFormation:form.nbJoursFormation??0,resteACharge:form.resteACharge??0,
       apcRecu:'',dateReception:'',echeances:genererEcheances({...form}),statut:'En attente',
     };
+    // Supabase d'abord (APC + ses échéances)
+    const res = await creerApcSupabase(n as any);
+    if (!res.success) alert(`⚠️ Erreur Supabase : ${res.error}`);
+    else console.log(`[APCs] ${n.id} créé dans Supabase (${n.echeances.length} échéances) ✅`);
+    // UI + localStorage
     save([...apcs,n]); setModale(false); setForm({statut:'En attente',annee:'2026',echeances:[]}); setApcSel(n);
   }
 
-  function maj(champ:string,val:any) {
+  async function maj(champ:string,val:any) {
     if (!apcSel) return;
-    const u={...apcSel,[champ]:val}; setApcSel(u); save(apcs.map(a=>a.id===u.id?u:a));
+    const u={...apcSel,[champ]:val};
+    // Si on modifie les échéances, on les envoie via creerApc (upsert global). Sinon, modifierApc.
+    if (champ === 'echeances') {
+      const res = await creerApcSupabase(u as any);
+      if (!res.success) alert(`⚠️ Erreur Supabase : ${res.error}`);
+      else console.log(`[APCs ${apcSel.id}] Échéances mises à jour dans Supabase ✅`);
+    } else {
+      const res = await modifierApc(apcSel.id, { [champ]: val } as any);
+      if (!res.success) alert(`⚠️ Erreur Supabase : ${res.error}`);
+      else console.log(`[APCs ${apcSel.id}] ${champ} mis à jour dans Supabase ✅`);
+    }
+    setApcSel(u); save(apcs.map(a=>a.id===u.id?u:a));
   }
 
-  function marquerRelance(facture: any, envoyee: boolean) {
+  async function marquerRelance(facture: any, envoyee: boolean) {
     const dateJour = envoyee ? new Date().toLocaleDateString('fr-FR') : '';
+    // Trouver l'échéance ciblée pour récupérer son id
+    let targetId: string | null = null;
+    apcs.forEach(a => {
+      if (a.opco !== facture.opco) return;
+      a.echeances.forEach(e => {
+        if (e.numeroFacture === facture.numeroFacture && e.dateFacture === facture.dateFacture) {
+          targetId = e.id;
+        }
+      });
+    });
+    if (targetId) {
+      const res = await modifierEcheance(targetId, { relanceEnvoyee: envoyee, dateRelance: dateJour } as any);
+      if (!res.success) alert(`⚠️ Erreur Supabase : ${res.error}`);
+      else console.log(`[Echeance ${targetId}] Relance ${envoyee?'envoyée':'annulée'} dans Supabase ✅`);
+    }
+    // UI + localStorage
     const updated = apcs.map(a => {
       if (a.opco !== facture.opco) return a;
       return {
@@ -159,7 +212,21 @@ export default function Facturation() {
     save(updated);
   }
 
-  function modifierDateRelance(facture: any, nouvelleDate: string) {
+  async function modifierDateRelance(facture: any, nouvelleDate: string) {
+    let targetId: string | null = null;
+    apcs.forEach(a => {
+      if (a.opco !== facture.opco) return;
+      a.echeances.forEach(e => {
+        if (e.numeroFacture === facture.numeroFacture && e.dateFacture === facture.dateFacture) {
+          targetId = e.id;
+        }
+      });
+    });
+    if (targetId) {
+      const res = await modifierEcheance(targetId, { dateRelance: nouvelleDate } as any);
+      if (!res.success) alert(`⚠️ Erreur Supabase : ${res.error}`);
+      else console.log(`[Echeance ${targetId}] dateRelance mise à jour dans Supabase ✅`);
+    }
     const updated = apcs.map(a => {
       if (a.opco !== facture.opco) return a;
       return {
@@ -175,8 +242,9 @@ export default function Facturation() {
     save(updated);
   }
 
-  function majEch(eid:string,champ:string,val:any) {
+  async function majEch(eid:string,champ:string,val:any) {
     if (!apcSel) return;
+    let mods: any = { [champ]: val, modifiee: true };
     const echs=apcSel.echeances.map(e=>{
       if (e.id!==eid) return e;
       const u={...e,[champ]:val,modifiee:true};
@@ -185,15 +253,26 @@ export default function Facturation() {
         if (p.length===3) {
           const d=new Date(parseInt(p[2]),parseInt(p[1])-1,parseInt(p[0]));
           d.setDate(d.getDate()+30); u.dateEcheance30j=d.toLocaleDateString('fr-FR');
+          mods.dateEcheance30j = u.dateEcheance30j;
         }
       }
       return u;
     });
+    // Supabase d'abord
+    const res = await modifierEcheance(eid, mods);
+    if (!res.success) alert(`⚠️ Erreur Supabase : ${res.error}`);
+    else console.log(`[Echeance ${eid}] ${champ} mis à jour dans Supabase ✅`);
+    // UI + localStorage
     const u={...apcSel,echeances:echs}; setApcSel(u); save(apcs.map(a=>a.id===u.id?u:a));
   }
 
-  function supprimer(id:string) {
+  async function supprimer(id:string) {
     if (!confirm('Supprimer ce dossier ?')) return;
+    // Supabase d'abord (les échéances sont supprimées en cascade via FK ON DELETE CASCADE)
+    const res = await supprimerApcSupabase(id);
+    if (!res.success) alert(`⚠️ Erreur Supabase : ${res.error}`);
+    else console.log(`[APCs ${id}] Supprimé de Supabase (cascade échéances) ✅`);
+    // UI + localStorage
     save(apcs.filter(a=>a.id!==id)); if(apcSel?.id===id) setApcSel(null);
   }
 
@@ -757,8 +836,13 @@ export default function Facturation() {
                         <td style={{padding:'8px 10px',textAlign:'right',color:'#16a34a',fontWeight:'700'}}>{enc.toLocaleString('fr-FR',{minimumFractionDigits:2})}</td>
                         {estAdmin && (
                           <td style={{padding:'8px 10px'}}>
-                            <button onClick={() => {
+                            <button onClick={async () => {
                               if (!confirm(`Désarchiver le dossier de ${a.apprenantPrenom} ${a.apprenantNom} ?\n\nIl repassera en statut "Accordé" et redeviendra actif.`)) return;
+                              // Supabase d'abord
+                              const res = await modifierApc(a.id, { statut: 'Accordé' } as any);
+                              if (!res.success) alert(`⚠️ Erreur Supabase : ${res.error}`);
+                              else console.log(`[APCs ${a.id}] Désarchivé dans Supabase ✅`);
+                              // UI + localStorage
                               const updated = apcs.map(x => x.id === a.id ? {...x, statut: 'Accordé' as const} : x);
                               save(updated);
                               tracerAction('DESARCHIVAGE', 'apc', a.id, `${a.apprenantPrenom} ${a.apprenantNom} — ${a.opco}`, utilisateur);

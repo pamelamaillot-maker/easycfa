@@ -6,6 +6,7 @@ import { APPRENANTS_REELS, DERNIERE_SITUATION_SIFA, verifierConformiteSifa, estM
 import { ENTREPRISES_REELS } from '../../../data/mockEntreprises_reels';
 import { SESSIONS } from '../../../data/mockData';
 import { COLORS } from '../../../lib/constants';
+import { chargerApprenti, creerApprenti, modifierApprenti, supprimerApprenti as supprimerApprentiSupabase } from '../../../data/apprentisSupabase';
 import Card from '../../../components/Card';
 import { useAcces } from '../../../lib/useAcces';
 import dynamic from 'next/dynamic';
@@ -656,18 +657,33 @@ export default function FicheApprenant({ params }: { params: Promise<{ id: strin
   const peutModifierEntretien = estAdmin || estPedagogique;
 
   useEffect(() => {
-    const trouve = trouverApprenant(id);
-    setApprenant(trouve);
-    setForm(trouve ?? {});
-    setSessions(chargerSessions());
-    setEntreprises(chargerEntreprises());
+    (async () => {
+      // 1. Tentative Supabase d'abord
+      let trouve: any = null;
+      try {
+        trouve = await chargerApprenti(id);
+        if (trouve) console.log(`[FicheApprenant ${id}] Chargé depuis Supabase ✅`);
+      } catch (e) {
+        console.error('[FicheApprenant] Erreur Supabase, fallback localStorage', e);
+      }
+      // 2. Fallback localStorage si rien dans Supabase
+      if (!trouve) {
+        trouve = trouverApprenant(id);
+        if (trouve) console.warn(`[FicheApprenant ${id}] Chargé depuis localStorage (fallback)`);
+      }
 
-    if (trouve) {
-      const ents = chargerOuCreerEntretiensApprenant(id, trouve.dateDebutContrat, trouve.dateFinContrat);
-      setEntretiens(ents);
-    }
+      setApprenant(trouve);
+      setForm(trouve ?? {});
+      setSessions(chargerSessions());
+      setEntreprises(chargerEntreprises());
 
-    setChargement(false);
+      if (trouve) {
+        const ents = chargerOuCreerEntretiensApprenant(id, trouve.dateDebutContrat, trouve.dateFinContrat);
+        setEntretiens(ents);
+      }
+
+      setChargement(false);
+    })();
   }, [id]);
 
   useEffect(() => {
@@ -727,7 +743,19 @@ export default function FicheApprenant({ params }: { params: Promise<{ id: strin
     return `${nom}${debut ? ` — ${debut}` : ''}${fin ? ` → ${fin}` : ''}`;
   }
 
-  function sauvegarder() {
+  async function sauvegarder() {
+    // 1. Supabase d'abord (source de vérité)
+    try {
+      const res = await modifierApprenti(id, form);
+      if (!res.success) {
+        alert(`⚠️ Erreur Supabase : ${res.error}\nModifications enregistrées localement uniquement.`);
+      } else {
+        console.log(`[FicheApprenant ${id}] Sauvegardé dans Supabase ✅`);
+      }
+    } catch (e) {
+      console.error('[FicheApprenant] Erreur Supabase, sauvegarde locale uniquement', e);
+    }
+    // 2. localStorage en miroir (fallback / compatibilité)
     localStorage.setItem('apprenant_' + id, JSON.stringify(form));
     try {
       const liste = JSON.parse(localStorage.getItem('easycfa_apprenants_v2') || '[]');
@@ -745,8 +773,20 @@ export default function FicheApprenant({ params }: { params: Promise<{ id: strin
     setTimeout(() => setSauvegarde(false), 3000);
   }
 
-  function declarerRupture() {
+  async function declarerRupture() {
     const updated = { ...form, statut: 'Rupture', dateRupture: rupture.date, maintienFormation: rupture.maintien };
+    // 1. Supabase d'abord
+    try {
+      const res = await modifierApprenti(id, { statut: 'Rupture', dateRupture: rupture.date, maintienFormation: rupture.maintien });
+      if (!res.success) {
+        alert(`⚠️ Erreur Supabase : ${res.error}\nRupture enregistrée localement uniquement.`);
+      } else {
+        console.log(`[FicheApprenant ${id}] Rupture sauvegardée dans Supabase ✅`);
+      }
+    } catch (e) {
+      console.error('[FicheApprenant] Erreur Supabase rupture, fallback local', e);
+    }
+    // 2. UI + localStorage en miroir
     setForm(updated);
     setApprenant(updated);
     localStorage.setItem('apprenant_' + id, JSON.stringify(updated));
@@ -762,7 +802,19 @@ export default function FicheApprenant({ params }: { params: Promise<{ id: strin
     setTimeout(() => setSauvegarde(false), 3000);
   }
 
-  function supprimerApprenant() {
+  async function supprimerApprenant() {
+    // 1. Supabase d'abord (source de vérité)
+    try {
+      const res = await supprimerApprentiSupabase(id);
+      if (!res.success) {
+        alert(`⚠️ Erreur Supabase : ${res.error}\nL'apprenant a été supprimé localement uniquement.`);
+      } else {
+        console.log(`[FicheApprenant ${id}] Supprimé de Supabase ✅`);
+      }
+    } catch (e) {
+      console.error('[FicheApprenant] Erreur Supabase suppression, fallback local', e);
+    }
+    // 2. localStorage en miroir
     try {
       const liste = JSON.parse(localStorage.getItem('easycfa_apprenants_v2') || '[]');
       const listeFiltree = liste.filter((a: any) => a.id !== id);
@@ -864,8 +916,13 @@ export default function FicheApprenant({ params }: { params: Promise<{ id: strin
               </button>
               {!estEnRupture && <button onClick={() => setModaleRupture(true)} style={btnDanger}>Déclarer rupture</button>}
               {!estEnRupture && form.statut !== 'Terminé' && (
-                <button onClick={() => {
+                <button onClick={async () => {
                   const updated = { ...form, statut: 'Terminé' };
+                  // Supabase d'abord
+                  const res = await modifierApprenti(id, { statut: 'Terminé' });
+                  if (!res.success) alert(`⚠️ Erreur Supabase : ${res.error}`);
+                  else console.log(`[FicheApprenant ${id}] Marqué Terminé dans Supabase ✅`);
+                  // localStorage en miroir
                   setForm(updated); setApprenant(updated);
                   localStorage.setItem('apprenant_' + id, JSON.stringify(updated));
                   try {
@@ -880,8 +937,13 @@ export default function FicheApprenant({ params }: { params: Promise<{ id: strin
                 </button>
               )}
               {form.statut === 'Terminé' && (
-                <button onClick={() => {
+                <button onClick={async () => {
                   const updated = { ...form, statut: 'En cours' };
+                  // Supabase d'abord
+                  const res = await modifierApprenti(id, { statut: 'En cours' });
+                  if (!res.success) alert(`⚠️ Erreur Supabase : ${res.error}`);
+                  else console.log(`[FicheApprenant ${id}] Réactivé dans Supabase ✅`);
+                  // localStorage en miroir
                   setForm(updated); setApprenant(updated);
                   localStorage.setItem('apprenant_' + id, JSON.stringify(updated));
                   try {
@@ -941,11 +1003,36 @@ export default function FicheApprenant({ params }: { params: Promise<{ id: strin
           {form.maintienFormation === 'OUI' && (
             <div style={{ marginTop: '10px', display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
               <button
-                onClick={() => {
+                onClick={async () => {
                   if (!confirm(`L'apprenti(e) ${form.prenom} ${form.nom} a trouvé une nouvelle entreprise ?\n\nCela va :\n- Clôturer la fiche actuelle (statut "Terminé")\n- Créer une nouvelle fiche apprenti pré-remplie pour le nouveau contrat`)) return;
                   const nettoyer = (s: string) => (s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^A-Za-z]/g, '').toUpperCase();
                   const nouvelId = `${nettoyer(form.nom).substring(0,3)}${nettoyer(form.prenom).substring(0,2)}_${Date.now().toString().slice(-4)}`;
                   const nouvelleFiche = { ...form, id: nouvelId, statut: 'En cours', entreprise: '', entrepriseId: '', dateDebutContrat: '', dateFinContrat: '', dateRupture: '', maintienFormation: '', contratPrecedent: id, archive: false };
+
+                  // === SUPABASE : créer la nouvelle fiche + clôturer l'ancienne ===
+                  // 1. Nettoyer la nouvelle fiche pour Supabase (retirer les champs orphelins)
+                  const pourSupabase: any = { ...nouvelleFiche };
+                  delete pourSupabase.nirConfirm;
+                  delete pourSupabase.situationAvantContrat;
+                  delete pourSupabase.dateEntretien;
+                  delete pourSupabase.entrepriseId; // n'existe pas dans la table
+                  Object.keys(pourSupabase).forEach(k => { if (k.startsWith('piece_')) delete pourSupabase[k]; });
+
+                  const resCreate = await creerApprenti(pourSupabase);
+                  if (!resCreate.success) {
+                    alert(`⚠️ Erreur Supabase (création nouvelle fiche) : ${resCreate.error}`);
+                  } else {
+                    console.log(`[FicheApprenant] Nouvelle fiche ${nouvelId} créée dans Supabase ✅`);
+                  }
+
+                  const resUpdate = await modifierApprenti(id, { statut: 'Terminé', contratSuivant: nouvelId });
+                  if (!resUpdate.success) {
+                    alert(`⚠️ Erreur Supabase (clôture ancienne fiche) : ${resUpdate.error}`);
+                  } else {
+                    console.log(`[FicheApprenant ${id}] Ancien contrat clôturé dans Supabase ✅`);
+                  }
+
+                  // === localStorage en miroir ===
                   localStorage.setItem('apprenant_' + nouvelId, JSON.stringify(nouvelleFiche));
                   try {
                     const liste = JSON.parse(localStorage.getItem('easycfa_apprenants_v2') || '[]');
@@ -968,9 +1055,14 @@ export default function FicheApprenant({ params }: { params: Promise<{ id: strin
                 🆕 Trouvé nouvelle entreprise → créer nouveau contrat
               </button>
               <button
-                onClick={() => {
+                onClick={async () => {
                   if (!confirm(`Fin de maintien en formation pour ${form.prenom} ${form.nom} ?\n\nCela va :\n- Passer la fiche en "Rupture FMEF"\n- Le dossier sera archivé`)) return;
                   const updated = { ...form, maintienFormation: 'NON', archive: true };
+                  // Supabase d'abord
+                  const res = await modifierApprenti(id, { maintienFormation: 'NON', archive: true });
+                  if (!res.success) alert(`⚠️ Erreur Supabase : ${res.error}`);
+                  else console.log(`[FicheApprenant ${id}] Fin de maintien dans Supabase ✅`);
+                  // localStorage en miroir
                   setForm(updated); setApprenant(updated);
                   localStorage.setItem('apprenant_' + id, JSON.stringify(updated));
                   try {

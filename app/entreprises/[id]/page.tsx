@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation';
 import { ENTREPRISES_REELS } from '../../../data/mockEntreprises_reels';
 import { APPRENANTS_REELS } from '../../../data/mockApprenants_reels';
 import { COLORS } from '../../../lib/constants';
+import { chargerEntreprise as chargerEntrepriseSupabase, modifierEntreprise, supprimerEntreprise as supprimerEntrepriseSupabase } from '../../../data/entreprisesSupabase';
 import Card from '../../../components/Card';
 import StatCard from '../../../components/StatCard';
 import BoutonSupprimer from '../../../components/BoutonSupprimer';
@@ -103,10 +104,22 @@ export default function FicheEntreprise({ params }: { params: Promise<{ id: stri
   const [chargement, setChargement] = useState(true);
 
   useEffect(() => {
-    const trouve = trouverEntreprise(id);
-    setEntreprise(trouve);
-    setForm(trouve ?? {});
-    setChargement(false);
+    (async () => {
+      let trouve: any = null;
+      try {
+        trouve = await chargerEntrepriseSupabase(id);
+        if (trouve) console.log(`[FicheEntreprise ${id}] Chargée depuis Supabase ✅`);
+      } catch (e) {
+        console.error('[FicheEntreprise] Erreur Supabase, fallback localStorage', e);
+      }
+      if (!trouve) {
+        trouve = trouverEntreprise(id);
+        if (trouve) console.warn(`[FicheEntreprise ${id}] Chargée depuis localStorage (fallback)`);
+      }
+      setEntreprise(trouve);
+      setForm(trouve ?? {});
+      setChargement(false);
+    })();
   }, [id]);
 
   function genererMandat() {
@@ -119,9 +132,28 @@ export default function FicheEntreprise({ params }: { params: Promise<{ id: stri
   /**
    * ✅ SAUVEGARDE — met à jour à la fois entreprise_<id> ET easycfa_entreprises_v2
    */
-  function sauvegarder() {
-    localStorage.setItem('entreprise_' + id, JSON.stringify(form));
+  async function sauvegarder() {
+    // Supabase d'abord (en filtrant les champs orphelins)
+    const pourSupabase: any = { ...form };
+    ['libelleApe', 'pays', 'siteWeb', 'libelleConventionCollective', 'faf',
+     'caisseRetraite', 'caisseCongesPayes', 'regimePrevoyance',
+     'employeurPublic', 'travailDangereux',
+     'dirigeantCivilite', 'dirigeantTelephone',
+     'tuteurCivilite', 'tuteurAnneeExperience',
+     'rhTelephone', 'opcoContact', 'mandatSepa', 'tarifHoraire', 'notes']
+      .forEach(k => delete pourSupabase[k]);
+    Object.keys(pourSupabase).forEach(k => { if (k.startsWith('piece_')) delete pourSupabase[k]; });
 
+    try {
+      const res = await modifierEntreprise(id, pourSupabase);
+      if (!res.success) alert(`⚠️ Erreur Supabase : ${res.error}`);
+      else console.log(`[FicheEntreprise ${id}] Sauvegardée dans Supabase ✅`);
+    } catch (e) {
+      console.error('[FicheEntreprise] Erreur Supabase', e);
+    }
+
+    // localStorage en miroir (avec TOUS les champs)
+    localStorage.setItem('entreprise_' + id, JSON.stringify(form));
     try {
       const liste = JSON.parse(localStorage.getItem('easycfa_entreprises_v2') || '[]');
       const idx = liste.findIndex((e: any) => e.id === id);
@@ -143,7 +175,16 @@ export default function FicheEntreprise({ params }: { params: Promise<{ id: stri
    * ✅ SUPPRESSION — retire de la liste persistée + ajoute dans la liste des supprimées
    * (le mock ne peut pas être effacé, on marque l'ID comme supprimé pour le filtrer)
    */
-  function supprimerEntreprise() {
+  async function supprimerEntreprise() {
+    // Supabase d'abord
+    try {
+      const res = await supprimerEntrepriseSupabase(id);
+      if (!res.success) alert(`⚠️ Erreur Supabase : ${res.error}`);
+      else console.log(`[FicheEntreprise ${id}] Supprimée de Supabase ✅`);
+    } catch (e) {
+      console.error('[FicheEntreprise] Erreur Supabase suppression', e);
+    }
+    // localStorage en miroir
     try {
       // 1. Retirer de la liste persistée
       const liste = JSON.parse(localStorage.getItem('easycfa_entreprises_v2') || '[]');

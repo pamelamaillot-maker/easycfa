@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { APPRENANTS_REELS } from '../../data/mockApprenants_reels';
 import { COLORS } from '../../lib/constants';
+import { chargerApprentis, modifierApprenti } from '../../data/apprentisSupabase';
 import Card from '../../components/Card';
 import PageHeader from '../../components/PageHeader';
 
@@ -78,9 +79,23 @@ export default function Apprenants() {
   const [apprenantsMerges, setApprenantsMerges] = useState<any[]>(APPRENANTS_REELS as any[]);
   const [rechercheArchives, setRechercheArchives] = useState('');
   
-  // ✅ CORRECTION : lit aussi easycfa_apprenants_v2 (donc les nouveaux apprenants créés)
+  // ✅ DUAL-READ : Supabase prioritaire, fallback localStorage si Supabase vide ou KO
   useEffect(() => {
-    setApprenantsMerges(chargerApprenantsMerges());
+    (async () => {
+      try {
+        const fromSupabase = await chargerApprentis();
+        if (fromSupabase.length > 0) {
+          console.log(`[Apprenants] ${fromSupabase.length} apprenants chargés depuis Supabase ✅`);
+          setApprenantsMerges(fromSupabase as any[]);
+          return;
+        }
+        console.warn('[Apprenants] Supabase vide, fallback localStorage');
+        setApprenantsMerges(chargerApprenantsMerges());
+      } catch (e) {
+        console.error('[Apprenants] Erreur Supabase, fallback localStorage', e);
+        setApprenantsMerges(chargerApprenantsMerges());
+      }
+    })();
   }, []);
 
   const actifs = apprenantsMerges.filter(a => !estArchive(a));
@@ -269,9 +284,16 @@ export default function Apprenants() {
                         Voir →
                       </a>
                       <button
-                        onClick={() => {
+                        onClick={async () => {
                           const updated = { ...a, statut: 'En cours', dateRupture: '', maintienFormation: '' };
+                          // 1. Supabase d'abord
+                          const res = await modifierApprenti(a.id, { statut: 'En cours', dateRupture: '', maintienFormation: '' });
+                          if (!res.success) {
+                            alert(`Erreur Supabase : ${res.error}\nL'apprenant a quand même été réactivé localement.`);
+                          }
+                          // 2. localStorage en miroir (fallback)
                           localStorage.setItem('apprenant_' + a.id, JSON.stringify(updated));
+                          // 3. UI
                           setApprenantsMerges(prev => prev.map(ap => ap.id === a.id ? updated : ap));
                         }}
                         style={{ backgroundColor: '#e6f4f1', color: '#006B68', border: 'none', borderRadius: '6px', padding: '5px 12px', fontSize: '12px', fontWeight: '600', cursor: 'pointer' }}

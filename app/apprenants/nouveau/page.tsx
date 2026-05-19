@@ -3,6 +3,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { COLORS } from '../../../lib/constants';
+import { creerApprenti } from '../../../data/apprentisSupabase';
 
 const SECTIONS = [
   { id: 'identite', label: '👤 Identité', description: 'Informations personnelles' },
@@ -198,7 +199,7 @@ export default function NouvelApprenant() {
    * 4. Sauvegarde aussi dans `apprenant_<id>` (la fiche détail) avec toutes les données
    * 5. Redirige vers la liste OU la fiche du nouvel apprenant
    */
-  function sauvegarder() {
+  async function sauvegarder() {
     // 1️⃣ Validation minimale — nom + prénom + formation obligatoires pour créer
     if (!form.nom.trim() || !form.prenom.trim()) {
       setErreurSauvegarde('⚠️ Le NOM et le prénom sont obligatoires pour créer un apprenant.');
@@ -212,7 +213,7 @@ export default function NouvelApprenant() {
     }
 
     try {
-      // 2️⃣ Charger la liste actuelle des apprenants
+      // 2️⃣ Charger la liste actuelle des apprenants (pour générer un ID unique)
       const listeBrute = localStorage.getItem('easycfa_apprenants_v2');
       const liste: any[] = listeBrute ? JSON.parse(listeBrute) : [];
 
@@ -233,14 +234,35 @@ export default function NouvelApprenant() {
         dateCreation: new Date().toISOString(),
       };
 
-      // 5️⃣ Ajouter à la liste globale (pour qu'il apparaisse dans /apprenants)
+      // 5️⃣ SUPABASE : version nettoyée (sans champs orphelins, et avec mapping de champs)
+      // Renommages pour coller à la table Supabase
+      const pourSupabase: any = { ...nouveau };
+      if (pourSupabase.situationAvantContrat !== undefined) {
+        pourSupabase.situationAvant = pourSupabase.situationAvantContrat;
+      }
+      // Supprimer les champs qui ne sont pas dans la table Supabase
+      delete pourSupabase.nirConfirm;
+      delete pourSupabase.situationAvantContrat;
+      delete pourSupabase.dateEntretien;
+      // Supprimer aussi les pièces jointes (pas dans Supabase pour l'instant)
+      Object.keys(pourSupabase).forEach(k => {
+        if (k.startsWith('piece_')) delete pourSupabase[k];
+      });
+
+      const res = await creerApprenti(pourSupabase);
+      if (!res.success) {
+        console.error('[NouvelApprenant] Erreur Supabase:', res.error);
+        alert(`⚠️ Erreur Supabase : ${res.error}\nL'apprenant a quand même été créé localement.`);
+      } else {
+        console.log(`[NouvelApprenant] ${id} créé dans Supabase ✅`);
+      }
+
+      // 6️⃣ localStorage en miroir (avec TOUS les champs y compris les pièces)
       liste.push(nouveau);
       localStorage.setItem('easycfa_apprenants_v2', JSON.stringify(liste));
-
-      // 6️⃣ Sauvegarder aussi la fiche détail (pour /apprenants/[id])
       localStorage.setItem(`apprenant_${id}`, JSON.stringify(nouveau));
 
-      // 7️⃣ Feedback visuel + redirection
+      // 7️⃣ Feedback + redirection
       setSauvegarde(true);
       setTimeout(() => {
         router.push(`/apprenants/${id}`);

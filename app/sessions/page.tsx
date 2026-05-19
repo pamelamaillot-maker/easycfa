@@ -3,6 +3,12 @@
 import { useState, useEffect } from 'react';
 import { APPRENANTS_REELS } from '../../data/mockApprenants_reels';
 import { COLORS } from '../../lib/constants';
+import { 
+  chargerSessions as chargerSessionsSupabase,
+  creerSession as creerSessionSupabase,
+  modifierSession,
+  supprimerSession as supprimerSessionSupabase,
+} from '../../data/sessionsSupabase';
 import Card from '../../components/Card';
 import CardEvaluationsChaud from '../../components/CardEvaluationsChaud';
 import CardEvaluationsFroid from '../../components/CardEvaluationsFroid';
@@ -183,12 +189,29 @@ export default function Sessions() {
   const [sauvegardePlanning, setSauvegardePlanning] = useState(false);
 
   useEffect(() => {
-    try {
-      const saved = localStorage.getItem('easycfa_sessions_v2');
-      if (saved) setSessions(JSON.parse(saved));
-      const fSaved = localStorage.getItem('easycfa_formateurs');
-      if (fSaved) setFormateurs(JSON.parse(fSaved));
-    } catch {}
+    (async () => {
+      // Sessions : Supabase d'abord
+      try {
+        const fromSupabase = await chargerSessionsSupabase();
+        if (fromSupabase.length > 0) {
+          console.log(`[Sessions] ${fromSupabase.length} sessions chargées depuis Supabase ✅`);
+          setSessions(fromSupabase as any[]);
+        } else {
+          console.warn('[Sessions] Supabase vide, fallback localStorage');
+          const saved = localStorage.getItem('easycfa_sessions_v2');
+          if (saved) setSessions(JSON.parse(saved));
+        }
+      } catch (e) {
+        console.error('[Sessions] Erreur Supabase, fallback localStorage', e);
+        const saved = localStorage.getItem('easycfa_sessions_v2');
+        if (saved) setSessions(JSON.parse(saved));
+      }
+      // Formateurs (pour les sélecteurs) : localStorage en attendant que la page soit elle aussi async
+      try {
+        const fSaved = localStorage.getItem('easycfa_formateurs');
+        if (fSaved) setFormateurs(JSON.parse(fSaved));
+      } catch {}
+    })();
   }, []);
 
   function sauvegarder(liste: Session[]) {
@@ -207,7 +230,7 @@ export default function Sessions() {
     return `${formation}-${annee}-${num}`;
   }
 
-  function creerSession() {
+  async function creerSession() {
     if (!form.formation || !form.dateDebut || !form.annee) return;
     const planning = genererPlanning(form.dateDebut, form.formation!);
     const dateFin = planning.length > 0 ? planning[planning.length - 1].date : '';
@@ -225,15 +248,25 @@ export default function Sessions() {
       salle: form.salle ?? 'Salle A',
       notes: form.notes ?? '',
     };
+    // Supabase d'abord
+    const res = await creerSessionSupabase(nouveau as any);
+    if (!res.success) alert(`⚠️ Erreur Supabase : ${res.error}`);
+    else console.log(`[Sessions] ${nouveau.id} créée dans Supabase ✅`);
+    // localStorage + UI
     sauvegarder([...sessions, nouveau]);
     setModale(false);
     setForm({ formation: 'SC', annee: '2026', statut: 'À venir', apprenantIds: [], modules: [] });
     setSelectionne(nouveau);
   }
 
-  function mettreAJour(champ: string, valeur: any) {
+  async function mettreAJour(champ: string, valeur: any) {
     if (!selectionne) return;
     const updated = { ...selectionne, [champ]: valeur };
+    // Supabase d'abord
+    const res = await modifierSession(selectionne.id, { [champ]: valeur } as any);
+    if (!res.success) alert(`⚠️ Erreur Supabase : ${res.error}`);
+    else console.log(`[Sessions ${selectionne.id}] ${champ} mis à jour dans Supabase ✅`);
+    // UI + localStorage
     setSelectionne(updated);
     sauvegarder(sessions.map(s => s.id === updated.id ? updated : s));
   }
@@ -275,9 +308,13 @@ export default function Sessions() {
     setRefreshKey(k => k + 1);
   }
 
-  function supprimerSession(id: string) {
+  async function supprimerSession(id: string) {
     if (!confirm('Supprimer cette session ?')) return;
-    // Nettoyer les sessionId des apprenants liés
+    // Supabase d'abord
+    const res = await supprimerSessionSupabase(id);
+    if (!res.success) alert(`⚠️ Erreur Supabase : ${res.error}`);
+    else console.log(`[Sessions ${id}] Supprimée de Supabase ✅`);
+    // Nettoyer les sessionId des apprenants liés (localStorage en miroir)
     const sessionASupprimer = sessions.find(s => s.id === id);
     if (sessionASupprimer) {
       sessionASupprimer.apprenantIds.forEach(aid => syncApprenantSessionId(aid, undefined));
@@ -347,9 +384,14 @@ export default function Sessions() {
     setModeEditionPlanning(false);
   }
 
-  function sauvegarderPlanningEdit() {
+  async function sauvegarderPlanningEdit() {
     if (!selectionne) return;
     try {
+      // Supabase d'abord (uniquement le champ planning)
+      const res = await modifierSession(selectionne.id, { planning: planningBrouillon } as any);
+      if (!res.success) alert(`⚠️ Erreur Supabase : ${res.error}`);
+      else console.log(`[Sessions ${selectionne.id}] Planning sauvegardé dans Supabase ✅`);
+      // UI + localStorage en miroir
       const liste = sessions.map(s => s.id === selectionne.id ? { ...s, planning: planningBrouillon } : s);
       setSessions(liste);
       setSelectionne({ ...selectionne, planning: planningBrouillon });

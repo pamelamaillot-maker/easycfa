@@ -1,5 +1,5 @@
 // data/apprentisSupabase.ts
-// Module API Supabase pour la table 'apprentis'
+// Module API Supabase pour la table 'apprenants'
 // CFA PAM OI Formation
 
 import { supabase } from '../lib/supabaseClient';
@@ -97,7 +97,7 @@ export interface Apprenti {
 export async function chargerApprentis(): Promise<Apprenti[]> {
   try {
     const { data, error } = await supabase
-      .from('apprentis')
+      .from('apprenants')
       .select('*')
       .order('nom', { ascending: true });
     if (error) {
@@ -117,7 +117,7 @@ export async function chargerApprentis(): Promise<Apprenti[]> {
 export async function chargerApprenti(id: string): Promise<Apprenti | null> {
   try {
     const { data, error } = await supabase
-      .from('apprentis')
+      .from('apprenants')
       .select('*')
       .eq('id', id)
       .maybeSingle();
@@ -138,7 +138,7 @@ export async function chargerApprenti(id: string): Promise<Apprenti | null> {
 export async function creerApprenti(apprenti: Apprenti): Promise<{ success: boolean; error?: string }> {
   try {
     const { error } = await supabase
-      .from('apprentis')
+      .from('apprenants')
       .upsert([{ ...apprenti, dateModification: new Date().toISOString() }]);
     if (error) {
       console.error('Erreur Supabase creerApprenti:', error);
@@ -157,7 +157,7 @@ export async function creerApprenti(apprenti: Apprenti): Promise<{ success: bool
 export async function modifierApprenti(id: string, modifications: Partial<Apprenti>): Promise<{ success: boolean; error?: string }> {
   try {
     const { error } = await supabase
-      .from('apprentis')
+      .from('apprenants')
       .update({ ...modifications, dateModification: new Date().toISOString() })
       .eq('id', id);
     if (error) {
@@ -177,7 +177,7 @@ export async function modifierApprenti(id: string, modifications: Partial<Appren
 export async function supprimerApprenti(id: string): Promise<{ success: boolean; error?: string }> {
   try {
     const { error } = await supabase
-      .from('apprentis')
+      .from('apprenants')
       .delete()
       .eq('id', id);
     if (error) {
@@ -195,13 +195,62 @@ export async function supprimerApprenti(id: string): Promise<{ success: boolean;
  * Migration : importe en masse depuis localStorage vers Supabase.
  * Renvoie le nombre d'apprentis importés avec succès.
  */
-export async function migrerDepuisLocalStorage(apprentis: Apprenti[]): Promise<{ success: number; erreurs: string[] }> {
-  const erreurs: string[] = [];
-  let success = 0;
-  for (const a of apprentis) {
-    const res = await creerApprenti(a);
-    if (res.success) success++;
-    else erreurs.push(`${a.nom} ${a.prenom} (${a.id}) : ${res.error}`);
+// Liste des colonnes acceptées par la table apprenants (= clés du type Apprenti)
+const CHAMPS_VALIDES = new Set<string>([
+  'id', 'civilite', 'nom', 'prenom', 'sexe', 'nationalite',
+  'dateNaissance', 'lieuNaissance', 'codePostalNaissance', 'departementNaissance', 'paysNaissance',
+  'email', 'telephone', 'adresse', 'codePostal', 'ville',
+  'nir', 'rqth', 'sportifHautNiveau',
+  'formation', 'sessionId', 'dateDebutFormation', 'dateFinFormation',
+  'entreprise', 'dateDebutContrat', 'dateFinContrat', 'numeroDeca', 'numeroDossierOpco',
+  'tuteurNom', 'tuteurPrenom', 'tuteurEmail', 'tuteurTelephone',
+  'representantNom', 'representantPrenom', 'representantLien', 'representantEmail',
+  'representantTelephone', 'representantAdresse', 'representantCodePostal', 'representantVille',
+  'statut', 'dateRupture', 'maintienFormation', 'contratPrecedent', 'contratSuivant', 'archive',
+  'situationAvant', 'derniereSituationCode', 'dernierDiplome', 'intituleDernierDiplome',
+  'derniereClasse', 'dernierEtablissement', 'dernierOrganismeUai', 'anneeObtention',
+  'dateCreation', 'dateModification',
+]);
+
+/**
+ * Nettoie un objet apprenti localStorage pour le rendre compatible avec la table Supabase :
+ *  - Renomme les anciens champs (representantTel -> representantTelephone)
+ *  - Supprime les champs qui ne sont pas dans la table
+ */
+function nettoyerPourSupabase(raw: any): Apprenti {
+  const out: any = {};
+  for (const [key, value] of Object.entries(raw)) {
+    // Renommages connus
+    let cleanKey = key;
+    if (key === 'representantTel') cleanKey = 'representantTelephone';
+    // (ajouter ici d'autres renommages si besoin)
+
+    if (CHAMPS_VALIDES.has(cleanKey)) {
+      out[cleanKey] = value;
+    }
+    // Sinon : champ ignoré (ex: dateEntretien)
   }
-  return { success, erreurs };
+  return out as Apprenti;
+}
+
+export async function migrerDepuisLocalStorage(apprentis: any[]): Promise<{ success: number; erreurs: string[]; ignores: string[] }> {
+  const erreurs: string[] = [];
+  const ignores: string[] = [];
+  let success = 0;
+
+  for (const raw of apprentis) {
+    // Détecter les champs ignorés pour info
+    const champsIgnores = Object.keys(raw).filter(
+      (k) => !CHAMPS_VALIDES.has(k) && k !== 'representantTel'
+    );
+    if (champsIgnores.length > 0) {
+      ignores.push(`${raw.nom} ${raw.prenom} : champs ignorés [${champsIgnores.join(', ')}]`);
+    }
+
+    const apprentiNettoye = nettoyerPourSupabase(raw);
+    const res = await creerApprenti(apprentiNettoye);
+    if (res.success) success++;
+    else erreurs.push(`${raw.nom} ${raw.prenom} (${raw.id}) : ${res.error}`);
+  }
+  return { success, erreurs, ignores };
 }
