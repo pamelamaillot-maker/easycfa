@@ -58,16 +58,28 @@ function getApprenantSessionId(apprenantId: string): string | undefined {
   return base?.sessionId;
 }
 
-function genererFeuilleDepuisSession(session: any, date: string, jour: string): FeuilleEmargement {
-  const formationLabel = FORMATIONS_LABELS[session.formation] ?? session.formation;
-  const apprenantsInscrits = APPRENANTS_REELS.filter((a: any) => {
-    if (session.apprenantIds?.includes(a.id)) return true;
-    if (getApprenantSessionId(a.id) === session.id) return true;
-    return false;
+function genererFeuilleDepuisSessions(sessionsSelectionnees: any[], date: string, jour: string): FeuilleEmargement {
+  if (sessionsSelectionnees.length === 0) throw new Error('Au moins une session est nécessaire');
+  const sessionPrincipale = sessionsSelectionnees[0];
+  const formationLabel = FORMATIONS_LABELS[sessionPrincipale.formation] ?? sessionPrincipale.formation;
+
+  // Agréger TOUS les apprenants de TOUTES les sessions cochées (sans doublon)
+  const idsDejaAjoutes = new Set<string>();
+  const apprenantsInscrits: any[] = [];
+  sessionsSelectionnees.forEach(session => {
+    APPRENANTS_REELS.forEach((a: any) => {
+      if (idsDejaAjoutes.has(a.id)) return;
+      const dansSession = session.apprenantIds?.includes(a.id) || getApprenantSessionId(a.id) === session.id;
+      if (dansSession) {
+        apprenantsInscrits.push(a);
+        idsDejaAjoutes.add(a.id);
+      }
+    });
   });
 
-  const planningDuJour = session.planning?.find((p: any) => p.date === date);
-  const moduleAssocie = planningDuJour?.moduleId ? session.modules?.find((m: any) => m.id === planningDuJour.moduleId) : null;
+  // Planning + thème : on prend ceux de la session principale (la 1ère cochée)
+  const planningDuJour = sessionPrincipale.planning?.find((p: any) => p.date === date);
+  const moduleAssocie = planningDuJour?.moduleId ? sessionPrincipale.modules?.find((m: any) => m.id === planningDuJour.moduleId) : null;
   const formateurNom = moduleAssocie?.formateurNom || 'À définir';
   const themeJour = moduleAssocie?.nom || (planningDuJour?.type === 'examen' ? 'Examen' : planningDuJour?.type === 'revision' ? 'Révisions' : 'Cours');
 
@@ -84,18 +96,23 @@ function genererFeuilleDepuisSession(session: any, date: string, jour: string): 
     justificatifRecu: false,
   });
 
+  // ID feuille : on inclut les IDs de toutes les sessions cochées
+  const idsKey = sessionsSelectionnees.map(s => s.id).sort().join('-');
+  const numerosKey = sessionsSelectionnees.map(s => s.numero).join(' + ');
+
   return {
-    id: `feuille_${session.id}_${date.replace(/\//g, '-')}`,
+    id: `feuille_${idsKey}_${date.replace(/\//g, '-')}`,
     formation: formationLabel,
-    formationCode: session.formation,
-    sessionId: session.id,
-    sessionNumero: session.numero,
+    formationCode: sessionPrincipale.formation,
+    sessionId: sessionPrincipale.id,                         // compat ancien code
+    sessionIds: sessionsSelectionnees.map(s => s.id),        // NOUVEAU : tableau multi-sessions
+    sessionNumero: numerosKey,                                // ex: "SC-2026-001 + SC-2026-002"
     date,
     jour,
-    salle: session.salle || 'Salle A',
+    salle: sessionPrincipale.salle || 'Salle A',
     demiJournees: [
-      { id: `${date}_matin`, type: 'Matin', heureDebut: '08:30', heureFin: '12:00', heures: 3.5, formateur: formateurNom, theme: themeJour, modalite: session.salle === 'Distanciel' ? 'Distanciel' : 'Présentiel', presences: apprenantsInscrits.map(fabriquerPresence), valide: false },
-      { id: `${date}_aprem`, type: 'Après-midi', heureDebut: '13:00', heureFin: '16:30', heures: 3.5, formateur: formateurNom, theme: themeJour, modalite: session.salle === 'Distanciel' ? 'Distanciel' : 'Présentiel', presences: apprenantsInscrits.map(fabriquerPresence), valide: false },
+      { id: `${date}_matin`, type: 'Matin', heureDebut: '08:30', heureFin: '12:00', heures: 3.5, formateur: formateurNom, theme: themeJour, modalite: sessionPrincipale.salle === 'Distanciel' ? 'Distanciel' : 'Présentiel', presences: apprenantsInscrits.map(fabriquerPresence), valide: false },
+      { id: `${date}_aprem`, type: 'Après-midi', heureDebut: '13:00', heureFin: '16:30', heures: 3.5, formateur: formateurNom, theme: themeJour, modalite: sessionPrincipale.salle === 'Distanciel' ? 'Distanciel' : 'Présentiel', presences: apprenantsInscrits.map(fabriquerPresence), valide: false },
     ],
   } as any;
 }
@@ -106,7 +123,7 @@ export default function Emargement() {
   const [sessions, setSessions] = useState<any[]>([]);
   const [formateurs, setFormateurs] = useState<any[]>([]);
   const [modaleNouvelle, setModaleNouvelle] = useState(false);
-  const [modaleForm, setModaleForm] = useState<{ sessionId: string; date: string; jour: string }>({ sessionId: '', date: '', jour: '' });
+  const [modaleForm, setModaleForm] = useState<{ sessionIds: string[]; date: string; jour: string; formationCode: string }>({ sessionIds: [], date: '', jour: '', formationCode: '' });
 
   // Détermine si l'utilisateur connecté est aussi formateur
   const formateurId = utilisateur?.formateurId;
@@ -282,9 +299,11 @@ export default function Emargement() {
   }
 
   function creerNouvelleFeuille() {
-    if (!modaleForm.sessionId || !modaleForm.date) return;
-    const session = sessions.find(s => s.id === modaleForm.sessionId);
-    if (!session) return;
+    if (modaleForm.sessionIds.length === 0 || !modaleForm.date) return;
+    const sessionsSelectionnees = modaleForm.sessionIds
+      .map(id => sessions.find(s => s.id === id))
+      .filter(Boolean);
+    if (sessionsSelectionnees.length === 0) return;
 
     const parts = modaleForm.date.split('/');
     let jour = modaleForm.jour;
@@ -293,7 +312,7 @@ export default function Emargement() {
       jour = ['Dimanche', 'Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi'][d.getDay()];
     }
 
-    const nouvelleFeuille = genererFeuilleDepuisSession(session, modaleForm.date, jour);
+    const nouvelleFeuille = genererFeuilleDepuisSessions(sessionsSelectionnees as any[], modaleForm.date, jour);
 
     setFeuillesLocales(prev => {
       const existante = prev.find(f => f.id === nouvelleFeuille.id);
@@ -322,8 +341,9 @@ export default function Emargement() {
     setFeuilleId(nouvelleFeuille.id);
     setDemiJourneeId(nouvelleFeuille.demiJournees[0].id);
     setModaleNouvelle(false);
-    setModaleForm({ sessionId: '', date: '', jour: '' });
-    setMessageSuccess(`✅ Nouvelle feuille créée pour ${session.numero} — ${modaleForm.date} (${nouvelleFeuille.demiJournees[0].presences.length} apprenants)`);
+    setModaleForm({ sessionIds: [], date: '', jour: '', formationCode: '' });
+    const numeros = sessionsSelectionnees.map((s: any) => s.numero).join(' + ');
+    setMessageSuccess(`✅ Nouvelle feuille créée pour ${numeros} — ${modaleForm.date} (${nouvelleFeuille.demiJournees[0].presences.length} apprenants)`);
     setTimeout(() => setMessageSuccess(''), 5000);
   }
 
@@ -438,13 +458,31 @@ export default function Emargement() {
   const totalHeures = dj?.presences.reduce((acc, p) => acc + p.heuresComptees, 0) ?? 0;
 
   const sessionsDispo = sessions.filter(s => s.statut === 'À venir' || s.statut === 'En cours');
-  const sessionChoisie = modaleForm.sessionId ? sessions.find(s => s.id === modaleForm.sessionId) : null;
-  const datesDispo: { date: string; type: string; jour: string }[] = sessionChoisie?.planning?.map((p: any) => {
-    const parts = p.date.split('/');
-    const d = new Date(parseInt(parts[2]), parseInt(parts[1]) - 1, parseInt(parts[0]));
-    const jour = ['Dimanche', 'Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi'][d.getDay()];
-    return { date: p.date, type: p.type, jour };
-  }) ?? [];
+
+  // Sessions de la formation sélectionnée
+  const sessionsMemeFormation = modaleForm.formationCode
+    ? sessionsDispo.filter(s => s.formation === modaleForm.formationCode)
+    : [];
+
+  // Liste des formations disponibles (avec compteur de sessions actives)
+  const formationsDispo = Array.from(new Set(sessionsDispo.map(s => s.formation))).filter(Boolean).sort();
+
+  // Dates dispo : on prend les dates de TOUTES les sessions cochées, fusionnées (dédupliquées)
+  const sessionsCochees = modaleForm.sessionIds.map(id => sessions.find(s => s.id === id)).filter(Boolean);
+  const datesMap = new Map<string, { date: string; type: string; jour: string }>();
+  sessionsCochees.forEach((s: any) => {
+    s.planning?.forEach((p: any) => {
+      if (datesMap.has(p.date)) return;
+      const parts = p.date.split('/');
+      const d = new Date(parseInt(parts[2]), parseInt(parts[1]) - 1, parseInt(parts[0]));
+      const jour = ['Dimanche', 'Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi'][d.getDay()];
+      datesMap.set(p.date, { date: p.date, type: p.type, jour });
+    });
+  });
+  const datesDispo = Array.from(datesMap.values()).sort((a, b) => {
+    const pa = a.date.split('/'); const pb = b.date.split('/');
+    return new Date(`${pa[2]}-${pa[1]}-${pa[0]}`).getTime() - new Date(`${pb[2]}-${pb[1]}-${pb[0]}`).getTime();
+  });
 
   const ficheSignee = !!ficheActive?.dateSignature;
   const ficheCheck = ficheActive ? ficheCompletee(ficheActive) : { ok: false, manquants: [] };
@@ -969,11 +1007,14 @@ export default function Emargement() {
         </div>
       )}
 
-      {/* MODALE NOUVELLE FEUILLE */}
+      {/* MODALE NOUVELLE FEUILLE — multi-sessions */}
       {modaleNouvelle && (
         <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '20px' }}>
-          <div style={{ backgroundColor: 'white', borderRadius: '12px', padding: '24px', width: '550px', maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 8px 32px rgba(0,0,0,0.2)' }}>
-            <h2 style={{ fontSize: '17px', fontWeight: '700', color: COLORS.primary, marginBottom: '16px' }}>+ Nouvelle feuille d'émargement</h2>
+          <div style={{ backgroundColor: 'white', borderRadius: '12px', padding: '24px', width: '620px', maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 8px 32px rgba(0,0,0,0.2)' }}>
+            <h2 style={{ fontSize: '17px', fontWeight: '700', color: COLORS.primary, marginBottom: '6px' }}>+ Nouvelle feuille d'émargement</h2>
+            <p style={{ fontSize: '12px', color: COLORS.textMuted, marginBottom: '16px' }}>
+              Tu peux sélectionner plusieurs sessions de la même formation pour créer une feuille collective.
+            </p>
 
             {sessionsDispo.length === 0 ? (
               <div style={{ padding: '20px', backgroundColor: '#fef6e4', borderRadius: '8px', fontSize: '13px', color: '#7a5c00', marginBottom: '16px' }}>
@@ -981,23 +1022,67 @@ export default function Emargement() {
               </div>
             ) : (
               <>
+                {/* 1. Choix de la formation */}
                 <div style={{ marginBottom: '14px' }}>
-                  <label style={{ fontSize: '11px', color: '#888', textTransform: 'uppercase', fontWeight: '600', display: 'block', marginBottom: '4px' }}>Session de formation *</label>
-                  <select style={{ ...inputStyle, width: '100%' }} value={modaleForm.sessionId} onChange={e => setModaleForm(p => ({ ...p, sessionId: e.target.value, date: '' }))}>
-                    <option value="">— Choisir une session —</option>
-                    {sessionsDispo.map(s => {
-                      const nbInscrits = (s.apprenantIds || []).length;
-                      const label = FORMATIONS_LABELS[s.formation] ?? s.formation;
-                      return (
-                        <option key={s.id} value={s.id}>{s.numero} — {label} ({nbInscrits} apprenant{nbInscrits > 1 ? 's' : ''})</option>
-                      );
+                  <label style={{ fontSize: '11px', color: '#888', textTransform: 'uppercase', fontWeight: '600', display: 'block', marginBottom: '4px' }}>1. Formation *</label>
+                  <select
+                    style={{ ...inputStyle, width: '100%' }}
+                    value={modaleForm.formationCode}
+                    onChange={e => setModaleForm(p => ({ ...p, formationCode: e.target.value, sessionIds: [], date: '', jour: '' }))}
+                  >
+                    <option value="">— Choisir une formation —</option>
+                    {formationsDispo.map(code => {
+                      const nbSessions = sessionsDispo.filter(s => s.formation === code).length;
+                      const label = FORMATIONS_LABELS[code] ?? code;
+                      return <option key={code} value={code}>{code} — {label} ({nbSessions} session{nbSessions > 1 ? 's' : ''})</option>;
                     })}
                   </select>
                 </div>
 
-                {sessionChoisie && (
+                {/* 2. Choix des sessions (checkboxes multi) */}
+                {modaleForm.formationCode && sessionsMemeFormation.length > 0 && (
                   <div style={{ marginBottom: '14px' }}>
-                    <label style={{ fontSize: '11px', color: '#888', textTransform: 'uppercase', fontWeight: '600', display: 'block', marginBottom: '4px' }}>Date *</label>
+                    <label style={{ fontSize: '11px', color: '#888', textTransform: 'uppercase', fontWeight: '600', display: 'block', marginBottom: '6px' }}>
+                      2. Sessions à inclure dans la feuille * ({modaleForm.sessionIds.length} cochée{modaleForm.sessionIds.length > 1 ? 's' : ''})
+                    </label>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: '220px', overflowY: 'auto', padding: '8px', border: '1.5px solid #e0e0e0', borderRadius: '8px' }}>
+                      {sessionsMemeFormation.map(s => {
+                        const nbInscrits = (s.apprenantIds || []).length;
+                        const checked = modaleForm.sessionIds.includes(s.id);
+                        return (
+                          <label key={s.id} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '8px 10px', backgroundColor: checked ? '#EAF4F3' : 'white', borderRadius: '6px', cursor: 'pointer', border: checked ? `1.5px solid ${COLORS.primary}` : '1.5px solid #e0e0e0' }}>
+                            <input
+                              type="checkbox"
+                              checked={checked}
+                              onChange={e => {
+                                setModaleForm(p => ({
+                                  ...p,
+                                  sessionIds: e.target.checked
+                                    ? [...p.sessionIds, s.id]
+                                    : p.sessionIds.filter(id => id !== s.id),
+                                  date: '', // reset car planning peut changer
+                                  jour: '',
+                                }));
+                              }}
+                              style={{ accentColor: COLORS.primary, width: '16px', height: '16px' }}
+                            />
+                            <div style={{ flex: 1 }}>
+                              <div style={{ fontSize: '13px', fontWeight: '700', color: checked ? COLORS.primary : COLORS.text }}>
+                                {s.numero} <span style={{ fontSize: '11px', color: '#888', fontWeight: '500' }}>— {s.dateDebut ?? ''} → {s.dateFin ?? ''}</span>
+                              </div>
+                              <div style={{ fontSize: '11px', color: COLORS.textMuted }}>{nbInscrits} apprenant{nbInscrits > 1 ? 's' : ''} — Statut : {s.statut}</div>
+                            </div>
+                          </label>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {/* 3. Choix de la date */}
+                {modaleForm.sessionIds.length > 0 && (
+                  <div style={{ marginBottom: '14px' }}>
+                    <label style={{ fontSize: '11px', color: '#888', textTransform: 'uppercase', fontWeight: '600', display: 'block', marginBottom: '4px' }}>3. Date de la séance *</label>
                     {datesDispo.length > 0 ? (
                       <select style={{ ...inputStyle, width: '100%' }} value={modaleForm.date} onChange={e => {
                         const choice = datesDispo.find(d => d.date === e.target.value);
@@ -1017,17 +1102,30 @@ export default function Emargement() {
                   </div>
                 )}
 
-                {sessionChoisie && modaleForm.date && (
-                  <div style={{ backgroundColor: '#EAF4F3', borderRadius: '8px', padding: '12px', fontSize: '12px', color: '#006B68', marginBottom: '14px' }}>
-                    💡 La feuille sera créée pour <strong>{(sessionChoisie.apprenantIds || []).length} apprenant(s) inscrit(s)</strong>.
-                  </div>
-                )}
+                {/* Aperçu : nb d'apprenants total */}
+                {modaleForm.sessionIds.length > 0 && modaleForm.date && (() => {
+                  const sessionsCocheesArr = modaleForm.sessionIds.map(id => sessions.find(s => s.id === id)).filter(Boolean);
+                  const idsUniques = new Set<string>();
+                  sessionsCocheesArr.forEach((s: any) => (s.apprenantIds || []).forEach((id: string) => idsUniques.add(id)));
+                  return (
+                    <div style={{ backgroundColor: '#EAF4F3', borderRadius: '8px', padding: '12px', fontSize: '12px', color: '#006B68', marginBottom: '14px' }}>
+                      💡 La feuille sera créée pour <strong>{idsUniques.size} apprenant(s)</strong> issus de <strong>{sessionsCocheesArr.length} session(s)</strong> :
+                      <div style={{ marginTop: '4px', fontStyle: 'italic' }}>
+                        {sessionsCocheesArr.map((s: any) => s.numero).join(', ')}
+                      </div>
+                    </div>
+                  );
+                })()}
               </>
             )}
 
             <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
-              <button onClick={() => { setModaleNouvelle(false); setModaleForm({ sessionId: '', date: '', jour: '' }); }} style={btnSecondary}>Annuler</button>
-              <button onClick={creerNouvelleFeuille} disabled={!modaleForm.sessionId || !modaleForm.date || sessionsDispo.length === 0} style={{ ...btnPrimary, opacity: (!modaleForm.sessionId || !modaleForm.date || sessionsDispo.length === 0) ? 0.5 : 1 }}>
+              <button onClick={() => { setModaleNouvelle(false); setModaleForm({ sessionIds: [], date: '', jour: '', formationCode: '' }); }} style={btnSecondary}>Annuler</button>
+              <button
+                onClick={creerNouvelleFeuille}
+                disabled={modaleForm.sessionIds.length === 0 || !modaleForm.date || sessionsDispo.length === 0}
+                style={{ ...btnPrimary, opacity: (modaleForm.sessionIds.length === 0 || !modaleForm.date || sessionsDispo.length === 0) ? 0.5 : 1 }}
+              >
                 ✅ Créer la feuille
               </button>
             </div>

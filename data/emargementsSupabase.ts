@@ -37,6 +37,7 @@ export interface Emargement {
   formation?: string;
   formationCode?: string;
   sessionId?: string;
+  sessionIds?: string[];
   sessionNumero?: string;
   date?: string;
   jour?: string;
@@ -47,7 +48,7 @@ export interface Emargement {
 }
 
 const CHAMPS_VALIDES_EMARGEMENT = new Set<string>([
-  'id', 'formation', 'formationCode', 'sessionId', 'sessionNumero',
+  'id', 'formation', 'formationCode', 'sessionId', 'sessionIds', 'sessionNumero',
   'date', 'jour', 'salle', 'demiJournees',
   'dateCreation', 'dateModification',
 ]);
