@@ -12,6 +12,11 @@ import {
   ficheCompletee,
 } from '../../data/mockInterventions';
 import { COLORS } from '../../lib/constants';
+import {
+  chargerEmargements as chargerEmargementsSupabase,
+  creerEmargement as creerEmargementSupabase,
+  supprimerEmargement as supprimerEmargementSupabase,
+} from '../../data/emargementsSupabase';
 import Card from '../../components/Card';
 import dynamic from 'next/dynamic';
 const BoutonPdfEmargement = dynamic(() => import('../../components/BoutonPdfEmargement'), { ssr: false });
@@ -109,14 +114,33 @@ export default function Emargement() {
   const monNomFormateur = monFormateur ? `${monFormateur.prenom} ${monFormateur.nom}` : `${utilisateur?.prenom ?? ''} ${utilisateur?.nom ?? ''}`;
 
   useEffect(() => {
-    try {
-      const s = localStorage.getItem('easycfa_emargement_v2');
-      if (s) setFeuillesLocales(JSON.parse(s));
-      const ses = localStorage.getItem('easycfa_sessions_v2');
-      if (ses) setSessions(JSON.parse(ses));
-      const fSaved = localStorage.getItem('easycfa_formateurs');
-      if (fSaved) setFormateurs(JSON.parse(fSaved));
-    } catch {}
+    (async () => {
+      // Émargements : Supabase d'abord, fallback localStorage
+      try {
+        const fromSupabase = await chargerEmargementsSupabase();
+        if (fromSupabase.length > 0) {
+          console.log(`[Emargements] ${fromSupabase.length} feuilles chargées depuis Supabase ✅`);
+          setFeuillesLocales(fromSupabase as any[]);
+        } else {
+          console.warn('[Emargements] Supabase vide, fallback localStorage');
+          const s = localStorage.getItem('easycfa_emargement_v2');
+          if (s) setFeuillesLocales(JSON.parse(s));
+        }
+      } catch (e) {
+        console.error('[Emargements] Erreur Supabase, fallback localStorage', e);
+        try {
+          const s = localStorage.getItem('easycfa_emargement_v2');
+          if (s) setFeuillesLocales(JSON.parse(s));
+        } catch {}
+      }
+      // Sessions + formateurs (lecture locale, déjà migrés)
+      try {
+        const ses = localStorage.getItem('easycfa_sessions_v2');
+        if (ses) setSessions(JSON.parse(ses));
+        const fSaved = localStorage.getItem('easycfa_formateurs');
+        if (fSaved) setFormateurs(JSON.parse(fSaved));
+      } catch {}
+    })();
   }, []);
 
   const toutesFeuilles: FeuilleEmargement[] = [...feuillesLocales, ...FEUILLES_EMARGEMENT];
@@ -202,6 +226,14 @@ export default function Emargement() {
         };
       });
       localStorage.setItem('easycfa_emargement_v2', JSON.stringify(nouvelles));
+      // Supabase : envoi async de la feuille modifiée
+      const feuilleModifiee = nouvelles.find(f => f.id === feuilleId);
+      if (feuilleModifiee) {
+        creerEmargementSupabase(feuilleModifiee as any).then(res => {
+          if (!res.success) console.error(`[Emargement ${feuilleId}] Erreur Supabase :`, res.error);
+          else console.log(`[Emargement ${feuilleId}] Statut mis à jour dans Supabase ✅`);
+        });
+      }
       return nouvelles;
     });
   }
@@ -232,6 +264,14 @@ export default function Emargement() {
           };
         });
         localStorage.setItem('easycfa_emargement_v2', JSON.stringify(nouvelles));
+        // Supabase
+        const feuilleModifiee = nouvelles.find(f => f.id === feuilleId);
+        if (feuilleModifiee) {
+          creerEmargementSupabase(feuilleModifiee as any).then(res => {
+            if (!res.success) console.error(`[Emargement ${feuilleId}] Erreur validation Supabase :`, res.error);
+            else console.log(`[Emargement ${feuilleId}] Validation sauvegardée dans Supabase ✅`);
+          });
+        }
         return nouvelles;
       });
     }
@@ -262,10 +302,20 @@ export default function Emargement() {
         const sansDoublon = prev.filter(f => f.id !== nouvelleFeuille.id);
         const nouvelles = [nouvelleFeuille, ...sansDoublon];
         localStorage.setItem('easycfa_emargement_v2', JSON.stringify(nouvelles));
+        // Supabase
+        creerEmargementSupabase(nouvelleFeuille as any).then(res => {
+          if (!res.success) console.error(`[Emargement ${nouvelleFeuille.id}] Erreur Supabase :`, res.error);
+          else console.log(`[Emargement ${nouvelleFeuille.id}] Remplacée dans Supabase ✅`);
+        });
         return nouvelles;
       }
       const nouvelles = [nouvelleFeuille, ...prev];
       localStorage.setItem('easycfa_emargement_v2', JSON.stringify(nouvelles));
+      // Supabase
+      creerEmargementSupabase(nouvelleFeuille as any).then(res => {
+        if (!res.success) console.error(`[Emargement ${nouvelleFeuille.id}] Erreur Supabase :`, res.error);
+        else console.log(`[Emargement ${nouvelleFeuille.id}] Créée dans Supabase ✅`);
+      });
       return nouvelles;
     });
 
@@ -279,6 +329,12 @@ export default function Emargement() {
 
   function supprimerFeuilleLocale(id: string) {
     if (!confirm('Supprimer cette feuille d\'émargement ?')) return;
+    // Supabase
+    supprimerEmargementSupabase(id).then(res => {
+      if (!res.success) console.error(`[Emargement ${id}] Erreur suppression Supabase :`, res.error);
+      else console.log(`[Emargement ${id}] Supprimée de Supabase ✅`);
+    });
+    // UI + localStorage
     setFeuillesLocales(prev => {
       const nouvelles = prev.filter(f => f.id !== id);
       localStorage.setItem('easycfa_emargement_v2', JSON.stringify(nouvelles));

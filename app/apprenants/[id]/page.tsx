@@ -26,6 +26,7 @@ import {
   dateIsoToFr,
   dateFrToIso,
 } from '../../../data/mockEntretiens';
+import { creerEntretien as creerEntretienSupabase } from '../../../data/entretiensSupabase';
 const BoutonPdfRupture = dynamic(() => import('../../../components/BoutonPdfRupture'), { ssr: false });
 
 const btnPrimary: React.CSSProperties = { backgroundColor: COLORS.primary, color: 'white', border: 'none', borderRadius: '8px', padding: '9px 16px', fontSize: '13px', fontWeight: '600', cursor: 'pointer' };
@@ -693,7 +694,12 @@ export default function FicheApprenant({ params }: { params: Promise<{ id: strin
     }
   }, [form.dateDebutContrat, form.dateFinContrat]);
 
-  function handleSauvegarderEntretien(entretien: Entretien) {
+  async function handleSauvegarderEntretien(entretien: Entretien) {
+    // Supabase d'abord (upsert)
+    const res = await creerEntretienSupabase(entretien as any);
+    if (!res.success) alert(`⚠️ Erreur Supabase : ${res.error}`);
+    else console.log(`[Entretien ${entretien.id}] Sauvegardé dans Supabase ✅`);
+    // localStorage en miroir + rafraîchissement UI
     sauvegarderEntretien(entretien);
     const ents = chargerOuCreerEntretiensApprenant(id, form.dateDebutContrat, form.dateFinContrat);
     setEntretiens(ents);
