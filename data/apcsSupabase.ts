@@ -71,7 +71,7 @@ const CHAMPS_VALIDES_ECHEANCE = new Set<string>([
   'id', 'apc_id', 'label', 'type', 'annee', 'pourcentage',
   'montantPrevu', 'dateEcheance', 'numeroFacture', 'dateFacture',
   'dateDepotOpco', 'dateEcheance30j', 'datePaiement', 'montantPaye', 'anneePaiement',
-  'fichierFacture', 'modifiee',
+  'fichierFacture', 'fichierFactureUrl', 'fichierFactureCheminStorage', 'modifiee',
   'dateCreation', 'dateModification',
   'pieces',
 ]);

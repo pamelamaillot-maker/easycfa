@@ -7,10 +7,12 @@ import { APPRENANTS_REELS } from '../../data/mockApprenants_reels';
 import { useUser } from '../../lib/UserContext';
 import {
   FicheIntervention,
-  chargerOuCreerFiche,
-  sauvegarderFiche,
   ficheCompletee,
 } from '../../data/mockInterventions';
+import {
+  chargerOuCreerFicheSupabase as chargerOuCreerFiche,
+  sauvegarderFicheSupabase as sauvegarderFiche,
+} from '../../data/interventionsSupabase';
 import { COLORS } from '../../lib/constants';
 import {
   chargerEmargements as chargerEmargementsSupabase,
@@ -188,17 +190,19 @@ export default function Emargement() {
       setFicheActive(null);
       return;
     }
-    const fiche = chargerOuCreerFiche(
-      feuille.id,
-      (feuille as any).sessionId ?? '',
-      (feuille as any).sessionNumero ?? '',
-      feuille.formation,
-      feuille.date,
-      feuille.jour,
-      formateurId,
-      monNomFormateur,
-    );
-    setFicheActive(fiche);
+    (async () => {
+      const fiche = await chargerOuCreerFiche(
+        feuille.id,
+        (feuille as any).sessionId ?? '',
+        (feuille as any).sessionNumero ?? '',
+        feuille.formation,
+        feuille.date,
+        feuille.jour,
+        formateurId,
+        monNomFormateur,
+      );
+      setFicheActive(fiche);
+    })();
   }, [feuilleId, formateurId, monNomFormateur]);
 
   function calculerHeures(statut: StatutPresence, heureArrivee?: string, heureDebut = '08:30', heureFin = '12:00'): number {
