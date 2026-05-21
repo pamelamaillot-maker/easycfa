@@ -5,6 +5,7 @@ import { FEUILLES_EMARGEMENT, EMAIL_ABSENCE_TEMPLATE } from '../../data/mockEmar
 import type { FeuilleEmargement, DemiJournee, PresenceApprenant, StatutPresence } from '../../data/mockEmargement';
 import { APPRENANTS_REELS } from '../../data/mockApprenants_reels';
 import { useUser } from '../../lib/UserContext';
+import { useAcces, tracerAction } from '../../lib/useAcces';
 import {
   FicheIntervention,
   ficheCompletee,
@@ -125,6 +126,7 @@ function genererFeuilleDepuisSessions(sessionsSelectionnees: any[], date: string
 
 export default function Emargement() {
   const { utilisateur } = useUser();
+  const { estAdmin } = useAcces();
   const [feuillesLocales, setFeuillesLocales] = useState<FeuilleEmargement[]>([]);
   const [sessions, setSessions] = useState<any[]>([]);
   const [formateurs, setFormateurs] = useState<any[]>([]);
@@ -261,6 +263,55 @@ export default function Emargement() {
       }
       return nouvelles;
     });
+  }
+
+  function rouvrirDemiJournee() {
+    if (!feuille || !dj) return;
+    if (!estAdmin) {
+      alert('⚠️ Seule la directrice (PAMA) peut rouvrir une demi-journée validée.');
+      return;
+    }
+    const estLocale = feuillesLocales.some(f => f.id === feuilleId);
+    if (!estLocale) {
+      alert('Les feuilles de démonstration ne peuvent pas être modifiées.');
+      return;
+    }
+    if (!confirm(`⚠️ Rouvrir la demi-journée "${dj.type}" du ${feuille.date} ?\n\nCette action sera tracée dans l'historique pour traçabilité Qualiopi.\nLe formateur pourra modifier la saisie puis re-valider.`)) return;
+
+    setFeuillesLocales(prev => {
+      const nouvelles = prev.map(f => {
+        if (f.id !== feuilleId) return f;
+        return {
+          ...f,
+          demiJournees: f.demiJournees.map(d => {
+            if (d.id !== demiJourneeId) return d;
+            return { ...d, valide: false, heureValidation: undefined };
+          }),
+        };
+      });
+      localStorage.setItem('easycfa_emargement_v2', JSON.stringify(nouvelles));
+      // Supabase
+      const feuilleModifiee = nouvelles.find(f => f.id === feuilleId);
+      if (feuilleModifiee) {
+        creerEmargementSupabase(feuilleModifiee as any).then(res => {
+          if (!res.success) console.error(`[Emargement ${feuilleId}] Erreur réouverture Supabase :`, res.error);
+          else console.log(`[Emargement ${feuilleId}] Demi-journée rouverte dans Supabase ✅`);
+        });
+      }
+      return nouvelles;
+    });
+
+    // Traçage
+    tracerAction(
+      'REOUVERTURE_DEMI_JOURNEE',
+      'emargement',
+      `${feuilleId}_${demiJourneeId}`,
+      `${feuille.formation} — ${feuille.jour} ${feuille.date} — ${dj.type}`,
+      utilisateur,
+    );
+
+    setMessageSuccess(`↺ Demi-journée ${dj.type} rouverte par ${utilisateur?.prenom} ${utilisateur?.nom} — Action tracée`);
+    setTimeout(() => setMessageSuccess(''), 6000);
   }
 
   function validerDemiJournee() {
@@ -762,9 +813,16 @@ export default function Emargement() {
                     </div>
                   </div>
                   {dj.valide && (
-                    <span style={{ backgroundColor: '#e6f4f1', color: '#006B68', padding: '6px 14px', borderRadius: '20px', fontSize: '13px', fontWeight: '700' }}>
-                      ✅ Validé à {dj.heureValidation}
-                    </span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                      <span style={{ backgroundColor: '#e6f4f1', color: '#006B68', padding: '6px 14px', borderRadius: '20px', fontSize: '13px', fontWeight: '700' }}>
+                        ✅ Validé à {dj.heureValidation}
+                      </span>
+                      {estAdmin && (
+                        <button onClick={rouvrirDemiJournee} style={{ backgroundColor: 'white', color: '#c53030', border: '1.5px solid #c53030', borderRadius: '8px', padding: '5px 12px', fontSize: '12px', fontWeight: '600', cursor: 'pointer' }}>
+                          ↺ Rouvrir
+                        </button>
+                      )}
+                    </div>
                   )}
                 </div>
               </Card>
@@ -944,9 +1002,11 @@ export default function Emargement() {
                           Signée le {new Date(ficheActive.dateSignature!).toLocaleDateString('fr-FR')} à {ficheActive.heureSignature}
                         </div>
                       </div>
-                      <button onClick={annulerSignature} style={{ ...btnSecondary, color: '#15803d', borderColor: '#15803d' }}>
-                        ✏️ Modifier (annuler signature)
-                      </button>
+                              {estAdmin && (
+                        <button onClick={annulerSignature} style={{ ...btnSecondary, color: '#15803d', borderColor: '#15803d' }}>
+                          ✏️ Modifier (annuler signature)
+                        </button>
+                      )}
                     </div>
                   ) : (
                     <div style={{ padding: '14px 16px', backgroundColor: '#fef6e4', borderRadius: '10px', border: '1.5px solid #C8A23A', fontSize: '12px', color: '#7a5c00' }}>
