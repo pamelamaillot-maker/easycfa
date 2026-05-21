@@ -109,7 +109,16 @@ export function useAcces() {
     peutAccederBPF: accesPages.includes('/bpf'),
     peutAccederFacturation: accesPages.includes('/precomptabilite'),
     peutGererUtilisateurs: role === 'admin',
-    aAcces: (page: string) => accesPages.some(p => page === p || page.startsWith(p + '/') || page.startsWith(p)),
+    aAcces: (page: string) => {
+      // Sous-pages restreintes : nécessitent une autorisation explicite
+      // (sinon /emargement donnerait accès à toutes ses sous-pages)
+      const sousPagesProtegees = ['/emargement/validation-pedagogique'];
+      const protegee = sousPagesProtegees.find(sp => page === sp || page.startsWith(sp + '/'));
+      if (protegee) {
+        return accesPages.includes(protegee);
+      }
+      return accesPages.some(p => page === p || page.startsWith(p + '/') || page.startsWith(p));
+    },
     utilisateur,
     role,
   };

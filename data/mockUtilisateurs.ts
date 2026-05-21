@@ -72,14 +72,14 @@ export const UTILISATEURS: Utilisateur[] = [
 export const ACCES_PAR_ROLE: Record<string, string[]> = {
   admin: [
     '/', '/apprenants', '/entreprises', '/formateurs', '/formations',
-    '/sessions', '/planning', '/emargement', '/presences',
+    '/sessions', '/planning', '/emargement', '/emargement/validation-pedagogique', '/presences',
     '/documents', '/qualiopi', '/bpf', '/parametres',
     '/precomptabilite', '/opco', '/recrutement', '/examens',
     '/france-competences', '/sifa',
   ],
   pedagogique: [
     '/', '/apprenants', '/entreprises', '/formateurs', '/formations',
-    '/sessions', '/planning', '/emargement', '/presences', '/documents',
+    '/sessions', '/planning', '/emargement', '/emargement/validation-pedagogique', '/presences', '/documents',
     '/parametres', '/recrutement', '/opco', '/examens',
   ],
   comptable: [

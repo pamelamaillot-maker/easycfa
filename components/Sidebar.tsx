@@ -40,6 +40,7 @@ const CATEGORIES: Categorie[] = [
     titre: 'ASSIDUITÉS',
     items: [
       { label: 'Émargement', href: '/emargement', icon: '✍️' },
+      { label: 'Validation pédagogique', href: '/emargement/validation-pedagogique', icon: '🛡️' },
       { label: 'Présences', href: '/presences', icon: '📋' },
     ],
   },
