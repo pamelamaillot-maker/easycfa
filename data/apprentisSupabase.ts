@@ -210,6 +210,7 @@ const CHAMPS_VALIDES = new Set<string>([
   'situationAvant', 'derniereSituationCode', 'dernierDiplome', 'intituleDernierDiplome',
   'derniereClasse', 'dernierEtablissement', 'dernierOrganismeUai', 'anneeObtention',
   'dateCreation', 'dateModification',
+  'pieces',
 ]);
 
 /**

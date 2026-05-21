@@ -23,7 +23,9 @@ const CHAMPS_VALIDES_ENTRETIEN = new Set<string>([
   'id', 'apprenantId', 'type', 'datePrevue', 'dateEffective',
   'statut', 'realisePar', 'modifiePar',
   'supportUtilise', 'presents', 'notes',
+  'decisions', 'motifNonFait', 'dateReport',
   'dateCreation', 'dateModification',
+  'pieces',
 ]);
 
 export async function chargerEntretiens(): Promise<Entretien[]> {

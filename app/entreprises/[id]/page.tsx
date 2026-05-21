@@ -8,6 +8,7 @@ import { chargerEntreprise as chargerEntrepriseSupabase, modifierEntreprise, sup
 import Card from '../../../components/Card';
 import StatCard from '../../../components/StatCard';
 import BoutonSupprimer from '../../../components/BoutonSupprimer';
+import { uploaderFichier, cheminStorage } from '../../../lib/storage';
 
 const DOC_STATUT: Record<string, { bg: string; color: string }> = {
   'Disponible': { bg: '#e6f4f1', color: '#006B68' },
@@ -553,18 +554,33 @@ export default function FicheEntreprise({ params }: { params: Promise<{ id: stri
                   {piece.obligatoire && <span style={{ color: '#e53e3e', marginLeft: '6px', fontSize: '11px' }}>OBLIGATOIRE</span>}
                 </div>
                 <div style={{ fontSize: '11px', color: '#888', marginTop: '2px' }}>{piece.detail}</div>
-                {fichier && <div style={{ fontSize: '12px', color: COLORS.primary, marginTop: '4px', fontWeight: '600' }}>📄 {fichier.nom} ({fichier.taille})</div>}
+                {fichier && <div style={{ fontSize: '12px', color: COLORS.primary, marginTop: '4px', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                  <span>📄 {fichier.nom} ({fichier.taille})</span>
+                  {form.pieces?.[piece.id]?.url && (
+                    <a href={form.pieces[piece.id].url} target="_blank" rel="noopener noreferrer" style={{ color: COLORS.primary, textDecoration: 'underline', fontSize: '11px' }}>⬇ Télécharger</a>
+                  )}
+                </div>}
               </div>
               <label style={{ backgroundColor: fichier ? 'white' : COLORS.primary, color: fichier ? COLORS.primary : 'white', border: fichier ? `1.5px solid ${COLORS.primary}` : 'none', borderRadius: '8px', padding: '7px 12px', fontSize: '12px', fontWeight: '600', cursor: 'pointer', display: 'inline-block', whiteSpace: 'nowrap', flexShrink: 0 }}>
                 {fichier ? '🔄 Remplacer' : '⬆ Importer'}
-                <input type="file" accept=".pdf,.jpg,.jpeg,.png" style={{ display: 'none' }} onChange={(ev) => {
+                <input type="file" accept=".pdf,.jpg,.jpeg,.png" style={{ display: 'none' }} onChange={async (ev) => {
                   const f = ev.target.files?.[0];
-                  if (f) {
-                    const taille = f.size > 1024 * 1024 ? `${(f.size / 1024 / 1024).toFixed(1)} Mo` : `${Math.round(f.size / 1024)} Ko`;
-                    const updated = { ...form, ['piece_' + piece.id]: { nom: f.name, taille } };
-                    setForm(updated);
-                    localStorage.setItem('entreprise_' + id, JSON.stringify(updated));
+                  if (!f) return;
+                  const taille = f.size > 1024 * 1024 ? `${(f.size / 1024 / 1024).toFixed(1)} Mo` : `${Math.round(f.size / 1024)} Ko`;
+                  const chemin = cheminStorage('entreprises', id, piece.id, f.name);
+                  const resUpload = await uploaderFichier(chemin, f);
+                  if (!resUpload.success || !resUpload.fichier) {
+                    alert(`⚠️ Erreur upload : ${resUpload.error}`);
+                    return;
                   }
+                  console.log(`[Entreprise ${id}] Pièce '${piece.id}' uploadée vers Storage ✅`);
+                  const nouvellesPieces = { ...(form.pieces || {}), [piece.id]: resUpload.fichier };
+                  const updated = { ...form, pieces: nouvellesPieces, ['piece_' + piece.id]: { nom: f.name, taille } };
+                  setForm(updated);
+                  localStorage.setItem('entreprise_' + id, JSON.stringify(updated));
+                  const resSave = await modifierEntreprise(id, { pieces: nouvellesPieces });
+                  if (!resSave.success) alert(`⚠️ Erreur sauvegarde : ${resSave.error}`);
+                  else console.log(`[Entreprise ${id}] Pièces sauvegardées dans Supabase ✅`);
                 }} />
               </label>
             </div>

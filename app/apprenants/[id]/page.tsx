@@ -7,6 +7,7 @@ import { ENTREPRISES_REELS } from '../../../data/mockEntreprises_reels';
 import { SESSIONS } from '../../../data/mockData';
 import { COLORS } from '../../../lib/constants';
 import { chargerApprenti, creerApprenti, modifierApprenti, supprimerApprenti as supprimerApprentiSupabase } from '../../../data/apprentisSupabase';
+import { uploaderFichier, supprimerFichier, cheminStorage, type FichierStocke } from '../../../lib/storage';
 import Card from '../../../components/Card';
 import { useAcces } from '../../../lib/useAcces';
 import dynamic from 'next/dynamic';
@@ -1418,9 +1419,19 @@ export default function FicheApprenant({ params }: { params: Promise<{ id: strin
                 </div>
                 <div style={{ fontSize: '11px', color: '#888', marginTop: '2px' }}>{piece.detail}</div>
                 {fichier && (
-                  <div style={{ fontSize: '12px', color: COLORS.primary, marginTop: '4px', fontWeight: '600' }}>
+                  <div style={{ fontSize: '12px', color: COLORS.primary, marginTop: '4px', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
                     📄 {fichier.nom} ({fichier.taille})
-                    {fichier.source && <span style={{ fontStyle: 'italic', marginLeft: '6px' }}>— {fichier.source}</span>}
+                    {fichier.source && <span style={{ fontStyle: 'italic' }}>— {fichier.source}</span>}
+                    {fichier.url && (
+                      <a
+                        href={fichier.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        style={{ backgroundColor: '#e6f4f1', color: COLORS.primary, padding: '2px 8px', borderRadius: '4px', fontSize: '11px', textDecoration: 'none', fontWeight: '600' }}
+                      >
+                        ⬇ Télécharger
+                      </a>
+                    )}
                   </div>
                 )}
               </div>
@@ -1431,14 +1442,34 @@ export default function FicheApprenant({ params }: { params: Promise<{ id: strin
                     type="file"
                     accept=".pdf,.jpg,.jpeg,.png"
                     style={{ display: 'none' }}
-                    onChange={(e) => {
+                    onChange={async (e) => {
                       const f = e.target.files?.[0];
-                      if (f) {
-                        const taille = f.size > 1024 * 1024 ? `${(f.size / 1024 / 1024).toFixed(1)} Mo` : `${Math.round(f.size / 1024)} Ko`;
-                        const updated = { ...form, ['piece_' + piece.id]: { nom: f.name, taille } };
-                        setForm(updated);
-                        localStorage.setItem('apprenant_' + id, JSON.stringify(updated));
+                      if (!f) return;
+
+                      // 1. Upload Storage
+                      const chemin = cheminStorage('apprenants', id, piece.id, f.name);
+                      const resStorage = await uploaderFichier(chemin, f);
+                      if (!resStorage.success) {
+                        alert(`⚠️ Erreur upload : ${resStorage.error}`);
+                        return;
                       }
+                      console.log(`[Apprenant ${id}] Pièce '${piece.id}' uploadée vers Storage ✅`);
+
+                      const fichierStocke: FichierStocke = resStorage.fichier!;
+
+                      // 2. Mise à jour formulaire local (compat localStorage + UI)
+                      const updated = { ...form, ['piece_' + piece.id]: fichierStocke };
+                      setForm(updated);
+                      localStorage.setItem('apprenant_' + id, JSON.stringify(updated));
+
+                      // 3. Mise à jour Supabase via colonne JSONB 'pieces'
+                      const piecesActuelles = form.pieces || {};
+                      const nouvellesPieces = { ...piecesActuelles, [piece.id]: fichierStocke };
+                      const res = await modifierApprenti(id, { pieces: nouvellesPieces });
+                      if (!res.success) alert(`⚠️ Erreur Supabase : ${res.error}`);
+                      else console.log(`[Apprenant ${id}] Pièces sauvegardées dans Supabase ✅`);
+                      // Mise à jour locale aussi pour cohérence
+                      setForm((p: any) => ({ ...p, pieces: nouvellesPieces }));
                     }}
                   />
                 </label>

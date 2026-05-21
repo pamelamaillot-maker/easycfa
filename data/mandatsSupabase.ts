@@ -35,6 +35,7 @@ const CHAMPS_VALIDES_MANDAT = new Set<string>([
   'dateEnvoiMandat', 'dateSignatureMandat', 'mandatSigne', 'datePublication', 'dateEntretiens',
   'profils_proposes', 'contrat_conclu', 'non_abouti', 'annule',
   'candidats', 'notes', 'dateCreation', 'dateModification',
+  'pieces',
 ]);
 
 export async function chargerMandats(): Promise<Mandat[]> {

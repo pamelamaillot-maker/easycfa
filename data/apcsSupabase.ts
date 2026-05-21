@@ -73,6 +73,7 @@ const CHAMPS_VALIDES_ECHEANCE = new Set<string>([
   'dateDepotOpco', 'dateEcheance30j', 'datePaiement', 'montantPaye', 'anneePaiement',
   'fichierFacture', 'modifiee',
   'dateCreation', 'dateModification',
+  'pieces',
 ]);
 
 // ============================================================================
