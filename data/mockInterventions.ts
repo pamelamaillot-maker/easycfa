@@ -31,7 +31,7 @@ export type FicheIntervention = {
 
   // === Section 3 — Incidents (auto depuis présences + saisie motifs) ===
   retards: { apprenantId: string; nom: string; prenom: string; heureArrivee: string; duree: string; motif: string }[];  // 9 + 10
-  absences: { apprenantId: string; nom: string; prenom: string; motif: string }[];  // 11
+  absences: { apprenantId: string; nom: string; prenom: string; motif: string; justificatifNom?: string; justificatifUrl?: string; justificatifCheminStorage?: string; justificatifDateImport?: string }[];  // 11
 
   // === Section 4 — Signature ===
   certifiee: boolean;                    // ☑ "Je certifie"

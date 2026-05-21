@@ -28,6 +28,7 @@ import {
   dateFrToIso,
 } from '../../../data/mockEntretiens';
 import { creerEntretien as creerEntretienSupabase } from '../../../data/entretiensSupabase';
+import { chargerEmargements } from '../../../data/emargementsSupabase';
 const BoutonPdfRupture = dynamic(() => import('../../../components/BoutonPdfRupture'), { ssr: false });
 
 const btnPrimary: React.CSSProperties = { backgroundColor: COLORS.primary, color: 'white', border: 'none', borderRadius: '8px', padding: '9px 16px', fontSize: '13px', fontWeight: '600', cursor: 'pointer' };
@@ -668,6 +669,50 @@ export default function FicheApprenant({ params }: { params: Promise<{ id: strin
   const { id } = React.use(params);
   const router = useRouter();
   const [apprenant, setApprenant] = useState<any>(null);
+  const [historiqueEmargement, setHistoriqueEmargement] = useState<any[]>([]);
+
+  // Charge l'historique d'émargement de l'apprenant (absences + retards)
+  useEffect(() => {
+    (async () => {
+      try {
+        const toutes = await chargerEmargements();
+        const incidents: any[] = [];
+        toutes.forEach((feuille: any) => {
+          (feuille.demiJournees || []).forEach((dj: any) => {
+            (dj.presences || []).forEach((p: any) => {
+              if (p.apprenantId === id && (p.statut === 'Absent' || p.statut === 'Retard' || p.statut === 'Absent justifié')) {
+                incidents.push({
+                  feuilleId: feuille.id,
+                  date: feuille.date,
+                  jour: feuille.jour,
+                  formation: feuille.formation,
+                  demiJournee: dj.type,
+                  theme: dj.theme,
+                  statut: p.statut,
+                  motif: p.motif || '',
+                  duree: p.duree || '',
+                  heureArrivee: p.heureArrivee || '',
+                  justifiee: p.justifiee || null,
+                  justificatifNom: p.justificatifNom,
+                  justificatifUrl: p.justificatifUrl,
+                });
+              }
+            });
+          });
+        });
+        // Tri par date décroissante
+        incidents.sort((a, b) => {
+          const dA = a.date.split('/').reverse().join('-');
+          const dB = b.date.split('/').reverse().join('-');
+          return dB.localeCompare(dA);
+        });
+        setHistoriqueEmargement(incidents);
+        console.log(`[FicheApprenant ${id}] ${incidents.length} incident(s) d'émargement chargés ✅`);
+      } catch (e) {
+        console.error('[FicheApprenant] Erreur chargement historique émargement:', e);
+      }
+    })();
+  }, [id]);
   const [form, setForm] = useState<any>({});
   const [modeEdition, setModeEdition] = useState(false);
   const [sauvegarde, setSauvegarde] = useState(false);
@@ -1503,12 +1548,98 @@ export default function FicheApprenant({ params }: { params: Promise<{ id: strin
         })}
       </Card>
 
-      {/* Présences mensuelles */}
+      {/* Historique des absences et retards */}
       <Card style={{ marginBottom: '24px' }}>
-        <h2 style={{ fontSize: '15px', fontWeight: '700', color: COLORS.primary, marginBottom: '16px' }}>Présences mensuelles</h2>
-        <div style={{ padding: '20px', textAlign: 'center', color: COLORS.textMuted, fontSize: '14px', fontStyle: 'italic' }}>
-          Alimentées depuis le module Émargement
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+          <h2 style={{ fontSize: '15px', fontWeight: '700', color: COLORS.primary }}>📋 Historique des absences et retards</h2>
+          <span style={{ fontSize: '12px', color: '#888' }}>Alimenté depuis le module Émargement</span>
         </div>
+
+        {/* Stats rapides */}
+        {historiqueEmargement.length > 0 && (() => {
+          const nbAbs = historiqueEmargement.filter(i => i.statut === 'Absent').length;
+          const nbAbsJ = historiqueEmargement.filter(i => i.statut === 'Absent justifié').length;
+          const nbRet = historiqueEmargement.filter(i => i.statut === 'Retard').length;
+          return (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '10px', marginBottom: '14px' }}>
+              <div style={{ backgroundColor: '#fde8e8', borderRadius: '8px', padding: '10px', textAlign: 'center' }}>
+                <div style={{ fontSize: '20px', fontWeight: '800', color: '#e53e3e' }}>{nbAbs}</div>
+                <div style={{ fontSize: '11px', color: '#666' }}>Absences</div>
+              </div>
+              <div style={{ backgroundColor: '#f0f4ff', borderRadius: '8px', padding: '10px', textAlign: 'center' }}>
+                <div style={{ fontSize: '20px', fontWeight: '800', color: '#3a5bc7' }}>{nbAbsJ}</div>
+                <div style={{ fontSize: '11px', color: '#666' }}>Justifiées</div>
+              </div>
+              <div style={{ backgroundColor: '#fef6e4', borderRadius: '8px', padding: '10px', textAlign: 'center' }}>
+                <div style={{ fontSize: '20px', fontWeight: '800', color: '#C8A23A' }}>{nbRet}</div>
+                <div style={{ fontSize: '11px', color: '#666' }}>Retards</div>
+              </div>
+              <div style={{ backgroundColor: '#EAF4F3', borderRadius: '8px', padding: '10px', textAlign: 'center' }}>
+                <div style={{ fontSize: '20px', fontWeight: '800', color: COLORS.primary }}>{historiqueEmargement.length}</div>
+                <div style={{ fontSize: '11px', color: '#666' }}>Total</div>
+              </div>
+            </div>
+          );
+        })()}
+
+        {historiqueEmargement.length === 0 ? (
+          <div style={{ padding: '20px', textAlign: 'center', color: COLORS.textMuted, fontSize: '13px', fontStyle: 'italic', backgroundColor: '#f9f9f9', borderRadius: '8px' }}>
+            ✅ Aucune absence ou retard enregistré
+          </div>
+        ) : (
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <thead>
+                <tr style={{ borderBottom: `2px solid ${COLORS.background}` }}>
+                  {['Date', 'Demi-J.', 'Statut', 'Motif', 'Justifiée', 'Justificatif'].map(col => (
+                    <th key={col} style={{ textAlign: 'left', padding: '8px 10px', fontSize: '11px', color: '#999', fontWeight: '600', textTransform: 'uppercase' }}>{col}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {historiqueEmargement.map((i, idx) => {
+                  const styleStatut = i.statut === 'Absent' ? { bg: '#fde8e8', color: '#e53e3e', icon: '❌' }
+                    : i.statut === 'Retard' ? { bg: '#fef6e4', color: '#C8A23A', icon: '⚠️' }
+                    : { bg: '#f0f4ff', color: '#3a5bc7', icon: '📋' };
+                  return (
+                    <tr key={idx} style={{ borderBottom: `1px solid ${COLORS.border}` }}>
+                      <td style={{ padding: '10px', fontSize: '13px', fontWeight: '600' }}>
+                        {i.date}
+                        <div style={{ fontSize: '10px', color: '#888', fontWeight: '400' }}>{i.jour}</div>
+                      </td>
+                      <td style={{ padding: '10px', fontSize: '12px', color: COLORS.textMuted }}>
+                        {i.demiJournee === 'Matin' ? '🌅' : '🌇'} {i.demiJournee}
+                        {i.heureArrivee && <div style={{ fontSize: '10px', color: '#888' }}>Arrivée {i.heureArrivee}</div>}
+                      </td>
+                      <td style={{ padding: '10px' }}>
+                        <span style={{ backgroundColor: styleStatut.bg, color: styleStatut.color, padding: '3px 10px', borderRadius: '20px', fontSize: '12px', fontWeight: '600', whiteSpace: 'nowrap' }}>
+                          {styleStatut.icon} {i.statut}
+                        </span>
+                      </td>
+                      <td style={{ padding: '10px', fontSize: '12px', color: COLORS.text, maxWidth: '300px' }}>
+                        {i.motif || <span style={{ color: '#bbb', fontStyle: 'italic' }}>—</span>}
+                      </td>
+                      <td style={{ padding: '10px' }}>
+                        {i.justifiee === 'OUI' && <span style={{ backgroundColor: '#dcfce7', color: '#15803d', padding: '3px 10px', borderRadius: '20px', fontSize: '11px', fontWeight: '600' }}>✅ Oui</span>}
+                        {i.justifiee === 'NON' && <span style={{ backgroundColor: '#fde8e8', color: '#e53e3e', padding: '3px 10px', borderRadius: '20px', fontSize: '11px', fontWeight: '600' }}>❌ Non</span>}
+                        {!i.justifiee && <span style={{ color: '#bbb', fontSize: '12px', fontStyle: 'italic' }}>En attente</span>}
+                      </td>
+                      <td style={{ padding: '10px' }}>
+                        {i.justificatifUrl ? (
+                          <a href={i.justificatifUrl} target="_blank" rel="noopener noreferrer" style={{ backgroundColor: '#e6f4f1', color: COLORS.primary, padding: '3px 10px', borderRadius: '6px', fontSize: '11px', textDecoration: 'none', fontWeight: '600', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                            📄 {i.justificatifNom || 'Voir'}
+                          </a>
+                        ) : (
+                          <span style={{ color: '#bbb', fontSize: '12px', fontStyle: 'italic' }}>—</span>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
       </Card>
 
       {/* Rupture */}
