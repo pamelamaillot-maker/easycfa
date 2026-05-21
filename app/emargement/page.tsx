@@ -14,6 +14,7 @@ import {
   sauvegarderFicheSupabase as sauvegarderFiche,
 } from '../../data/interventionsSupabase';
 import { COLORS } from '../../lib/constants';
+import { uploaderFichier, cheminStorage } from '../../lib/storage';
 import {
   chargerEmargements as chargerEmargementsSupabase,
   creerEmargement as creerEmargementSupabase,
@@ -388,7 +389,15 @@ export default function Emargement() {
               }
               const abs = absences.find(a => a.apprenantId === p.apprenantId);
               if (abs) {
-                return { ...p, motif: abs.motif };
+                const absAny = abs as any;
+                return {
+                  ...p,
+                  motif: abs.motif,
+                  justificatifNom: absAny.justificatifNom,
+                  justificatifUrl: absAny.justificatifUrl,
+                  justificatifCheminStorage: absAny.justificatifCheminStorage,
+                  justificatifDateImport: absAny.justificatifDateImport,
+                };
               }
               return p;
             }),
@@ -420,6 +429,29 @@ export default function Emargement() {
         champ === 'absences' ? valeur : updated.absences,
       );
     }
+  }
+
+  // Upload justificatif pour une absence
+  async function uploadJustificatifAbsence(idxAbsence: number, file: File) {
+    if (!ficheActive || !feuille) return;
+    const abs = ficheActive.absences[idxAbsence];
+    if (!abs) return;
+    const chemin = cheminStorage('justificatifs', feuille.id, `${abs.apprenantId}_justif`, file.name);
+    const resUpload = await uploaderFichier(chemin, file);
+    if (!resUpload.success || !resUpload.fichier) {
+      alert(`⚠️ Erreur upload : ${resUpload.error}`);
+      return;
+    }
+    console.log(`[Justificatif] ${abs.prenom} ${abs.nom} uploadé vers Storage ✅`);
+    const nouvellesAbsences = [...ficheActive.absences];
+    nouvellesAbsences[idxAbsence] = {
+      ...abs,
+      justificatifNom: resUpload.fichier.nom,
+      justificatifUrl: resUpload.fichier.url,
+      justificatifCheminStorage: resUpload.fichier.cheminStorage,
+      justificatifDateImport: new Date().toISOString(),
+    } as any;
+    majFiche('absences', nouvellesAbsences);
   }
 
   // Synchroniser les retards et absences depuis les présences (deux demi-journées)
@@ -988,16 +1020,38 @@ export default function Emargement() {
                         </div>
                       ) : (
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                          {ficheActive.absences.map((a, idx) => (
-                            <div key={a.apprenantId} style={{ padding: '10px', backgroundColor: '#fde8e8', borderRadius: '8px', display: 'grid', gridTemplateColumns: '2fr 3fr', gap: '8px', alignItems: 'center' }}>
-                              <div style={{ fontSize: '12px', fontWeight: '700', color: '#c53030' }}>{a.prenom} {a.nom}</div>
-                              <input type="text" disabled={ficheSignee} style={{ ...inputStyle, fontSize: '11px', padding: '5px 8px' }} placeholder="Motif (si connu)" value={a.motif} onChange={e => {
-                                const nouveaux = [...ficheActive.absences];
-                                nouveaux[idx] = { ...a, motif: e.target.value };
-                                majFiche('absences', nouveaux);
-                              }} />
-                            </div>
-                          ))}
+                          {ficheActive.absences.map((a, idx) => {
+                            const justifUrl = (a as any).justificatifUrl;
+                            const justifNom = (a as any).justificatifNom;
+                            return (
+                              <div key={a.apprenantId} style={{ padding: '10px', backgroundColor: '#fde8e8', borderRadius: '8px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                                <div style={{ display: 'grid', gridTemplateColumns: '2fr 3fr', gap: '8px', alignItems: 'center' }}>
+                                  <div style={{ fontSize: '12px', fontWeight: '700', color: '#c53030' }}>{a.prenom} {a.nom}</div>
+                                  <input type="text" disabled={ficheSignee} style={{ ...inputStyle, fontSize: '11px', padding: '5px 8px' }} placeholder="Motif annoncé par l'apprenant" value={a.motif} onChange={e => {
+                                    const nouveaux = [...ficheActive.absences];
+                                    nouveaux[idx] = { ...a, motif: e.target.value };
+                                    majFiche('absences', nouveaux);
+                                  }} />
+                                </div>
+                                <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+                                  <label style={{ backgroundColor: justifUrl ? 'white' : '#c53030', color: justifUrl ? '#c53030' : 'white', border: justifUrl ? `1.5px solid #c53030` : 'none', borderRadius: '6px', padding: '4px 10px', fontSize: '11px', fontWeight: '600', cursor: ficheSignee ? 'default' : 'pointer', opacity: ficheSignee ? 0.5 : 1 }}>
+                                    {justifUrl ? '🔄 Remplacer justificatif' : '📎 Importer justificatif'}
+                                    <input type="file" accept=".pdf,.jpg,.jpeg,.png" disabled={ficheSignee} style={{ display: 'none' }} onChange={async e => {
+                                      const f = e.target.files?.[0];
+                                      if (f) await uploadJustificatifAbsence(idx, f);
+                                    }} />
+                                  </label>
+                                  {justifUrl && (
+                                    <>
+                                      <span style={{ fontSize: '11px', color: '#7a1d1d', fontWeight: '600' }}>📄 {justifNom}</span>
+                                      <a href={justifUrl} target="_blank" rel="noopener noreferrer" style={{ color: '#c53030', textDecoration: 'underline', fontSize: '11px', fontWeight: '600' }}>⬇ Télécharger</a>
+                                    </>
+                                  )}
+                                  {!justifUrl && <span style={{ fontSize: '10px', color: '#888', fontStyle: 'italic' }}>Importe le certificat médical, attestation employeur, etc.</span>}
+                                </div>
+                              </div>
+                            );
+                          })}
                         </div>
                       )}
                     </div>
