@@ -11,6 +11,7 @@ import {
   supprimerMandat as supprimerMandatSupabase,
 } from '../../data/mandatsSupabase';
 import Card from '../../components/Card';
+import { uploaderFichier, cheminStorage } from '../../lib/storage';
 
 const FORMATIONS = ['SC', 'GCF', 'AD', 'ARH', 'CATL', 'EC', 'CV', 'FPA'];
 const STATUTS = ["En attente", "Actif", "En cours d'entretiens", "Pourvu", "Annulé"];
@@ -401,19 +402,30 @@ export default function Recrutement() {
                 </button>
                 <label style={{ ...btnSecondary, display: 'inline-block', cursor: 'pointer' }}>
                   📎 Importer mandat signé
-                  <input type="file" accept=".pdf,.jpg,.jpeg,.png" style={{ display: 'none' }} onChange={ev => {
+                  <input type="file" accept=".pdf,.jpg,.jpeg,.png" style={{ display: 'none' }} onChange={async ev => {
                     const f = ev.target.files?.[0];
-                    if (f) {
-                      mettreAJourFiche('mandatSigne', f.name);
-                      mettreAJourFiche('dateSignatureMandat', new Date().toLocaleDateString('fr-FR'));
-                      mettreAJourFiche('statut', 'Actif');
+                    if (!f) return;
+                    const chemin = cheminStorage('mandats', ficheOuverte.id, 'mandat_signe', f.name);
+                    const resUpload = await uploaderFichier(chemin, f);
+                    if (!resUpload.success || !resUpload.fichier) {
+                      alert(`⚠️ Erreur upload : ${resUpload.error}`);
+                      return;
                     }
+                    console.log(`[Mandat ${ficheOuverte.id}] Mandat signé uploadé vers Storage ✅`);
+                    mettreAJourFiche('mandatSigne', f.name);
+                    mettreAJourFiche('mandatSigneUrl', resUpload.fichier.url);
+                    mettreAJourFiche('mandatSigneCheminStorage', resUpload.fichier.cheminStorage);
+                    mettreAJourFiche('dateSignatureMandat', new Date().toLocaleDateString('fr-FR'));
+                    mettreAJourFiche('statut', 'Actif');
                   }} />
                 </label>
               </div>
               {ficheOuverte.mandatSigne && (
-                <div style={{ marginTop: '8px', padding: '8px 12px', backgroundColor: '#e6f4f1', borderRadius: '8px', fontSize: '12px', color: '#006B68', fontWeight: '600' }}>
-                  ✅ Mandat signé : {ficheOuverte.mandatSigne}
+                <div style={{ marginTop: '8px', padding: '8px 12px', backgroundColor: '#e6f4f1', borderRadius: '8px', fontSize: '12px', color: '#006B68', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                  <span>✅ Mandat signé : {ficheOuverte.mandatSigne}</span>
+                  {ficheOuverte.mandatSigneUrl && (
+                    <a href={ficheOuverte.mandatSigneUrl} target="_blank" rel="noopener noreferrer" style={{ color: '#006B68', textDecoration: 'underline', fontSize: '11px' }}>⬇ Télécharger</a>
+                  )}
                 </div>
               )}
             </Card>

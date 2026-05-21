@@ -32,7 +32,7 @@ export interface Mandat {
 const CHAMPS_VALIDES_MANDAT = new Set<string>([
   'id', 'entrepriseId', 'entrepriseNom', 'entrepriseAdresse', 'entrepriseSiret', 'entrepriseEmail',
   'dateContact', 'formation', 'nbPostes', 'statut',
-  'dateEnvoiMandat', 'dateSignatureMandat', 'mandatSigne', 'datePublication', 'dateEntretiens',
+  'dateEnvoiMandat', 'dateSignatureMandat', 'mandatSigne', 'mandatSigneUrl', 'mandatSigneCheminStorage', 'datePublication', 'dateEntretiens',
   'profils_proposes', 'contrat_conclu', 'non_abouti', 'annule',
   'candidats', 'notes', 'dateCreation', 'dateModification',
   'pieces',

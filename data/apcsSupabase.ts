@@ -63,7 +63,7 @@ const CHAMPS_VALIDES_APC = new Set<string>([
   'formation', 'entreprise', 'opco', 'numeroDossierOpco', 'numeroDeca',
   'dateDebutContrat', 'dateFinContrat', 'dateDebutFormation', 'annee',
   'npecBranche', 'coutPedagoDemande', 'coutPedagoAccorde', 'premierEquipement', 'fraisRepas',
-  'nbJoursFormation', 'resteACharge', 'apcRecu', 'dateReception', 'statut',
+  'nbJoursFormation', 'resteACharge', 'apcRecu', 'apcRecuUrl', 'apcRecuCheminStorage', 'dateReception', 'statut',
   'dateCreation', 'dateModification',
 ]);
 

@@ -12,6 +12,7 @@ import {
   creerEcheance,
 } from '../../data/apcsSupabase';
 import Card from '../../components/Card';
+import { uploaderFichier, cheminStorage } from '../../lib/storage';
 
 const inputStyle: React.CSSProperties = { border: '1.5px solid #e0e0e0', borderRadius: '8px', padding: '7px 10px', fontSize: '12px', width: '100%', boxSizing: 'border-box', backgroundColor: 'white' };
 const btnPrimary: React.CSSProperties = { backgroundColor: '#006B68', color: 'white', border: 'none', borderRadius: '8px', padding: '8px 14px', fontSize: '12px', fontWeight: '600', cursor: 'pointer' };
@@ -685,9 +686,27 @@ export default function Facturation() {
                   <div style={{display:'flex',gap:'8px',alignItems:'center',marginBottom:'12px'}}>
                     <label style={{...btnSecondary,display:'inline-block',cursor:'pointer',fontSize:'11px',padding:'6px 10px'}}>
                       📎 Importer APC
-                      <input type="file" accept=".pdf,.jpg,.jpeg,.png" style={{display:'none'}} onChange={ev=>{const f=ev.target.files?.[0];if(f){maj('apcRecu',f.name);maj('dateReception',new Date().toLocaleDateString('fr-FR'));maj('statut','Accordé');}}}/>
+                      <input type="file" accept=".pdf,.jpg,.jpeg,.png" style={{display:'none'}} onChange={async ev=>{
+                        const f=ev.target.files?.[0];
+                        if(!f) return;
+                        const chemin = cheminStorage('apcs', apcSel.id, 'apc_recu', f.name);
+                        const resUpload = await uploaderFichier(chemin, f);
+                        if(!resUpload.success || !resUpload.fichier){
+                          alert(`⚠️ Erreur upload : ${resUpload.error}`);
+                          return;
+                        }
+                        console.log(`[APC ${apcSel.id}] APC reçu uploadé vers Storage ✅`);
+                        await maj('apcRecu',f.name);
+                        await maj('apcRecuUrl',resUpload.fichier.url);
+                        await maj('apcRecuCheminStorage',resUpload.fichier.cheminStorage);
+                        await maj('dateReception',new Date().toLocaleDateString('fr-FR'));
+                        await maj('statut','Accordé');
+                      }}/>
                     </label>
-                    {apcSel.apcRecu&&<span style={{fontSize:'11px',color:'#006B68',fontWeight:'600'}}>✅ {apcSel.apcRecu}</span>}
+                    {apcSel.apcRecu&&<span style={{fontSize:'11px',color:'#006B68',fontWeight:'600',display:'inline-flex',alignItems:'center',gap:'6px'}}>
+                      ✅ {apcSel.apcRecu}
+                      {(apcSel as any).apcRecuUrl && <a href={(apcSel as any).apcRecuUrl} target="_blank" rel="noopener noreferrer" style={{color:'#006B68',textDecoration:'underline'}}>⬇</a>}
+                    </span>}
                   </div>
                   <div style={{backgroundColor:'#EAF4F3',borderRadius:'8px',padding:'12px'}}>
                     <div style={{fontSize:'11px',fontWeight:'700',color:'#006B68',textTransform:'uppercase',marginBottom:'8px'}}>💰 Montants APC</div>
@@ -731,15 +750,41 @@ export default function Facturation() {
                               <div style={{backgroundColor:'#fef6e4',padding:'4px 10px',fontSize:'10px',color:'#7a5c00',fontWeight:'600',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
                                 <span>⚠️ N° {e.numeroFacture} — PDF manquant</span>
                                 <label style={{backgroundColor:'#C8A23A',color:'white',borderRadius:'4px',padding:'2px 8px',fontSize:'10px',cursor:'pointer'}}>
-                                  📎 Importer<input type="file" accept=".pdf,.jpg" style={{display:'none'}} onChange={ev=>{const f=ev.target.files?.[0];if(f)majEch(e.id,'fichierFacture',f.name);}}/>
+                                  📎 Importer<input type="file" accept=".pdf,.jpg" style={{display:'none'}} onChange={async ev=>{
+                                    const f=ev.target.files?.[0];
+                                    if(!f) return;
+                                    const chemin = cheminStorage('apcs', apcSel.id, `facture_${e.id}`, f.name);
+                                    const resUpload = await uploaderFichier(chemin, f);
+                                    if(!resUpload.success || !resUpload.fichier){
+                                      alert(`⚠️ Erreur upload : ${resUpload.error}`);
+                                      return;
+                                    }
+                                    console.log(`[Échéance ${e.id}] Facture uploadée vers Storage ✅`);
+                                    await majEch(e.id,'fichierFacture',f.name);
+                                    await majEch(e.id,'fichierFactureUrl',resUpload.fichier.url);
+                                    await majEch(e.id,'fichierFactureCheminStorage',resUpload.fichier.cheminStorage);
+                                  }}/>
                                 </label>
                               </div>
                             )}
                             {e.fichierFacture&&(
                               <div style={{backgroundColor:'#e6f4f1',padding:'4px 10px',fontSize:'10px',color:'#006B68',fontWeight:'600',display:'flex',justifyContent:'space-between'}}>
-                                <span>✅ {e.fichierFacture}</span>
+                                <span>✅ {e.fichierFacture} {(e as any).fichierFactureUrl && <a href={(e as any).fichierFactureUrl} target="_blank" rel="noopener noreferrer" style={{color:'#006B68',textDecoration:'underline',marginLeft:'6px'}}>⬇</a>}</span>
                                 <label style={{backgroundColor:'#006B68',color:'white',borderRadius:'4px',padding:'2px 8px',fontSize:'10px',cursor:'pointer'}}>
-                                  🔄 Remplacer<input type="file" accept=".pdf,.jpg" style={{display:'none'}} onChange={ev=>{const f=ev.target.files?.[0];if(f)majEch(e.id,'fichierFacture',f.name);}}/>
+                                  🔄 Remplacer<input type="file" accept=".pdf,.jpg" style={{display:'none'}} onChange={async ev=>{
+                                    const f=ev.target.files?.[0];
+                                    if(!f) return;
+                                    const chemin = cheminStorage('apcs', apcSel.id, `facture_${e.id}`, f.name);
+                                    const resUpload = await uploaderFichier(chemin, f);
+                                    if(!resUpload.success || !resUpload.fichier){
+                                      alert(`⚠️ Erreur upload : ${resUpload.error}`);
+                                      return;
+                                    }
+                                    console.log(`[Échéance ${e.id}] Facture remplacée vers Storage ✅`);
+                                    majEch(e.id,'fichierFacture',f.name);
+                                    majEch(e.id,'fichierFactureUrl',resUpload.fichier.url);
+                                    majEch(e.id,'fichierFactureCheminStorage',resUpload.fichier.cheminStorage);
+                                  }}/>
                                 </label>
                               </div>
                             )}
