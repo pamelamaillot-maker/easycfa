@@ -485,6 +485,36 @@ export default function Emargement() {
     }
   }
 
+  // Change le formateur de la fiche d'intervention + propage vers les demi-journées de l'émargement
+  function changerFormateurFiche(formateurId: string, formateurNom: string) {
+    if (!ficheActive || !feuille) return;
+    // Maj fiche
+    const updatedFiche = { ...ficheActive, formateurId, formateurNom };
+    setFicheActive(updatedFiche);
+    sauvegarderFiche(updatedFiche);
+    // Propagation vers la feuille d'émargement (champ formateur des demi-journées)
+    const estLocale = feuillesLocales.some(f => f.id === feuilleId);
+    if (!estLocale) return;
+    setFeuillesLocales(prev => {
+      const nouvelles = prev.map(f => {
+        if (f.id !== feuilleId) return f;
+        return {
+          ...f,
+          demiJournees: f.demiJournees.map(d => ({ ...d, formateur: formateurNom })),
+        };
+      });
+      localStorage.setItem('easycfa_emargement_v2', JSON.stringify(nouvelles));
+      const feuilleModifiee = nouvelles.find(f => f.id === feuilleId);
+      if (feuilleModifiee) {
+        creerEmargementSupabase(feuilleModifiee as any).then(res => {
+          if (!res.success) console.error(`[Emargement ${feuilleId}] Erreur maj formateur:`, res.error);
+          else console.log(`[Emargement ${feuilleId}] Formateur mis à jour : ${formateurNom} ✅`);
+        });
+      }
+      return nouvelles;
+    });
+  }
+
   // Upload justificatif pour une absence
   async function uploadJustificatifAbsence(idxAbsence: number, file: File) {
     if (!ficheActive || !feuille) return;
@@ -1033,8 +1063,36 @@ export default function Emargement() {
                         <input type="text" disabled={ficheSignee} style={inputStyle} value={ficheActive.seance} onChange={e => majFiche('seance', e.target.value)} placeholder="ex: Séance 5" />
                       </div>
                     </div>
-                    <div style={{ marginTop: '10px', fontSize: '12px', color: '#666' }}>
-                      👨‍🏫 Formateur : <strong>{ficheActive.formateurNom}</strong>
+                    <div style={{ marginTop: '12px' }}>
+                      <label style={{ fontSize: '11px', color: '#888', textTransform: 'uppercase', fontWeight: '600', display: 'block', marginBottom: '4px' }}>👨‍🏫 Formateur de la séance <span style={{ color: '#e53e3e' }}>*</span></label>
+                      <select
+                        disabled={ficheSignee}
+                        style={{ ...inputStyle, width: '100%', maxWidth: '400px' }}
+                        value={ficheActive.formateurId || ''}
+                        onChange={(e) => {
+                          const id = e.target.value;
+                          const f = formateurs.find((fo: any) => fo.id === id);
+                          if (f) {
+                            changerFormateurFiche(id, `${f.prenom} ${f.nom}`);
+                          }
+                        }}
+                      >
+                        <option value="">— Sélectionner un formateur —</option>
+                        {formateurs
+                          .filter((f: any) => f.actif !== false)
+                          .sort((a: any, b: any) => `${a.nom} ${a.prenom}`.localeCompare(`${b.nom} ${b.prenom}`))
+                          .map((f: any) => (
+                            <option key={f.id} value={f.id}>
+                              {f.nom} {f.prenom}{f.email ? ` — ${f.email}` : ''}
+                            </option>
+                          ))
+                        }
+                      </select>
+                      {!ficheActive.formateurId && (
+                        <div style={{ fontSize: '11px', color: '#C8A23A', marginTop: '4px', fontStyle: 'italic' }}>
+                          ⚠️ Sélectionne ton nom pour recevoir les rappels et notifications par email
+                        </div>
+                      )}
                     </div>
                   </Card>
 
