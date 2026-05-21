@@ -12,6 +12,15 @@ export type PresenceApprenant = {
   heuresComptees: number;
   justificatifRecu: boolean;
   emailEnvoye: boolean;
+  // === Sync fiche d'intervention ===
+  motif?: string;                          // Motif annoncé par l'apprenant (saisi par le formateur)
+  duree?: string;                          // Durée du retard (ex: "30 min")
+  // === Décision pédagogique ===
+  justifiee?: 'OUI' | 'NON' | null;        // Décision du pôle pédagogique
+  justificatifNom?: string;                // Nom du fichier justificatif
+  justificatifUrl?: string;                // URL Storage du justificatif
+  justificatifCheminStorage?: string;      // Chemin Storage pour suppression
+  justificatifDateImport?: string;         // Date ISO d'import
 };
 
 export type DemiJournee = {

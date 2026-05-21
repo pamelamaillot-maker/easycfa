@@ -367,14 +367,63 @@ export default function Emargement() {
   }
 
   // === FONCTIONS FICHE INTERVENTION ===
+
+  // Propage les motifs/durées de la fiche d'intervention vers les présences de l'émargement
+  function pousserVersEmargement(retards: FicheIntervention['retards'], absences: FicheIntervention['absences']) {
+    if (!feuille) return;
+    const estLocale = feuillesLocales.some(f => f.id === feuilleId);
+    if (!estLocale) return; // Pas de propagation sur feuilles de démo
+
+    setFeuillesLocales(prev => {
+      const nouvelles = prev.map(f => {
+        if (f.id !== feuilleId) return f;
+        return {
+          ...f,
+          demiJournees: f.demiJournees.map(d => ({
+            ...d,
+            presences: d.presences.map(p => {
+              const ret = retards.find(r => r.apprenantId === p.apprenantId);
+              if (ret) {
+                return { ...p, motif: ret.motif, duree: ret.duree };
+              }
+              const abs = absences.find(a => a.apprenantId === p.apprenantId);
+              if (abs) {
+                return { ...p, motif: abs.motif };
+              }
+              return p;
+            }),
+          })),
+        };
+      });
+      localStorage.setItem('easycfa_emargement_v2', JSON.stringify(nouvelles));
+      // Supabase
+      const feuilleModifiee = nouvelles.find(f => f.id === feuilleId);
+      if (feuilleModifiee) {
+        creerEmargementSupabase(feuilleModifiee as any).then(res => {
+          if (!res.success) console.error(`[Emargement ${feuilleId}] Erreur sync fiche→émargement :`, res.error);
+          else console.log(`[Emargement ${feuilleId}] Motifs synchronisés depuis fiche ✅`);
+        });
+      }
+      return nouvelles;
+    });
+  }
+
   function majFiche(champ: keyof FicheIntervention, valeur: any) {
     if (!ficheActive) return;
     const updated = { ...ficheActive, [champ]: valeur };
     setFicheActive(updated);
     sauvegarderFiche(updated);
+    // Si on modifie retards ou absences (motif/durée), on propage vers l'émargement
+    if (champ === 'retards' || champ === 'absences') {
+      pousserVersEmargement(
+        champ === 'retards' ? valeur : updated.retards,
+        champ === 'absences' ? valeur : updated.absences,
+      );
+    }
   }
 
   // Synchroniser les retards et absences depuis les présences (deux demi-journées)
+  // La fiche fait foi pour motif/duree (saisis manuellement), l'émargement fait foi pour statut/heureArrivee
   function synchroniserIncidents() {
     if (!feuille || !ficheActive) return;
     const tousRetards: typeof ficheActive.retards = [];
@@ -389,19 +438,19 @@ export default function Emargement() {
               nom: p.nom,
               prenom: p.prenom,
               heureArrivee: p.heureArrivee || '',
-              duree: existant?.duree || '',
-              motif: existant?.motif || '',
+              duree: existant?.duree || p.duree || '',
+              motif: existant?.motif || p.motif || '',
             });
           }
         }
-        if (p.statut === 'Absent') {
+        if (p.statut === 'Absent' || p.statut === 'Absent justifié') {
           const existant = ficheActive.absences.find(a => a.apprenantId === p.apprenantId);
           if (!tousAbsents.find(a => a.apprenantId === p.apprenantId)) {
             tousAbsents.push({
               apprenantId: p.apprenantId,
               nom: p.nom,
               prenom: p.prenom,
-              motif: existant?.motif || '',
+              motif: existant?.motif || p.motif || '',
             });
           }
         }
@@ -721,7 +770,7 @@ export default function Emargement() {
                                 <td style={{ padding: '12px 10px' }}>
                                   {!dj.valide && (
                                     <div style={{ display: 'flex', gap: '3px', flexWrap: 'wrap' }}>
-                                      {(['Présent', 'Absent', 'Retard', 'Absent justifié'] as StatutPresence[]).map((statut) => (
+                                      {(['Présent', 'Absent', 'Retard'] as StatutPresence[]).map((statut) => (
                                         <button key={statut} onClick={() => mettreAJourStatut(p.apprenantId, statut)} style={{
                                           backgroundColor: p.statut === statut ? STATUT_STYLE[statut].color : '#f0f0f0',
                                           color: p.statut === statut ? 'white' : '#555',
