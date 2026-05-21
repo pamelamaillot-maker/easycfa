@@ -15,6 +15,9 @@ import {
 } from '../../data/interventionsSupabase';
 import { COLORS } from '../../lib/constants';
 import { uploaderFichier, cheminStorage } from '../../lib/storage';
+import { pdf } from '@react-pdf/renderer';
+import PdfEmargement from '../../components/PdfEmargement';
+import PdfFicheIntervention from '../../components/PdfFicheIntervention';
 import {
   chargerEmargements as chargerEmargementsSupabase,
   creerEmargement as creerEmargementSupabase,
@@ -500,8 +503,8 @@ export default function Emargement() {
     }
   }, [ongletPrincipal, feuilleId]);
 
-  function signerFiche() {
-    if (!ficheActive) return;
+  async function signerFiche() {
+    if (!ficheActive || !feuille) return;
     const check = ficheCompletee(ficheActive);
     if (!check.ok) {
       alert(`⚠️ Champs obligatoires manquants :\n\n${check.manquants.join(', ')}\n\nMerci de compléter avant de signer.`);
@@ -519,8 +522,70 @@ export default function Emargement() {
     };
     setFicheActive(updated);
     sauvegarderFiche(updated);
-    setMessageSuccess(`✅ Fiche d'intervention signée à ${updated.heureSignature}`);
-    setTimeout(() => setMessageSuccess(''), 5000);
+    setMessageSuccess(`✅ Fiche signée à ${updated.heureSignature} — Génération des PDF...`);
+
+    // Génération et envoi automatique des PDF
+    try {
+      // Choisir la 1ère demi-journée non vide pour le PDF émargement (ou la première par défaut)
+      const djPourPdf = feuille.demiJournees.find(d => d.presences.length > 0) || feuille.demiJournees[0];
+
+      // Génération PDF émargement
+      const blobEmargement = await pdf(<PdfEmargement feuille={feuille} demiJournee={djPourPdf} />).toBlob();
+      const base64Emargement = await blobToBase64(blobEmargement);
+
+      // Génération PDF fiche d'intervention
+      const blobFiche = await pdf(<PdfFicheIntervention fiche={updated} />).toBlob();
+      const base64Fiche = await blobToBase64(blobFiche);
+
+      const nomEmargement = `Emargement_${feuille.formation.replace(/\s/g, '_')}_${feuille.date.replace(/\//g, '-')}.pdf`;
+      const nomFiche = `Fiche_Intervention_${updated.formateurNom.replace(/\s/g, '_')}_${feuille.date.replace(/\//g, '-')}.pdf`;
+
+      // Envoi via l'API
+      setMessageSuccess(`📧 Envoi en cours vers pedagogie@pamoi.re...`);
+      const res = await fetch('/api/envoyer-fiche-signee', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          formateurNom: updated.formateurNom,
+          formation: feuille.formation,
+          date: feuille.date,
+          jour: feuille.jour,
+          pdfEmargementBase64: base64Emargement,
+          pdfEmargementNom: nomEmargement,
+          pdfFicheBase64: base64Fiche,
+          pdfFicheNom: nomFiche,
+        }),
+      });
+      const data = await res.json();
+      if (!data.success) {
+        console.error('[signerFiche] Erreur envoi email:', data.error);
+        alert(`⚠️ Fiche signée mais erreur d'envoi email : ${data.error}\n\nLa fiche reste signée. Tu peux relancer l'envoi plus tard.`);
+        setMessageSuccess(`✅ Fiche signée — ⚠️ Erreur envoi email`);
+      } else {
+        console.log('[signerFiche] Email envoyé ✅', data.emailId);
+        setMessageSuccess(`✅ Fiche signée + email envoyé à pedagogie@pamoi.re ✉️`);
+      }
+    } catch (e: any) {
+      console.error('[signerFiche] Erreur génération/envoi:', e);
+      alert(`⚠️ Fiche signée mais erreur génération PDF : ${e.message}`);
+      setMessageSuccess(`✅ Fiche signée — ⚠️ Erreur génération PDF`);
+    }
+    setTimeout(() => setMessageSuccess(''), 8000);
+  }
+
+  // Helper : convertit un Blob en string base64 (sans le préfixe data:application/pdf;base64,)
+  function blobToBase64(blob: Blob): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        const result = reader.result as string;
+        // Format: "data:application/pdf;base64,XXXXX" → on garde juste XXXXX
+        const base64 = result.split(',')[1];
+        resolve(base64);
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
   }
 
   function annulerSignature() {
