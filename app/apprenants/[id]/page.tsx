@@ -217,12 +217,24 @@ function CardEntretien({
     onSave(final);
   }
 
-  // ✅ NOUVEAU — Upload du livret signé (utilisable après l'entretien)
-  function uploadLivretSigne(e: React.ChangeEvent<HTMLInputElement>) {
+  // ✅ Upload du livret signé vers Supabase Storage
+  async function uploadLivretSigne(e: React.ChangeEvent<HTMLInputElement>) {
     const f = e.target.files?.[0];
     if (!f) return;
-    const taille = f.size > 1024 * 1024 ? `${(f.size / 1024 / 1024).toFixed(1)} Mo` : `${Math.round(f.size / 1024)} Ko`;
-    const livretSigne = { nom: f.name, taille, dateImport: new Date().toISOString() };
+    const chemin = cheminStorage('entretiens', entretien.id, 'livret_signe', f.name);
+    const resUpload = await uploaderFichier(chemin, f);
+    if (!resUpload.success || !resUpload.fichier) {
+      alert(`⚠️ Erreur upload : ${resUpload.error}`);
+      return;
+    }
+    console.log(`[Entretien ${entretien.id}] Livret signé uploadé vers Storage ✅`);
+    const livretSigne = {
+      nom: resUpload.fichier.nom,
+      taille: resUpload.fichier.taille,
+      url: resUpload.fichier.url,
+      cheminStorage: resUpload.fichier.cheminStorage,
+      dateImport: new Date().toISOString(),
+    };
     const updated: Entretien = {
       ...entretien,
       supportUtilise: {
@@ -234,8 +246,17 @@ function CardEntretien({
     onSave(updated);
   }
 
-  function supprimerLivretSigne() {
+  async function supprimerLivretSigne() {
     if (!confirm('Supprimer le livret signé importé ?')) return;
+    const cheminASupprimer = (entretien.supportUtilise?.livretSigne as any)?.cheminStorage;
+    if (cheminASupprimer) {
+      const resDel = await supprimerFichier(cheminASupprimer);
+      if (!resDel.success) {
+        console.warn(`[Entretien ${entretien.id}] Erreur suppression Storage : ${resDel.error}`);
+      } else {
+        console.log(`[Entretien ${entretien.id}] Livret signé supprimé du Storage ✅`);
+      }
+    }
     const updated: Entretien = {
       ...entretien,
       supportUtilise: {
@@ -348,9 +369,12 @@ function CardEntretien({
                       Livret d'apprentissage signé
                     </div>
                     {entretien.supportUtilise?.livretSigne ? (
-                      <div style={{ fontSize: '12px', color: COLORS.primary, marginTop: '4px', fontWeight: '600' }}>
-                        📄 {entretien.supportUtilise.livretSigne.nom} ({entretien.supportUtilise.livretSigne.taille})
-                        <span style={{ fontWeight: '400', fontStyle: 'italic', marginLeft: '6px' }}>
+                      <div style={{ fontSize: '12px', color: COLORS.primary, marginTop: '4px', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                        <span>📄 {entretien.supportUtilise.livretSigne.nom} ({entretien.supportUtilise.livretSigne.taille})</span>
+                        {(entretien.supportUtilise.livretSigne as any).url && (
+                          <a href={(entretien.supportUtilise.livretSigne as any).url} target="_blank" rel="noopener noreferrer" style={{ color: COLORS.primary, textDecoration: 'underline', fontSize: '11px' }}>⬇ Télécharger</a>
+                        )}
+                        <span style={{ fontWeight: '400', fontStyle: 'italic' }}>
                           — Importé le {new Date(entretien.supportUtilise.livretSigne.dateImport).toLocaleDateString('fr-FR')}
                         </span>
                       </div>
