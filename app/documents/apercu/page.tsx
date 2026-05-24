@@ -1,11 +1,13 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { assemblerDonnees } from '../../../lib/documentData';
 import { remplirModele, champsManquants } from '../../../lib/templateEngine';
 import { COLORS } from '../../../lib/constants';
 import Card from '../../../components/Card';
 import dynamic from 'next/dynamic';
+import { chargerApprentis } from '../../../data/apprentisSupabase';
+import { chargerEntreprises } from '../../../data/entreprisesSupabase';
 
 const BoutonPdfAEF = dynamic(() => import('../../../components/BoutonPdfAEF'), { ssr: false });
 
@@ -37,21 +39,59 @@ const inputStyle: React.CSSProperties = {
 };
 
 export default function ApercuAEF() {
-  const [apprenantId, setApprenantId] = useState('lea-payet');
-  const [entrepriseId, setEntrepriseId] = useState('entreprise-a');
+  const [apprenants, setApprenants] = useState<any[]>([]);
+  const [entreprises, setEntreprises] = useState<any[]>([]);
+  const [apprenantId, setApprenantId] = useState('');
+  const [entrepriseId, setEntrepriseId] = useState('');
   const [nDeca, setNDeca] = useState('');
-  const [dateSignature, setDateSignature] = useState(
-    new Date().toLocaleDateString('fr-FR')
-  );
+  const [dateSignature, setDateSignature] = useState(new Date().toLocaleDateString('fr-FR'));
   const [afficher, setAfficher] = useState(false);
+  const [chargement, setChargement] = useState(true);
 
-  const donnees = assemblerDonnees(apprenantId, entrepriseId, {
+  useEffect(() => {
+    (async () => {
+      try {
+        const [apps, ents] = await Promise.all([chargerApprentis(), chargerEntreprises()]);
+        const appsTries = apps.sort((a: any, b: any) => `${a.nom} ${a.prenom}`.localeCompare(`${b.nom} ${b.prenom}`));
+        const entsTries = ents.sort((a: any, b: any) => (a.raisonSociale || '').localeCompare(b.raisonSociale || ''));
+        setApprenants(appsTries);
+        setEntreprises(entsTries);
+        if (appsTries.length > 0) setApprenantId(appsTries[0].id);
+        if (entsTries.length > 0) setEntrepriseId(entsTries[0].id);
+        console.log(`[AEF] ${apps.length} apprenants + ${ents.length} entreprises chargés ✅`);
+      } catch (e) {
+        console.error('[AEF] Erreur chargement:', e);
+      }
+      setChargement(false);
+    })();
+  }, []);
+
+  // Auto-sélection de l'entreprise quand on change d'apprenant (par nom de l'entreprise)
+  useEffect(() => {
+    if (!apprenantId || apprenants.length === 0 || entreprises.length === 0) return;
+    const a = apprenants.find(x => x.id === apprenantId);
+    if (a?.entreprise) {
+      const ent = entreprises.find(e =>
+        (e.raisonSociale || '').toLowerCase().trim() === a.entreprise.toLowerCase().trim()
+      );
+      if (ent) setEntrepriseId(ent.id);
+    }
+  }, [apprenantId, apprenants, entreprises]);
+
+  const apprenantObj = useMemo(() => apprenants.find(a => a.id === apprenantId) || null, [apprenants, apprenantId]);
+  const entrepriseObj = useMemo(() => entreprises.find(e => e.id === entrepriseId) || null, [entreprises, entrepriseId]);
+
+  const donnees = useMemo(() => assemblerDonnees(apprenantObj, entrepriseObj, {
     N_DECA: nDeca,
     DATE_SIGNATURE_DOC: dateSignature,
-  });
+  }), [apprenantObj, entrepriseObj, nDeca, dateSignature]);
 
   const documentRempli = remplirModele(MODELE_AEF, donnees);
   const manquants = champsManquants(MODELE_AEF, donnees);
+
+  if (chargement) {
+    return <div style={{ padding: '32px', textAlign: 'center', color: COLORS.textMuted }}>Chargement des apprenants...</div>;
+  }
 
   return (
     <div>
@@ -65,13 +105,11 @@ export default function ApercuAEF() {
             Attestation d'Entrée en Formation
           </h1>
           <p style={{ color: COLORS.textMuted, fontSize: '14px' }}>
-            Prévisualisation et génération avec données EasyCFA
+            Prévisualisation et génération avec données réelles Supabase
           </p>
         </div>
         <div style={{ display: 'flex', gap: '8px' }}>
           <button style={btnPrimary} onClick={() => setAfficher(true)}>👁 Prévisualiser</button>
-          <button style={btnSecondary}>⬇ Télécharger PDF</button>
-          <button style={btnSecondary}>✍️ Préparer signature</button>
         </div>
       </div>
 
@@ -85,16 +123,25 @@ export default function ApercuAEF() {
             </h2>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
               <div>
-                <label style={{ fontSize: '11px', color: '#888', textTransform: 'uppercase', fontWeight: '600', display: 'block', marginBottom: '4px' }}>Apprenant</label>
+                <label style={{ fontSize: '11px', color: '#888', textTransform: 'uppercase', fontWeight: '600', display: 'block', marginBottom: '4px' }}>
+                  Apprenant ({apprenants.length})
+                </label>
                 <select style={inputStyle} value={apprenantId} onChange={(e) => { setApprenantId(e.target.value); setAfficher(false); }}>
-                  <option value="lea-payet">Léa PAYET</option>
-                  <option value="noah-riviere">Noah RIVIERE</option>
+                  <option value="">— Choisir un apprenant —</option>
+                  {apprenants.map(a => (
+                    <option key={a.id} value={a.id}>{a.nom} {a.prenom}{a.formation ? ` — ${a.formation}` : ''}</option>
+                  ))}
                 </select>
               </div>
               <div>
-                <label style={{ fontSize: '11px', color: '#888', textTransform: 'uppercase', fontWeight: '600', display: 'block', marginBottom: '4px' }}>Entreprise</label>
+                <label style={{ fontSize: '11px', color: '#888', textTransform: 'uppercase', fontWeight: '600', display: 'block', marginBottom: '4px' }}>
+                  Entreprise ({entreprises.length})
+                </label>
                 <select style={inputStyle} value={entrepriseId} onChange={(e) => { setEntrepriseId(e.target.value); setAfficher(false); }}>
-                  <option value="entreprise-a">Entreprise A</option>
+                  <option value="">— Choisir une entreprise —</option>
+                  {entreprises.map(e => (
+                    <option key={e.id} value={e.id}>{e.raisonSociale || e.id}</option>
+                  ))}
                 </select>
               </div>
               <div>
@@ -129,20 +176,6 @@ export default function ApercuAEF() {
               <div style={{ fontSize: '13px', color: COLORS.textMuted }}>Le document est prêt à être généré.</div>
             )}
           </Card>
-
-          <Card>
-            <h2 style={{ fontSize: '15px', fontWeight: '700', color: COLORS.primary, marginBottom: '12px' }}>
-              Données utilisées
-            </h2>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: '300px', overflowY: 'auto' }}>
-              {Object.entries(donnees).filter(([, v]) => v !== '').map(([k, v]) => (
-                <div key={k} style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 8px', backgroundColor: COLORS.background, borderRadius: '6px', gap: '8px' }}>
-                  <code style={{ fontSize: '10px', color: COLORS.primary, fontFamily: 'monospace', whiteSpace: 'nowrap' }}>{`{{${k}}}`}</code>
-                  <span style={{ fontSize: '11px', color: COLORS.text, textAlign: 'right' }}>{v}</span>
-                </div>
-              ))}
-            </div>
-          </Card>
         </div>
 
         {/* Panneau droit — Prévisualisation */}
@@ -162,30 +195,17 @@ export default function ApercuAEF() {
             </Card>
           ) : (
             <Card>
-              {/* Badge statut */}
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', paddingBottom: '12px', borderBottom: `2px solid ${COLORS.background}` }}>
                 <span style={{ backgroundColor: '#e6f4f1', color: '#006B68', padding: '4px 12px', borderRadius: '20px', fontSize: '12px', fontWeight: '700' }}>
                   Attestation d'Entrée en Formation
                 </span>
-                <div style={{ display: 'flex', gap: '6px' }}>
-                  <span style={{ backgroundColor: COLORS.backgroundGold, color: COLORS.secondary, padding: '4px 10px', borderRadius: '6px', fontSize: '11px', fontWeight: '600' }}>V1</span>
-                  <span style={{ backgroundColor: '#e6f4f1', color: '#006B68', padding: '4px 10px', borderRadius: '6px', fontSize: '11px', fontWeight: '600' }}>Simulation</span>
-                </div>
               </div>
 
-              {/* Document */}
               <div style={{
-                backgroundColor: 'white',
-                border: '1px solid #e0e0e0',
-                borderRadius: '8px',
-                padding: '40px',
-                fontFamily: 'Georgia, serif',
-                fontSize: '14px',
-                lineHeight: '1.8',
-                color: '#1a1a1a',
-                minHeight: '500px',
+                backgroundColor: 'white', border: '1px solid #e0e0e0', borderRadius: '8px',
+                padding: '40px', fontFamily: 'Georgia, serif', fontSize: '14px',
+                lineHeight: '1.8', color: '#1a1a1a', minHeight: '500px',
               }}>
-                {/* En-tête avec logo */}
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '32px', paddingBottom: '20px', borderBottom: '2px solid #EAF4F3' }}>
                   <img src="/logo-pamoi.png" alt="PAM OI Formation" style={{ height: '80px', objectFit: 'contain' }} />
                   <div style={{ textAlign: 'right', fontSize: '12px', color: '#555', lineHeight: '1.8' }}>
@@ -197,37 +217,32 @@ export default function ApercuAEF() {
                   </div>
                 </div>
 
-                {/* Titre centré */}
                 <div style={{ textAlign: 'center', margin: '24px 0 32px' }}>
                   <div style={{ fontSize: '18px', fontWeight: '800', color: '#006B68', letterSpacing: '1px', textTransform: 'uppercase', borderBottom: '2px solid #C8A23A', paddingBottom: '8px', display: 'inline-block' }}>
                     Attestation d'Entrée en Formation
                   </div>
                 </div>
 
-                {/* Corps du document — propre */}
                 <div style={{ whiteSpace: 'pre-wrap', lineHeight: '2' }}>
                   {documentRempli}
                 </div>
 
-                {/* Pied de page */}
                 <div style={{ marginTop: '48px', paddingTop: '16px', borderTop: '1px solid #e0e0e0', fontSize: '11px', color: '#888', textAlign: 'center' }}>
                   PAM OI Formation – 1 Chemin Dubuisson – 97436 Saint-Leu – SIRET : 881 279 392 00016 – NAF : 8559A
                 </div>
               </div>
 
-              {/* Mention EasyCFA */}
               <div style={{ marginTop: '12px', padding: '8px 16px', backgroundColor: COLORS.background, borderRadius: '6px', fontSize: '11px', color: COLORS.textMuted, fontStyle: 'italic', textAlign: 'center' }}>
                 Document généré avec EasyCFA — solution éditée par PAM GROUPE
               </div>
 
-              {/* Actions */}
               <div style={{ display: 'flex', gap: '8px', marginTop: '16px', justifyContent: 'flex-end' }}>
-                <BoutonPdfAEF
-                  donnees={donnees}
-                  nomFichier={`AEF_${donnees.APPRENANT_NOM}_${donnees.APPRENANT_PRENOM}_${donnees.DATE_SIGNATURE_DOC.replace(/\//g, '-')}.pdf`}
-                />
-                <button style={btnSecondary}>📧 Envoyer par email</button>
-                <button style={btnPrimary}>✍️ Préparer signature</button>
+                {apprenantObj && (
+                  <BoutonPdfAEF
+                    donnees={donnees}
+                    nomFichier={`AEF_${donnees.APPRENANT_NOM}_${donnees.APPRENANT_PRENOM}_${donnees.DATE_SIGNATURE_DOC.replace(/\//g, '-')}.pdf`}
+                  />
+                )}
               </div>
             </Card>
           )}

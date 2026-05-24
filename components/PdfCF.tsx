@@ -202,8 +202,11 @@ export default function PdfCF({ donnees: d }: Props) {
 
         <View style={S.box}>
           <Text style={S.p}>• Préparer à l'obtention du titre :</Text>
-          <Text style={S.p}>Intitulé : <Text style={{ fontFamily: 'Helvetica-Bold' }}>TITRE PROFESSIONNEL</Text></Text>
-          <Text style={{ fontSize: 8.5, fontFamily: 'Helvetica-Bold', color: '#006B68', marginBottom: 3 }}>{d.FORMATION_LIBELLE}</Text>
+          <Text style={{ fontSize: 10, fontFamily: 'Helvetica-Bold', color: '#006B68', marginBottom: 4 }}>{d.FORMATION_LIBELLE}</Text>
+          <Text style={S.p}>
+            Code RNCP : <Text style={{ fontFamily: 'Helvetica-Bold' }}>{d.RNCP_CODE}</Text>
+            {d.CODE_DIPLOME ? <> {'        '}Code diplôme : <Text style={{ fontFamily: 'Helvetica-Bold' }}>{d.CODE_DIPLOME}</Text></> : null}
+          </Text>
           <Text style={S.p}>• Contenu de l'action : cf Programme de formation annexé à la convention</Text>
           <Text style={S.p}>• Durée de l'action de formation : cf Planning prévisionnel annexé à la convention</Text>
           <Text style={S.p}>Du <Text style={{ fontFamily: 'Helvetica-Bold' }}>{d.DATE_DEBUT_FORMATION}</Text> au <Text style={{ fontFamily: 'Helvetica-Bold' }}>{d.DATE_FIN_FORMATION}</Text> pour un volume horaire total de <Text style={{ fontFamily: 'Helvetica-Bold' }}>{d.VOLUME_HORAIRE_TOTAL}</Text> heures</Text>
@@ -304,25 +307,25 @@ export default function PdfCF({ donnees: d }: Props) {
         </View>
         <View style={S.tableRow}>
           <Text style={[S.tableCellLeft, { fontFamily: 'Helvetica-Bold' }]}>1ère année</Text>
-          <Text style={S.tableCell}>{d.COUT_PEDAGOGIQUE_ANNEE_1} €</Text>
-          <Text style={S.tableCell}>{d.COUT_PEDAGOGIQUE_ANNEE_1} €</Text>
+          <Text style={S.tableCell}>{d.COUT_PEDAGOGIQUE_ANNEE_1}</Text>
+          <Text style={S.tableCell}>{d.MONTANT_OPCO_ANNEE_1 || d.COUT_PEDAGOGIQUE_ANNEE_1}</Text>
           <Text style={S.tableCell}></Text>
-          <Text style={S.tableCell}>{d.COUT_PEDAGOGIQUE_ANNEE_1} €</Text>
+          <Text style={S.tableCell}>{d.MONTANT_OPCO_ANNEE_1 || d.COUT_PEDAGOGIQUE_ANNEE_1}</Text>
           <Text style={S.tableCell}></Text>
         </View>
         {deuxiemeAnnee && (
           <View style={S.tableRow}>
             <Text style={[S.tableCellLeft, { fontFamily: 'Helvetica-Bold' }]}>2ème année</Text>
-            <Text style={S.tableCell}>{d.COUT_PEDAGOGIQUE_ANNEE_2} €</Text>
-            <Text style={S.tableCell}>{d.COUT_PEDAGOGIQUE_ANNEE_2} €</Text>
+            <Text style={S.tableCell}>{d.COUT_PEDAGOGIQUE_ANNEE_2}</Text>
+            <Text style={S.tableCell}>{d.MONTANT_OPCO_ANNEE_2 || d.COUT_PEDAGOGIQUE_ANNEE_2}</Text>
             <Text style={S.tableCell}></Text>
-            <Text style={S.tableCell}>{d.COUT_PEDAGOGIQUE_ANNEE_2} €</Text>
+            <Text style={S.tableCell}>{d.MONTANT_OPCO_ANNEE_2 || d.COUT_PEDAGOGIQUE_ANNEE_2}</Text>
             <Text style={S.tableCell}></Text>
           </View>
         )}
         <View style={[S.tableRow, { backgroundColor: '#EAF4F3' }]}>
           <Text style={[S.tableCellLeft, { fontFamily: 'Helvetica-Bold' }]}>Total frais pédagogiques</Text>
-          <Text style={[S.tableCell, { fontFamily: 'Helvetica-Bold' }]}>{d.COUT_TOTAL_FRAIS_PEDAGOGIQUES} €</Text>
+          <Text style={[S.tableCell, { fontFamily: 'Helvetica-Bold' }]}>{d.COUT_TOTAL_FRAIS_PEDAGOGIQUES}</Text>
           <Text style={S.tableCell}></Text>
           <Text style={S.tableCell}></Text>
           <Text style={S.tableCell}></Text>
@@ -368,35 +371,45 @@ export default function PdfCF({ donnees: d }: Props) {
         <View style={S.tableRow}>
           <Text style={[S.tableCellLeft, { flex: 2, fontFamily: 'Helvetica-Bold' }]}>1ère année de financement</Text>
           <Text style={S.tableCell}>Nuitées : ………{'  '}Montant : ……… €</Text>
-          <Text style={S.tableCell}>Repas : <Text style={{ fontFamily: 'Helvetica-Bold' }}>{d['Nombre_repas_ 1']}</Text>{'  '}Montant : <Text style={{ fontFamily: 'Helvetica-Bold' }}>{d.FRAIS_ANNEXES_REPAS_ANNEE_1}</Text> €</Text>
+          <Text style={S.tableCell}>Repas : <Text style={{ fontFamily: 'Helvetica-Bold' }}>{d['Nombre_repas_ 1']}</Text>{'  '}Montant : <Text style={{ fontFamily: 'Helvetica-Bold' }}>{d.FRAIS_ANNEXES_REPAS_ANNEE_1}</Text></Text>
         </View>
         {deuxiemeAnnee && (
           <View style={S.tableRow}>
             <Text style={[S.tableCellLeft, { flex: 2, fontFamily: 'Helvetica-Bold' }]}>2ème année de financement</Text>
             <Text style={S.tableCell}>Nuitées : ………{'  '}Montant : ……… €</Text>
-            <Text style={S.tableCell}>Repas : <Text style={{ fontFamily: 'Helvetica-Bold' }}>{d['Nombre_repas_ 2']}</Text>{'  '}Montant : <Text style={{ fontFamily: 'Helvetica-Bold' }}>{d.FRAIS_ANNEXES_REPAS_ANNEE_2}</Text> €</Text>
+            <Text style={S.tableCell}>Repas : <Text style={{ fontFamily: 'Helvetica-Bold' }}>{d['Nombre_repas_ 2']}</Text>{'  '}Montant : <Text style={{ fontFamily: 'Helvetica-Bold' }}>{d.FRAIS_ANNEXES_REPAS_ANNEE_2}</Text></Text>
           </View>
         )}
 
         <View style={[S.boxGray, { marginTop: 8 }]}>
           <Text style={{ fontSize: 8, fontFamily: 'Helvetica-Bold', marginBottom: 4 }}>Premier équipement pédagogique :</Text>
           <View style={{ flexDirection: 'row', gap: 16, marginBottom: 4 }}>
-  <PdfCheckBox label="Oui" />
-  <PdfCheckBox label="Non" />
-</View>
-<Text style={S.p}>Si oui, préciser le montant du forfait pris en charge par l'OPCO : ………………… €</Text>
+            <PdfCheckBox label="Oui" checked={parseFloat((d.FRAIS_PREMIER_EQUIPEMENT || '0').replace(',', '.').replace(/[^\d.]/g, '')) > 0} />
+            <PdfCheckBox label="Non" checked={parseFloat((d.FRAIS_PREMIER_EQUIPEMENT || '0').replace(',', '.').replace(/[^\d.]/g, '')) === 0} />
+          </View>
+          <Text style={S.p}>
+            Si oui, préciser le montant du forfait pris en charge par l'OPCO :{' '}
+            <Text style={{ fontFamily: 'Helvetica-Bold', color: '#006B68' }}>
+              {parseFloat((d.FRAIS_PREMIER_EQUIPEMENT || '0').replace(',', '.').replace(/[^\d.]/g, '')) > 0
+                ? d.FRAIS_PREMIER_EQUIPEMENT
+                : '………………… €'}
+            </Text>
+          </Text>
         </View>
 
         <Text style={S.p}>Le règlement de la formation sera dû à réception de la facture. Les factures des frais de formation ainsi que les certificats de réalisation seront adressés directement à l'OPCO.</Text>
 
         <View style={[S.boxGray, { marginTop: 6 }]}>
           <Text style={{ fontSize: 8, fontFamily: 'Helvetica-Bold', marginBottom: 4 }}>Frais liés à la mobilité internationale⁴ ou à la mobilité vers la métropole des apprentis résidant dans les territoires ultramarins :</Text>
-          <Text style={S.checkLine}>☐ Oui{'          '}☐ Non</Text>
+          <View style={{ flexDirection: 'row', gap: 16, marginBottom: 4 }}>
+            <PdfCheckBox label="Oui" checked={false} />
+            <PdfCheckBox label="Non" checked={true} />
+          </View>
           <Text style={S.p}>Si oui, préciser le montant du forfait pris en charge par l'OPCO : ………………… €</Text>
         </View>
 
         <View style={[S.box, { marginTop: 6 }]}>
-          <Text style={{ fontSize: 8.5, fontFamily: 'Helvetica-Bold' }}>Totaux pour les frais annexes : <Text style={{ color: '#006B68' }}>{d.TOTAL_FRAIS_ANNEXES} €</Text></Text>
+          <Text style={{ fontSize: 8.5, fontFamily: 'Helvetica-Bold' }}>Totaux pour les frais annexes : <Text style={{ color: '#006B68' }}>{d.TOTAL_FRAIS_ANNEXES}</Text></Text>
         </View>
 
         <Text style={S.fn}>³ En cas de formation délivrée à 100% à distance, il ne peut être facturé de frais d'hébergement et de restauration.</Text>

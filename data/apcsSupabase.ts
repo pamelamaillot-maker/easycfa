@@ -246,6 +246,106 @@ export async function modifierEcheance(id: string, modifications: Partial<Echean
   } catch (e: any) { return { success: false, error: e.message || 'Erreur réseau' }; }
 }
 
+// ============================================================================
+// CERTIFICATS DE RÉALISATION (CR)
+// ============================================================================
+
+export interface CertificatRealisation {
+  statut: 'a_signer' | 'signe';
+  periodeDebut: string;       // JJ/MM/AAAA
+  periodeFin: string;         // JJ/MM/AAAA
+  nbHeures?: number;
+  nbMois?: number;
+  // Version non signée (générée par le CFA)
+  fichierNonSigneNom?: string;
+  fichierNonSigneUrl?: string;
+  cheminStorageNonSigne?: string;
+  dateGeneration?: string;
+  // Version signée (réimportée après Sign.plus)
+  fichierSigneNom?: string;
+  fichierSigneUrl?: string;
+  cheminStorageSigne?: string;
+  dateImportSignee?: string;
+}
+
+/**
+ * Sauvegarde le CR généré (PDF non signé) sur une échéance.
+ */
+export async function sauvegarderCrEcheance(
+  echeanceId: string,
+  cr: CertificatRealisation
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    // Charge les pieces actuelles pour fusion
+    const { data: ech, error: errLoad } = await supabase
+      .from('echeances').select('pieces').eq('id', echeanceId).maybeSingle();
+    if (errLoad) return { success: false, error: errLoad.message };
+    const pieces = (ech?.pieces || {}) as Record<string, any>;
+    pieces.certificatRealisation = cr;
+    const { error } = await supabase
+      .from('echeances')
+      .update({ pieces, dateModification: new Date().toISOString() })
+      .eq('id', echeanceId);
+    if (error) return { success: false, error: error.message };
+    return { success: true };
+  } catch (e: any) {
+    return { success: false, error: e.message || 'Erreur réseau' };
+  }
+}
+
+/**
+ * Marque un CR comme signé après import du PDF signé.
+ */
+export async function marquerCrSignee(
+  echeanceId: string,
+  fichierUrl: string,
+  fichierNom: string,
+  cheminStorage: string
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const { data: ech, error: errLoad } = await supabase
+      .from('echeances').select('pieces').eq('id', echeanceId).maybeSingle();
+    if (errLoad) return { success: false, error: errLoad.message };
+    const pieces = (ech?.pieces || {}) as Record<string, any>;
+    const crActuel = (pieces.certificatRealisation || {}) as CertificatRealisation;
+    pieces.certificatRealisation = {
+      ...crActuel,
+      statut: 'signe',
+      fichierSigneNom: fichierNom,
+      fichierSigneUrl: fichierUrl,
+      cheminStorageSigne: cheminStorage,
+      dateImportSignee: new Date().toISOString(),
+    };
+    const { error } = await supabase
+      .from('echeances')
+      .update({ pieces, dateModification: new Date().toISOString() })
+      .eq('id', echeanceId);
+    if (error) return { success: false, error: error.message };
+    return { success: true };
+  } catch (e: any) {
+    return { success: false, error: e.message || 'Erreur réseau' };
+  }
+}
+
+/**
+ * Supprime un CR (annulation).
+ */
+export async function supprimerCrEcheance(echeanceId: string): Promise<{ success: boolean; error?: string }> {
+  try {
+    const { data: ech, error: errLoad } = await supabase
+      .from('echeances').select('pieces').eq('id', echeanceId).maybeSingle();
+    if (errLoad) return { success: false, error: errLoad.message };
+    const pieces = (ech?.pieces || {}) as Record<string, any>;
+    delete pieces.certificatRealisation;
+    const { error } = await supabase
+      .from('echeances').update({ pieces }).eq('id', echeanceId);
+    if (error) return { success: false, error: error.message };
+    return { success: true };
+  } catch (e: any) {
+    return { success: false, error: e.message || 'Erreur réseau' };
+  }
+}
+
 export async function supprimerEcheance(id: string): Promise<{ success: boolean; error?: string }> {
   try {
     const { error } = await supabase.from('echeances').delete().eq('id', id);

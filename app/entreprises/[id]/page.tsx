@@ -4,7 +4,8 @@ import { useRouter } from 'next/navigation';
 import { ENTREPRISES_REELS } from '../../../data/mockEntreprises_reels';
 import { APPRENANTS_REELS } from '../../../data/mockApprenants_reels';
 import { COLORS } from '../../../lib/constants';
-import { chargerEntreprise as chargerEntrepriseSupabase, modifierEntreprise, supprimerEntreprise as supprimerEntrepriseSupabase } from '../../../data/entreprisesSupabase';
+import { chargerEntreprise as chargerEntrepriseSupabase, modifierEntreprise, supprimerEntreprise as supprimerEntrepriseSupabase, marquerConventionSignee, supprimerConventionApprenant, type ConventionStatut } from '../../../data/entreprisesSupabase';
+import { chargerApprentis } from '../../../data/apprentisSupabase';
 import Card from '../../../components/Card';
 import StatCard from '../../../components/StatCard';
 import BoutonSupprimer from '../../../components/BoutonSupprimer';
@@ -103,6 +104,7 @@ export default function FicheEntreprise({ params }: { params: Promise<{ id: stri
   const [form, setForm] = useState<any>({});
   const [sauvegarde, setSauvegarde] = useState(false);
   const [chargement, setChargement] = useState(true);
+  const [apprentisSupabase, setApprentisSupabase] = useState<any[]>([]);
 
   useEffect(() => {
     (async () => {
@@ -119,6 +121,13 @@ export default function FicheEntreprise({ params }: { params: Promise<{ id: stri
       }
       setEntreprise(trouve);
       setForm(trouve ?? {});
+      // Charger les apprenants Supabase (pour la section conventions)
+      try {
+        const apps = await chargerApprentis();
+        setApprentisSupabase(apps);
+      } catch (e) {
+        console.error('[FicheEntreprise] Erreur chargement apprenants Supabase', e);
+      }
       setChargement(false);
     })();
   }, [id]);
@@ -531,6 +540,246 @@ export default function FicheEntreprise({ params }: { params: Promise<{ id: stri
             })()}
           </tbody>
         </table>
+      </Card>
+
+      {/* Conventions par apprenant */}
+      <Card style={{ marginBottom: '24px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+          <h2 style={{ fontSize: '15px', fontWeight: '700', color: COLORS.primary }}>📋 Conventions de formation</h2>
+          <a href="/documents/convention" style={{ ...btnSecondary, textDecoration: 'none', fontSize: '12px' }}>+ Nouvelle convention</a>
+        </div>
+        {(() => {
+          // Sources combinées : Supabase (prioritaire) + legacy localStorage
+          const mapApprenants = new Map<string, any>();
+          // 1) Supabase d'abord
+          apprentisSupabase
+            .filter(a => (a.entrepriseId && a.entrepriseId === id) || memeEntreprise(a.entreprise, e.raisonSociale))
+            .forEach(a => mapApprenants.set(a.id, a));
+          // 2) Legacy (n'écrase pas Supabase)
+          chargerTousApprenants()
+            .filter(a => (a.entrepriseId && a.entrepriseId === id) || memeEntreprise(a.entreprise, e.raisonSociale))
+            .forEach(a => { if (!mapApprenants.has(a.id)) mapApprenants.set(a.id, a); });
+          // 3) Apprenants qui ont une convention mais ne sont plus rattachés (orphelins)
+          const finApps = (form.financementsApprenants || {});
+          Object.keys(finApps).forEach(aId => {
+            if (finApps[aId]?.convention && !mapApprenants.has(aId)) {
+              // Cherche dans toutes les sources, sinon stub
+              const trouve = apprentisSupabase.find(x => x.id === aId)
+                || chargerTousApprenants().find(x => x.id === aId)
+                || { id: aId, nom: aId, prenom: '(introuvable)', formation: '' };
+              mapApprenants.set(aId, trouve);
+            }
+          });
+
+          const apprentisListe = Array.from(mapApprenants.values())
+            .sort((a, b) => `${a.nom} ${a.prenom}`.localeCompare(`${b.nom} ${b.prenom}`));
+
+          if (apprentisListe.length === 0) {
+            return <div style={{ padding: '20px', textAlign: 'center', color: COLORS.textMuted, fontStyle: 'italic', fontSize: 13 }}>Aucun apprenti rattaché — aucune convention à gérer.</div>;
+          }
+          return apprentisListe.map((a) => {
+            const fin = (form.financementsApprenants || {})[a.id] || {};
+            const conv: ConventionStatut | undefined = fin.convention;
+            const statut = conv?.statut || 'a_generer';
+            const config = {
+              a_generer: { bg: '#fafafa', border: '#e0e0e0', icon: '📄', label: 'À générer', color: '#666' },
+              en_attente: { bg: '#fff8e1', border: '#ffe082', icon: '⏳', label: 'En attente de signature', color: '#C8A23A' },
+              signee: { bg: '#e8f5e9', border: '#a5d6a7', icon: '✅', label: 'Signée', color: '#2e7d32' },
+            }[statut];
+
+            return (
+              <div key={a.id} style={{
+                display: 'flex', alignItems: 'center', gap: 16,
+                padding: '12px 14px', borderRadius: 10, marginBottom: 8,
+                backgroundColor: config.bg, border: `1.5px solid ${config.border}`,
+              }}>
+                <div style={{ fontSize: 22, flexShrink: 0 }}>{config.icon}</div>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: COLORS.primary }}>
+                    {a.nom} {a.prenom}
+                    <span style={{ marginLeft: 10, fontSize: 11, color: config.color, fontWeight: 600 }}>
+                      • {config.label}
+                    </span>
+                  </div>
+                  <div style={{ fontSize: 11, color: '#888', marginTop: 2 }}>
+                    {a.formation}
+                  </div>
+                  {statut === 'en_attente' && conv?.dateEnvoiEmail && (
+                    <div style={{ fontSize: 11, color: '#C8A23A', marginTop: 4 }}>
+                      📧 Envoyée le {new Date(conv.dateEnvoiEmail).toLocaleDateString('fr-FR')}
+                      {conv.emailDestinataire && <> à <strong>{conv.emailDestinataire}</strong></>}
+                    </div>
+                  )}
+                  {statut === 'signee' && conv?.dateSignature && (
+                    <div style={{ fontSize: 11, color: '#2e7d32', marginTop: 4, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                      <span>✅ Signée le {new Date(conv.dateSignature).toLocaleDateString('fr-FR')}</span>
+                      {conv.fichierSigneUrl && (
+                        <a href={conv.fichierSigneUrl} target="_blank" rel="noreferrer" style={{ color: COLORS.primary, textDecoration: 'underline', fontWeight: 600 }}>
+                          📄 Voir le PDF signé
+                        </a>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                <div style={{ display: 'flex', gap: 6, flexShrink: 0, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                  {statut === 'a_generer' && (
+                    <a href="/documents/convention" style={{ ...btnSecondary, textDecoration: 'none', fontSize: 12, padding: '6px 12px' }}>
+                      → Générer
+                    </a>
+                  )}
+                  {statut === 'en_attente' && (
+                    <label style={{
+                      backgroundColor: COLORS.primary, color: 'white', borderRadius: 8,
+                      padding: '7px 12px', fontSize: 12, fontWeight: 600, cursor: 'pointer',
+                      whiteSpace: 'nowrap',
+                    }}>
+                      📤 Importer convention signée
+                      <input type="file" accept=".pdf" style={{ display: 'none' }} onChange={async (ev) => {
+                        const f = ev.target.files?.[0];
+                        if (!f) return;
+                        const chemin = cheminStorage('entreprises', id, `convention_signee_${a.id}`, f.name);
+                        const resUpload = await uploaderFichier(chemin, f);
+                        if (!resUpload.success || !resUpload.fichier) {
+                          alert(`⚠️ Erreur upload : ${resUpload.error}`);
+                          return;
+                        }
+                        const resSave = await marquerConventionSignee(id, a.id, resUpload.fichier.url, f.name);
+                        if (!resSave.success) {
+                          alert(`⚠️ Erreur sauvegarde : ${resSave.error}`);
+                          return;
+                        }
+                        console.log(`[Entreprise ${id}] Convention signée pour ${a.nom} ${a.prenom} ✅`);
+                        // Recharge la fiche
+                        const ent = await chargerEntrepriseSupabase(id);
+                        if (ent) { setEntreprise(ent); setForm(ent); }
+                        alert(`✅ Convention signée importée pour ${a.prenom} ${a.nom}`);
+                      }} />
+                    </label>
+                  )}
+                  {statut === 'signee' && (
+                    <label style={{
+                      backgroundColor: 'white', color: COLORS.primary, borderRadius: 8,
+                      border: `1.5px solid ${COLORS.primary}`,
+                      padding: '7px 12px', fontSize: 12, fontWeight: 600, cursor: 'pointer',
+                      whiteSpace: 'nowrap',
+                    }}>
+                      🔄 Remplacer
+                      <input type="file" accept=".pdf" style={{ display: 'none' }} onChange={async (ev) => {
+                        const f = ev.target.files?.[0];
+                        if (!f) return;
+                        const chemin = cheminStorage('entreprises', id, `convention_signee_${a.id}`, f.name);
+                        const resUpload = await uploaderFichier(chemin, f);
+                        if (!resUpload.success || !resUpload.fichier) {
+                          alert(`⚠️ Erreur upload : ${resUpload.error}`);
+                          return;
+                        }
+                        const resSave = await marquerConventionSignee(id, a.id, resUpload.fichier.url, f.name);
+                        if (!resSave.success) {
+                          alert(`⚠️ Erreur : ${resSave.error}`);
+                          return;
+                        }
+                        const ent = await chargerEntrepriseSupabase(id);
+                        if (ent) { setEntreprise(ent); setForm(ent); }
+                      }} />
+                    </label>
+                  )}
+                  {statut !== 'a_generer' && (
+                    <button
+                      onClick={async () => {
+                        if (!confirm(`Supprimer la convention de ${a.prenom} ${a.nom} ?\n\nCela ne supprime pas le PDF du Storage, mais retire le suivi sur la fiche entreprise.`)) return;
+                        const res = await supprimerConventionApprenant(id, a.id);
+                        if (!res.success) {
+                          alert(`⚠️ Erreur : ${res.error}`);
+                          return;
+                        }
+                        const ent = await chargerEntrepriseSupabase(id);
+                        if (ent) { setEntreprise(ent); setForm(ent); }
+                      }}
+                      title="Supprimer la convention"
+                      style={{
+                        backgroundColor: 'white', color: '#c00',
+                        border: '1.5px solid #c00', borderRadius: 8,
+                        padding: '7px 10px', fontSize: 12, fontWeight: 700,
+                        cursor: 'pointer',
+                      }}
+                    >
+                      ✕
+                    </button>
+                  )}
+                </div>
+              </div>
+            );
+          });
+        })()}
+      </Card>
+
+      {/* Ruptures signées (lecture seule) */}
+      <Card style={{ marginBottom: '24px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+          <h2 style={{ fontSize: '15px', fontWeight: '700', color: COLORS.primary }}>📋 Ruptures de contrat signées</h2>
+          <span style={{ fontSize: 11, color: COLORS.textMuted, fontStyle: 'italic' }}>Lecture seule — gérées sur la fiche apprenant</span>
+        </div>
+        {(() => {
+          // Charge tous les apprentis rattachés à cette entreprise (Supabase + legacy)
+          const mapApprenants = new Map<string, any>();
+          apprentisSupabase
+            .filter(a => (a.entrepriseId && a.entrepriseId === id) || memeEntreprise(a.entreprise, e.raisonSociale))
+            .forEach(a => mapApprenants.set(a.id, a));
+          chargerTousApprenants()
+            .filter(a => (a.entrepriseId && a.entrepriseId === id) || memeEntreprise(a.entreprise, e.raisonSociale))
+            .forEach(a => { if (!mapApprenants.has(a.id)) mapApprenants.set(a.id, a); });
+
+          const enRupture = Array.from(mapApprenants.values())
+            .filter(a => a.statut === 'Rupture' || a.statut === 'Terminé')
+            .filter(a => a.dateRupture || a.ruptureSignee);
+
+          if (enRupture.length === 0) {
+            return <div style={{ padding: '20px', textAlign: 'center', color: COLORS.textMuted, fontStyle: 'italic', fontSize: 13 }}>Aucune rupture de contrat pour les apprentis de cette entreprise ✅</div>;
+          }
+          return enRupture.map(a => {
+            const sig = a.ruptureSignee;
+            const hasSigned = !!sig?.url;
+            return (
+              <div key={a.id} style={{
+                display: 'flex', alignItems: 'center', gap: 16,
+                padding: '12px 14px', borderRadius: 10, marginBottom: 8,
+                backgroundColor: hasSigned ? '#e8f5e9' : '#fff8e1',
+                border: `1.5px solid ${hasSigned ? '#a5d6a7' : '#ffe082'}`,
+              }}>
+                <div style={{ fontSize: 22, flexShrink: 0 }}>{hasSigned ? '✅' : '⏳'}</div>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: COLORS.primary }}>
+                    {a.nom} {a.prenom}
+                    <span style={{ marginLeft: 10, fontSize: 11, color: hasSigned ? '#2e7d32' : '#C8A23A', fontWeight: 600 }}>
+                      • {hasSigned ? 'Rupture signée' : 'En attente du PDF signé'}
+                    </span>
+                  </div>
+                  <div style={{ fontSize: 11, color: '#888', marginTop: 2 }}>
+                    {a.formation}
+                    {a.dateRupture && <> · Rupture le <strong>{a.dateRupture}</strong></>}
+                    {a.motifRupture && <> · Motif : {a.motifRupture}</>}
+                    {a.maintienFormation && <> · Maintien : <strong>{a.maintienFormation}</strong></>}
+                  </div>
+                  {hasSigned && (
+                    <div style={{ fontSize: 11, color: '#2e7d32', marginTop: 4, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                      <span>📄 {sig.nom}</span>
+                      <a href={sig.url} target="_blank" rel="noreferrer" style={{ color: COLORS.primary, textDecoration: 'underline', fontWeight: 600 }}>
+                        ⬇ Voir le PDF signé
+                      </a>
+                      <span style={{ color: '#888', fontStyle: 'italic' }}>
+                        — Importé le {new Date(sig.dateImport).toLocaleDateString('fr-FR')}
+                      </span>
+                    </div>
+                  )}
+                </div>
+                <a href={`/apprenants/${a.id}`} style={{ ...btnSecondary, textDecoration: 'none', fontSize: 12, padding: '6px 12px', whiteSpace: 'nowrap' }}>
+                  → Fiche
+                </a>
+              </div>
+            );
+          });
+        })()}
       </Card>
 
       {/* Pièces justificatives entreprise */}

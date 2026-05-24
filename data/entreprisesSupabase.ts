@@ -35,6 +35,32 @@ export interface Entreprise {
   opcoNumeroAdherent?: string;
   dateCreation?: string;
   dateModification?: string;
+  financementsApprenants?: Record<string, FinancementApprenant>;
+}
+
+export interface ConventionStatut {
+  statut: 'a_generer' | 'en_attente' | 'signee';
+  dateGeneration?: string;
+  dateEnvoiEmail?: string;
+  emailDestinataire?: string;
+  dateSignature?: string;
+  fichierSigneUrl?: string;
+  fichierSigneNom?: string;
+}
+
+export interface FinancementApprenant {
+  coutPedagogiqueAnnee1?: number;
+  coutPedagogiqueAnnee2?: number;
+  coutTotalFraisPedagogiques?: number;
+  fraisPremierEquipement?: number;
+  nbRepasAnnee1?: number;
+  fraisAnnexesRepasAnnee1?: number;
+  nbRepasAnnee2?: number;
+  fraisAnnexesRepasAnnee2?: number;
+  totalFraisAnnexes?: number;
+  codeRncpManuel?: string;
+  dateMaj?: string;
+  convention?: ConventionStatut;
 }
 
 const CHAMPS_VALIDES_ENTREPRISE = new Set<string>([
@@ -44,7 +70,7 @@ const CHAMPS_VALIDES_ENTREPRISE = new Set<string>([
   'dirigeantNom', 'dirigeantPrenom', 'dirigeantFonction', 'dirigeantEmail',
   'tuteurNom', 'tuteurPrenom', 'tuteurFonction', 'tuteurEmail', 'tuteurTelephone', 'tuteurNiveauDiplome',
   'rhNom', 'rhEmail', 'facturationEmail', 'iban', 'bic', 'opcoNumeroAdherent',
-  'dateCreation', 'dateModification',
+  'dateCreation', 'dateModification', 'financementsApprenants',
 ]);
 
 export async function chargerEntreprises(): Promise<Entreprise[]> {
@@ -80,6 +106,170 @@ export async function modifierEntreprise(id: string, modifications: Partial<Entr
     if (error) { console.error('Erreur Supabase modifierEntreprise:', error); return { success: false, error: error.message }; }
     return { success: true };
   } catch (e: any) { console.error('Erreur réseau modifierEntreprise:', e); return { success: false, error: e.message || 'Erreur réseau' }; }
+}
+
+/**
+ * Sauvegarde le financement d'un apprenant sur la fiche entreprise.
+ * Fusionne avec les financements existants (un dict par apprenantId).
+ */
+export async function sauvegarderFinancementApprenant(
+  entrepriseId: string,
+  apprenantId: string,
+  financement: FinancementApprenant
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    // Charge la fiche actuelle pour fusionner sans écraser les autres apprenants
+    const { data: ent, error: errLoad } = await supabase
+      .from('entreprises')
+      .select('financementsApprenants')
+      .eq('id', entrepriseId)
+      .maybeSingle();
+    if (errLoad) {
+      console.error('[sauvegarderFinancementApprenant] load:', errLoad);
+      return { success: false, error: errLoad.message };
+    }
+    const current = (ent?.financementsApprenants || {}) as Record<string, FinancementApprenant>;
+    const updated = {
+      ...current,
+      [apprenantId]: {
+        ...financement,
+        dateMaj: new Date().toISOString(),
+      },
+    };
+    const { error } = await supabase
+      .from('entreprises')
+      .update({ financementsApprenants: updated, dateModification: new Date().toISOString() })
+      .eq('id', entrepriseId);
+    if (error) {
+      console.error('[sauvegarderFinancementApprenant] update:', error);
+      return { success: false, error: error.message };
+    }
+    return { success: true };
+  } catch (e: any) {
+    console.error('[sauvegarderFinancementApprenant] réseau:', e);
+    return { success: false, error: e.message || 'Erreur réseau' };
+  }
+}
+
+/**
+ * Marque la convention d'un apprenant comme "en attente de signature".
+ * Appelée quand on génère + envoie la convention par mail à l'entreprise.
+ */
+export async function marquerConventionEnAttente(
+  entrepriseId: string,
+  apprenantId: string,
+  emailDestinataire?: string
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const { data: ent, error: errLoad } = await supabase
+      .from('entreprises')
+      .select('financementsApprenants')
+      .eq('id', entrepriseId)
+      .maybeSingle();
+    if (errLoad) return { success: false, error: errLoad.message };
+
+    const current = (ent?.financementsApprenants || {}) as Record<string, FinancementApprenant>;
+    const apprenantFin = current[apprenantId] || {};
+    const updated = {
+      ...current,
+      [apprenantId]: {
+        ...apprenantFin,
+        convention: {
+          ...(apprenantFin.convention || {}),
+          statut: 'en_attente' as const,
+          dateGeneration: apprenantFin.convention?.dateGeneration || new Date().toISOString(),
+          dateEnvoiEmail: new Date().toISOString(),
+          emailDestinataire: emailDestinataire || apprenantFin.convention?.emailDestinataire,
+        },
+      },
+    };
+    const { error } = await supabase
+      .from('entreprises')
+      .update({ financementsApprenants: updated, dateModification: new Date().toISOString() })
+      .eq('id', entrepriseId);
+    if (error) return { success: false, error: error.message };
+    return { success: true };
+  } catch (e: any) {
+    return { success: false, error: e.message || 'Erreur réseau' };
+  }
+}
+
+/**
+ * Supprime la convention d'un apprenant (mais conserve les autres données financières).
+ */
+export async function supprimerConventionApprenant(
+  entrepriseId: string,
+  apprenantId: string
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const { data: ent, error: errLoad } = await supabase
+      .from('entreprises')
+      .select('financementsApprenants')
+      .eq('id', entrepriseId)
+      .maybeSingle();
+    if (errLoad) return { success: false, error: errLoad.message };
+
+    const current = (ent?.financementsApprenants || {}) as Record<string, FinancementApprenant>;
+    const apprenantFin = current[apprenantId];
+    if (!apprenantFin) return { success: true };
+
+    const { convention: _conv, ...sansConvention } = apprenantFin;
+    const updated = {
+      ...current,
+      [apprenantId]: sansConvention,
+    };
+    const { error } = await supabase
+      .from('entreprises')
+      .update({ financementsApprenants: updated, dateModification: new Date().toISOString() })
+      .eq('id', entrepriseId);
+    if (error) return { success: false, error: error.message };
+    return { success: true };
+  } catch (e: any) {
+    return { success: false, error: e.message || 'Erreur réseau' };
+  }
+}
+
+/**
+ * Marque la convention comme signée après upload du PDF signé.
+ */
+export async function marquerConventionSignee(
+  entrepriseId: string,
+  apprenantId: string,
+  fichierUrl: string,
+  fichierNom: string
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const { data: ent, error: errLoad } = await supabase
+      .from('entreprises')
+      .select('financementsApprenants')
+      .eq('id', entrepriseId)
+      .maybeSingle();
+    if (errLoad) return { success: false, error: errLoad.message };
+
+    const current = (ent?.financementsApprenants || {}) as Record<string, FinancementApprenant>;
+    const apprenantFin = current[apprenantId] || {};
+    const updated = {
+      ...current,
+      [apprenantId]: {
+        ...apprenantFin,
+        convention: {
+          ...(apprenantFin.convention || {}),
+          statut: 'signee' as const,
+          dateSignature: new Date().toISOString(),
+          fichierSigneUrl: fichierUrl,
+          fichierSigneNom: fichierNom,
+        },
+      },
+    };
+    const { error } = await supabase
+      .from('entreprises')
+      .update({ financementsApprenants: updated, dateModification: new Date().toISOString() })
+      .eq('id', entrepriseId);
+    if (error) return { success: false, error: error.message };
+    return { success: true };
+  } catch (e: any) {
+    return { success: false, error: e.message || 'Erreur réseau' };
+  }
 }
 
 export async function supprimerEntreprise(id: string): Promise<{ success: boolean; error?: string }> {

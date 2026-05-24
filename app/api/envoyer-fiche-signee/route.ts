@@ -5,7 +5,9 @@ export const runtime = 'nodejs';
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 
-const EMAIL_DESTINATAIRE = 'pedagogie@pamoi.re';
+// TEST : tant que pamoi.re n'est pas vérifié dans Resend, on envoie à l'email du compte Resend
+// PROD : changer pour 'pedagogie@pamoi.re' une fois le domaine vérifié
+const EMAIL_DESTINATAIRE = 'pamelamaillot@pamoi.re';
 const EMAIL_EXPEDITEUR = 'EasyCFA <onboarding@resend.dev>'; // TODO: remplacer par noreply@pamoi.re quand le domaine est vérifié dans Resend
 
 export async function POST(request: NextRequest) {

@@ -10,9 +10,18 @@ import {
   supprimerApc as supprimerApcSupabase,
   modifierEcheance,
   creerEcheance,
+  sauvegarderCrEcheance,
+  marquerCrSignee,
+  supprimerCrEcheance,
+  type CertificatRealisation,
 } from '../../data/apcsSupabase';
 import Card from '../../components/Card';
 import { uploaderFichier, cheminStorage } from '../../lib/storage';
+import { calculerPeriodeCr, calculerPeriodeCrFinal, nbJoursEntre, nbMoisEntre } from '../../lib/calculerPeriodeCr';
+import dynamic from 'next/dynamic';
+import { APPRENANTS_REELS as APPS_REELS_LIB } from '../../data/mockApprenants_reels';
+
+const BoutonGenerationCR = dynamic(() => import('../../components/BoutonGenerationCR'), { ssr: false });
 
 const inputStyle: React.CSSProperties = { border: '1.5px solid #e0e0e0', borderRadius: '8px', padding: '7px 10px', fontSize: '12px', width: '100%', boxSizing: 'border-box', backgroundColor: 'white' };
 const btnPrimary: React.CSSProperties = { backgroundColor: '#006B68', color: 'white', border: 'none', borderRadius: '8px', padding: '8px 14px', fontSize: '12px', fontWeight: '600', cursor: 'pointer' };
@@ -102,6 +111,93 @@ function genererEcheances(apc: Partial<APC>): Echeance[] {
   echeances.push(mk('eq','1er équipement','equipement',1,0,eq>0?eq:500,dateDebut));
   if (rep>0) echeances.push(mk('rep','Frais repas','repas',1,0,rep,addMonths(dateDebut,6)));
   return echeances;
+}
+
+/**
+ * Prépare les données du CR pour l'échéance ciblée + le dossier APC parent.
+ * Retourne null si CR non applicable (1ère échéance, période non calculable).
+ */
+function donneesCrPourEcheance(apc: APC, echeance: Echeance, apprenant?: any): {
+  donnees: Record<string, string>;
+  periode: { debut: string; fin: string };
+} | null {
+  const periode = calculerPeriodeCr(
+    apc.echeances as any,
+    echeance as any,
+    apc.dateDebutContrat,
+    apc.dateFinContrat,
+    (apprenant as any)?.dateRupture
+  );
+  if (!periode) return null;
+  const nbJ = nbJoursEntre(periode.debut, periode.fin);
+  const nbMois = Math.round(nbJ / 30.4);
+  // Formation libellée
+  const fLibel: Record<string, string> = {
+    'SC':'TP Secrétaire Comptable','GCF':'TP Gestionnaire Comptable et Fiscal',
+    'ARH':"TP Assistant(e) en Ressources Humaines",'AD':"TP Assistant(e) de Direction",
+    'CATL':"TP Chargé(e) d'Accueil Touristique et de Loisirs",
+    'EC':"TP Employé(e) Commercial(e)",'CV':"TP Conseiller(ère) de Vente",
+    'FPA':"TP Formateur(trice) Professionnel(le) d'Adultes",
+  };
+  const formationLib = fLibel[apc.formation] || apc.formation;
+  const civilite = apprenant?.sexe === 'F' ? 'Mme' : 'M.';
+  const donnees: Record<string, string> = {
+    CFA_RAISON_SOCIALE: 'PAM OI Formation',
+    CFA_DIRECTRICE: 'MAILLOT Gaëlle',
+    APPRENANT_CIVILITE: civilite,
+    APPRENANT_NOM_COMPLET: `${apc.apprenantPrenom} ${apc.apprenantNom}`,
+    ENTREPRISE_RAISON_SOCIALE: apc.entreprise || '',
+    FORMATION_LIBELLE: formationLib,
+    CR_DATE_DEBUT: periode.debut,
+    CR_DATE_FIN: periode.fin,
+    CR_DUREE_HEURES: nbMois > 0 ? `${nbMois} mois (${nbJ} jours)` : `${nbJ} jours`,
+    CR_LIEU_SIGNATURE: 'Saint-Leu',
+    CR_SIGNATAIRE_QUALITE: 'Directrice et référente handicap',
+    DATE_SIGNATURE_DOC: new Date().toLocaleDateString('fr-FR'),
+  };
+  return { donnees, periode };
+}
+
+/**
+ * Données du CR FINAL (couvrant tout le contrat, pour contrôle OPCO).
+ */
+function donneesCrFinal(apc: APC, apprenant?: any): {
+  donnees: Record<string, string>;
+  periode: { debut: string; fin: string };
+  nbMoisTotal: number;
+} | null {
+  const periode = calculerPeriodeCrFinal(
+    apc.dateDebutContrat,
+    apc.dateFinContrat,
+    (apprenant as any)?.dateRupture
+  );
+  if (!periode) return null;
+  const nbJ = nbJoursEntre(periode.debut, periode.fin);
+  const nbMoisTotal = nbMoisEntre(periode.debut, periode.fin);
+  const fLibel: Record<string, string> = {
+    'SC':'TP Secrétaire Comptable','GCF':'TP Gestionnaire Comptable et Fiscal',
+    'ARH':"TP Assistant(e) en Ressources Humaines",'AD':"TP Assistant(e) de Direction",
+    'CATL':"TP Chargé(e) d'Accueil Touristique et de Loisirs",
+    'EC':"TP Employé(e) Commercial(e)",'CV':"TP Conseiller(ère) de Vente",
+    'FPA':"TP Formateur(trice) Professionnel(le) d'Adultes",
+  };
+  const formationLib = fLibel[apc.formation] || apc.formation;
+  const civilite = apprenant?.sexe === 'F' ? 'Mme' : 'M.';
+  const donnees: Record<string, string> = {
+    CFA_RAISON_SOCIALE: 'PAM OI Formation',
+    CFA_DIRECTRICE: 'MAILLOT Gaëlle',
+    APPRENANT_CIVILITE: civilite,
+    APPRENANT_NOM_COMPLET: `${apc.apprenantPrenom} ${apc.apprenantNom}`,
+    ENTREPRISE_RAISON_SOCIALE: apc.entreprise || '',
+    FORMATION_LIBELLE: formationLib,
+    CR_DATE_DEBUT: periode.debut,
+    CR_DATE_FIN: periode.fin,
+    CR_DUREE_HEURES: `${nbMoisTotal} mois (${nbJ} jours)`,
+    CR_LIEU_SIGNATURE: 'Saint-Leu',
+    CR_SIGNATAIRE_QUALITE: 'Directrice et référente handicap',
+    DATE_SIGNATURE_DOC: new Date().toLocaleDateString('fr-FR'),
+  };
+  return { donnees, periode, nbMoisTotal };
 }
 
 export default function Facturation() {
@@ -265,6 +361,87 @@ export default function Facturation() {
     else console.log(`[Echeance ${eid}] ${champ} mis à jour dans Supabase ✅`);
     // UI + localStorage
     const u={...apcSel,echeances:echs}; setApcSel(u); save(apcs.map(a=>a.id===u.id?u:a));
+  }
+
+  /**
+   * Marque une échéance comme "CR généré" (PDF non signé prêt à envoyer pour signature).
+   * Sauvegarde aussi le PDF dans Storage.
+   */
+  async function marquerCrGenere(echeance: Echeance, periode: {debut: string; fin: string}, blob?: Blob) {
+    if (!apcSel) return;
+    const nomFichier = `CR_${apcSel.apprenantNom}_${apcSel.apprenantPrenom}_${periode.debut.replace(/\//g,'-')}_${periode.fin.replace(/\//g,'-')}.pdf`;
+    // Si on a un blob, on l'upload dans Storage
+    let url = '', chemin = '';
+    if (blob) {
+      const f = new File([blob], nomFichier, { type: 'application/pdf' });
+      chemin = cheminStorage('apcs', apcSel.id, `cr_${echeance.id}`, nomFichier);
+      const res = await uploaderFichier(chemin, f);
+      if (!res.success || !res.fichier) {
+        alert(`⚠️ Erreur upload : ${res.error}`);
+        return;
+      }
+      url = res.fichier.url;
+      console.log(`[CR ${echeance.id}] PDF non signé uploadé vers Storage ✅`);
+    }
+    const nbJ = nbJoursEntre(periode.debut, periode.fin);
+    const cr: CertificatRealisation = {
+      statut: 'a_signer',
+      periodeDebut: periode.debut,
+      periodeFin: periode.fin,
+      nbHeures: 0,
+      nbMois: Math.round(nbJ / 30.4),
+      fichierNonSigneNom: nomFichier,
+      fichierNonSigneUrl: url,
+      cheminStorageNonSigne: chemin,
+      dateGeneration: new Date().toISOString(),
+    };
+    const resSave = await sauvegarderCrEcheance(echeance.id, cr);
+    if (!resSave.success) {
+      alert(`⚠️ Erreur sauvegarde CR : ${resSave.error}`);
+      return;
+    }
+    // Recharge l'APC
+    const apcMaj = await import('../../data/apcsSupabase').then(m => m.chargerApc(apcSel.id));
+    if (apcMaj) {
+      setApcSel(apcMaj as any);
+      save(apcs.map(a => a.id === apcSel.id ? (apcMaj as any) : a));
+    }
+  }
+
+  async function importerCrSignee(echeance: Echeance, file: File) {
+    if (!apcSel) return;
+    const chemin = cheminStorage('apcs', apcSel.id, `cr_signe_${echeance.id}`, file.name);
+    const resUpload = await uploaderFichier(chemin, file);
+    if (!resUpload.success || !resUpload.fichier) {
+      alert(`⚠️ Erreur upload : ${resUpload.error}`);
+      return;
+    }
+    const res = await marquerCrSignee(echeance.id, resUpload.fichier.url, file.name, chemin);
+    if (!res.success) {
+      alert(`⚠️ Erreur : ${res.error}`);
+      return;
+    }
+    console.log(`[CR ${echeance.id}] PDF signé importé ✅`);
+    const apcMaj = await import('../../data/apcsSupabase').then(m => m.chargerApc(apcSel.id));
+    if (apcMaj) {
+      setApcSel(apcMaj as any);
+      save(apcs.map(a => a.id === apcSel.id ? (apcMaj as any) : a));
+    }
+  }
+
+  async function annulerCr(echeance: Echeance) {
+    if (!apcSel) return;
+    if (!confirm('Annuler ce CR et supprimer les fichiers liés ? (Les PDFs restent dans Storage mais ne sont plus référencés)')) return;
+    const res = await supprimerCrEcheance(echeance.id);
+    if (!res.success) {
+      alert(`⚠️ Erreur : ${res.error}`);
+      return;
+    }
+    const apcMaj = await import('../../data/apcsSupabase').then(m => m.chargerApc(apcSel.id));
+    if (apcMaj) {
+      setApcSel(apcMaj as any);
+      save(apcs.map(a => a.id === apcSel.id ? (apcMaj as any) : a));
+    }
   }
 
   async function supprimer(id:string) {
@@ -820,6 +997,117 @@ export default function Facturation() {
                                 </div>
                               ))}
                             </div>
+
+                            {/* === SECTION CERTIFICAT DE RÉALISATION === */}
+                            {e.type === 'pedago' && (() => {
+                              const apprenant = APPS_REELS_LIB.find(a => a.id === apcSel.apprenantId);
+                              const data = donneesCrPourEcheance(apcSel as any, e as any, apprenant);
+                              const cr: CertificatRealisation | undefined = (e as any).pieces?.certificatRealisation;
+                              const colorCR = cr?.statut === 'signe' ? '#16a34a' : cr?.statut === 'a_signer' ? '#C8A23A' : '#888';
+                              const bgCR = cr?.statut === 'signe' ? '#dcfce7' : cr?.statut === 'a_signer' ? '#fef6e4' : '#fafafa';
+                              if (!data) {
+                                // Première facture pédagogique : pas de CR
+                                return (
+                                  <div style={{padding:'8px 10px',backgroundColor:'#fafafa',borderTop:'1px dashed #ddd',fontSize:'11px',color:'#888',fontStyle:'italic'}}>
+                                    ℹ️ Pas de CR sur cette échéance (première facture pédagogique)
+                                  </div>
+                                );
+                              }
+                              return (
+                                <div style={{padding:'10px',backgroundColor:bgCR,borderTop:'2px solid '+colorCR}}>
+                                  <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'6px',flexWrap:'wrap',gap:'8px'}}>
+                                    <div style={{fontSize:'11px',fontWeight:'700',color:colorCR}}>
+                                      📜 Certificat de Réalisation
+                                      {cr?.statut === 'a_signer' && ' — ⏳ À signer'}
+                                      {cr?.statut === 'signe' && ' — ✅ Signé'}
+                                      {!cr && ' — Non généré'}
+                                    </div>
+                                    <div style={{fontSize:'10px',color:'#666'}}>
+                                      Période : <strong>{data.periode.debut}</strong> → <strong>{data.periode.fin}</strong>
+                                      <span style={{marginLeft:'6px',color:'#888'}}>({nbJoursEntre(data.periode.debut, data.periode.fin)} jours)</span>
+                                    </div>
+                                  </div>
+
+                                  <div style={{display:'flex',gap:'6px',flexWrap:'wrap',alignItems:'center'}}>
+                                    {/* Toujours : bouton télécharger PDF (génération à la volée) */}
+                                    <BoutonGenerationCR
+                                      donnees={data.donnees}
+                                      nomFichier={`CR_${apcSel.apprenantNom}_${apcSel.apprenantPrenom}_${data.periode.debut.replace(/\//g,'-')}_${data.periode.fin.replace(/\//g,'-')}.pdf`}
+                                    />
+
+                                    {/* Si pas encore généré : bouton marquer comme généré */}
+                                    {!cr && (
+                                      <button
+                                        onClick={() => marquerCrGenere(e as any, data.periode)}
+                                        style={{backgroundColor:'#C8A23A',color:'white',border:'none',borderRadius:6,padding:'5px 10px',fontSize:11,fontWeight:600,cursor:'pointer'}}
+                                      >
+                                        ✓ Marquer comme généré
+                                      </button>
+                                    )}
+
+                                    {/* Si statut "à signer" : bouton importer signé */}
+                                    {cr?.statut === 'a_signer' && (
+                                      <label style={{backgroundColor:'#16a34a',color:'white',borderRadius:6,padding:'5px 10px',fontSize:11,fontWeight:600,cursor:'pointer'}}>
+                                        📤 Importer CR signé
+                                        <input type="file" accept=".pdf" style={{display:'none'}} onChange={ev => {
+                                          const f = ev.target.files?.[0];
+                                          if (f) importerCrSignee(e as any, f);
+                                        }} />
+                                      </label>
+                                    )}
+
+                                    {/* Si signé : voir le PDF + bouton remplacer */}
+                                    {cr?.statut === 'signe' && cr.fichierSigneUrl && (
+                                      <>
+                                        <a href={cr.fichierSigneUrl} target="_blank" rel="noopener noreferrer" style={{backgroundColor:'white',color:'#16a34a',border:'1.5px solid #16a34a',borderRadius:6,padding:'5px 10px',fontSize:11,fontWeight:600,textDecoration:'none'}}>
+                                          📄 Voir le CR signé
+                                        </a>
+                                        <label style={{backgroundColor:'white',color:'#666',border:'1px solid #ccc',borderRadius:6,padding:'5px 10px',fontSize:11,fontWeight:600,cursor:'pointer'}}>
+                                          🔄 Remplacer
+                                          <input type="file" accept=".pdf" style={{display:'none'}} onChange={ev => {
+                                            const f = ev.target.files?.[0];
+                                            if (f) importerCrSignee(e as any, f);
+                                          }} />
+                                        </label>
+                                      </>
+                                    )}
+
+                                    {/* Si CR existe : bouton annuler */}
+                                    {cr && (
+                                      <button
+                                        onClick={() => annulerCr(e as any)}
+                                        style={{backgroundColor:'white',color:'#c00',border:'1px solid #c00',borderRadius:6,padding:'5px 8px',fontSize:11,fontWeight:600,cursor:'pointer'}}
+                                        title="Annuler le CR"
+                                      >
+                                        ✕
+                                      </button>
+                                    )}
+                                  </div>
+
+                                  {/* Alerte si facture suivante saisie mais CR manquant ou pas signé */}
+                                  {(() => {
+                                    const pedago = (apcSel.echeances || []).filter(x => x.type === 'pedago').sort((a,b) => {
+                                      const pA = (a.dateEcheance||'').split('/'), pB = (b.dateEcheance||'').split('/');
+                                      if (pA.length !== 3 || pB.length !== 3) return 0;
+                                      return new Date(parseInt(pA[2]),parseInt(pA[1])-1,parseInt(pA[0])).getTime() - new Date(parseInt(pB[2]),parseInt(pB[1])-1,parseInt(pB[0])).getTime();
+                                    });
+                                    const idx = pedago.findIndex(x => x.id === e.id);
+                                    // S'il y a une facture SUIVANTE avec une dateFacture saisie ET ce CR pas signé : alerte
+                                    if (idx >= 0 && idx < pedago.length - 1) {
+                                      const suivante = pedago[idx + 1];
+                                      if (suivante.dateFacture && cr?.statut !== 'signe') {
+                                        return (
+                                          <div style={{marginTop:6,padding:'4px 8px',backgroundColor:'#fde8e8',color:'#c53030',fontSize:10,fontWeight:600,borderRadius:4}}>
+                                            🚨 La facture suivante ({suivante.label}) a été émise mais ce CR n'est pas encore signé !
+                                          </div>
+                                        );
+                                      }
+                                    }
+                                    return null;
+                                  })()}
+                                </div>
+                              );
+                            })()}
                           </div>
                         );
                       })}
@@ -836,6 +1124,65 @@ export default function Facturation() {
                           </div>
                         ))}
                       </div>
+
+                      {/* === CR FINAL — couvre tout le contrat pour contrôle OPCO === */}
+                      {(() => {
+                        const apprenant = APPS_REELS_LIB.find(a => a.id === apcSel.apprenantId);
+                        const dataFinal = donneesCrFinal(apcSel as any, apprenant);
+                        if (!dataFinal) return null;
+
+                        // Somme des mois des CR par échéance (pour contrôle cohérence)
+                        const pedago = (apcSel.echeances || []).filter(e => e.type === 'pedago').sort((a,b) => {
+                          const pA = (a.dateEcheance||'').split('/'), pB = (b.dateEcheance||'').split('/');
+                          if (pA.length !== 3 || pB.length !== 3) return 0;
+                          return new Date(parseInt(pA[2]),parseInt(pA[1])-1,parseInt(pA[0])).getTime() - new Date(parseInt(pB[2]),parseInt(pB[1])-1,parseInt(pB[0])).getTime();
+                        });
+                        let sommeMoisCrEcheance = 0;
+                        pedago.forEach((e, idx) => {
+                          if (idx === 0) return;
+                          const data = donneesCrPourEcheance(apcSel as any, e as any, apprenant);
+                          if (data) sommeMoisCrEcheance += nbMoisEntre(data.periode.debut, data.periode.fin);
+                        });
+                        const ecart = dataFinal.nbMoisTotal - sommeMoisCrEcheance;
+
+                        return (
+                          <div style={{marginTop: 12, padding: 12, backgroundColor: '#f0f4ff', borderRadius: 8, border: '2px solid #3a5bc7'}}>
+                            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8,flexWrap:'wrap',gap:8}}>
+                              <div style={{fontSize:'12px',fontWeight:'800',color:'#3a5bc7'}}>
+                                🏛️ CR FINAL (pour contrôle OPCO) — couvre tout le contrat
+                              </div>
+                              <div style={{fontSize:'11px',color:'#555'}}>
+                                Période : <strong>{dataFinal.periode.debut}</strong> → <strong>{dataFinal.periode.fin}</strong>
+                                <span style={{marginLeft: 8, color:'#3a5bc7', fontWeight: 700}}>= {dataFinal.nbMoisTotal} mois</span>
+                              </div>
+                            </div>
+
+                            {/* Contrôle cohérence */}
+                            {sommeMoisCrEcheance > 0 && (
+                              <div style={{
+                                marginBottom: 8, padding: '4px 8px', borderRadius: 4, fontSize: 10, fontWeight: 600,
+                                backgroundColor: ecart === 0 ? '#dcfce7' : '#fde8e8',
+                                color: ecart === 0 ? '#15803d' : '#c53030',
+                              }}>
+                                {ecart === 0
+                                  ? `✅ Cohérence OK : ${sommeMoisCrEcheance} mois des CR par échéance = ${dataFinal.nbMoisTotal} mois du CR final`
+                                  : `⚠️ Écart de ${Math.abs(ecart)} mois : somme CR échéances = ${sommeMoisCrEcheance} mois vs CR final = ${dataFinal.nbMoisTotal} mois`
+                                }
+                              </div>
+                            )}
+
+                            <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
+                              <BoutonGenerationCR
+                                donnees={dataFinal.donnees}
+                                nomFichier={`CR_FINAL_${apcSel.apprenantNom}_${apcSel.apprenantPrenom}_${dataFinal.periode.debut.replace(/\//g,'-')}_${dataFinal.periode.fin.replace(/\//g,'-')}.pdf`}
+                              />
+                              <span style={{fontSize:10, color:'#666', fontStyle:'italic', alignSelf:'center'}}>
+                                À conserver pour contrôle OPCO (preuve totale de réalisation)
+                              </span>
+                            </div>
+                          </div>
+                        );
+                      })()}
                     </div>
                   )}
                 </Card>

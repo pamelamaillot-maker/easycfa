@@ -196,6 +196,171 @@ export async function supprimerApprenti(id: string): Promise<{ success: boolean;
  * Renvoie le nombre d'apprentis importés avec succès.
  */
 // Liste des colonnes acceptées par la table apprenants (= clés du type Apprenti)
+export interface DocumentApprenant {
+  statut: 'a_generer' | 'en_attente' | 'signee';
+  dateGeneration?: string;
+  dateEnvoiEmail?: string;
+  dateSignature?: string;
+  fichierNonSigneNom?: string;
+  fichierNonSigneUrl?: string;
+  cheminStorageNonSigne?: string;
+  fichierSigneNom?: string;
+  fichierSigneUrl?: string;
+  cheminStorageSigne?: string;
+  archive?: boolean;
+}
+
+/**
+ * Marque un DMF/Rupture comme "envoyé pour signature" (sauvegarde PDF non signé)
+ */
+export async function marquerDocApprenantEnAttente(
+  apprenantId: string,
+  type: 'dmf' | 'rupture' | 'droitImage',
+  fichierUrl: string,
+  fichierNom: string,
+  cheminStorage: string
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const { data: app, error: errLoad } = await supabase
+      .from('apprenants').select(type).eq('id', apprenantId).maybeSingle();
+    if (errLoad) return { success: false, error: errLoad.message };
+    const doc: DocumentApprenant = ((app as any)?.[type] || {});
+    const docMaj: DocumentApprenant = {
+      ...doc,
+      statut: 'en_attente',
+      fichierNonSigneNom: fichierNom,
+      fichierNonSigneUrl: fichierUrl,
+      cheminStorageNonSigne: cheminStorage,
+      dateGeneration: doc.dateGeneration || new Date().toISOString(),
+      dateEnvoiEmail: new Date().toISOString(),
+    };
+    const { error } = await supabase
+      .from('apprenants').update({ [type]: docMaj, dateModification: new Date().toISOString() }).eq('id', apprenantId);
+    if (error) return { success: false, error: error.message };
+    return { success: true };
+  } catch (e: any) {
+    return { success: false, error: e.message || 'Erreur réseau' };
+  }
+}
+
+/**
+ * Marque un DMF/Rupture comme signé après import du PDF signé
+ */
+export async function marquerDocApprenantSignee(
+  apprenantId: string,
+  type: 'dmf' | 'rupture' | 'droitImage',
+  fichierUrl: string,
+  fichierNom: string,
+  cheminStorage: string
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const { data: app, error: errLoad } = await supabase
+      .from('apprenants').select(type).eq('id', apprenantId).maybeSingle();
+    if (errLoad) return { success: false, error: errLoad.message };
+    const doc: DocumentApprenant = ((app as any)?.[type] || {});
+    const docMaj: DocumentApprenant = {
+      ...doc,
+      statut: 'signee',
+      fichierSigneNom: fichierNom,
+      fichierSigneUrl: fichierUrl,
+      cheminStorageSigne: cheminStorage,
+      dateSignature: new Date().toISOString(),
+    };
+    const { error } = await supabase
+      .from('apprenants').update({ [type]: docMaj, dateModification: new Date().toISOString() }).eq('id', apprenantId);
+    if (error) return { success: false, error: error.message };
+    return { success: true };
+  } catch (e: any) {
+    return { success: false, error: e.message || 'Erreur réseau' };
+  }
+}
+
+/**
+ * Supprime/archive un DMF ou une Rupture du registre
+ */
+export async function supprimerDocApprenant(
+  apprenantId: string,
+  type: 'dmf' | 'rupture' | 'droitImage'
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const { error } = await supabase
+      .from('apprenants').update({ [type]: null, dateModification: new Date().toISOString() }).eq('id', apprenantId);
+    if (error) return { success: false, error: error.message };
+    return { success: true };
+  } catch (e: any) {
+    return { success: false, error: e.message || 'Erreur réseau' };
+  }
+}
+
+/**
+ * Ajoute une nouvelle sortie anticipée à l'historique d'un apprenant
+ */
+export async function ajouterSortieAnticipee(
+  apprenantId: string,
+  sortie: any
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const { data: app, error: errLoad } = await supabase
+      .from('apprenants').select('sortiesAnticipees').eq('id', apprenantId).maybeSingle();
+    if (errLoad) return { success: false, error: errLoad.message };
+    const liste = ((app as any)?.sortiesAnticipees || []) as any[];
+    liste.push(sortie);
+    const { error } = await supabase
+      .from('apprenants').update({ sortiesAnticipees: liste, dateModification: new Date().toISOString() }).eq('id', apprenantId);
+    if (error) return { success: false, error: error.message };
+    return { success: true };
+  } catch (e: any) {
+    return { success: false, error: e.message || 'Erreur réseau' };
+  }
+}
+
+/**
+ * Met à jour le statut d'une sortie anticipée existante (envoyée / signée)
+ */
+export async function modifierSortieAnticipee(
+  apprenantId: string,
+  sortieId: string,
+  modifications: any
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const { data: app, error: errLoad } = await supabase
+      .from('apprenants').select('sortiesAnticipees').eq('id', apprenantId).maybeSingle();
+    if (errLoad) return { success: false, error: errLoad.message };
+    const liste = ((app as any)?.sortiesAnticipees || []) as any[];
+    const idx = liste.findIndex(s => s.id === sortieId);
+    if (idx < 0) return { success: false, error: 'Sortie introuvable' };
+    liste[idx] = { ...liste[idx], ...modifications };
+    const { error } = await supabase
+      .from('apprenants').update({ sortiesAnticipees: liste, dateModification: new Date().toISOString() }).eq('id', apprenantId);
+    if (error) return { success: false, error: error.message };
+    return { success: true };
+  } catch (e: any) {
+    return { success: false, error: e.message || 'Erreur réseau' };
+  }
+}
+
+/**
+ * Supprime une sortie anticipée de l'historique
+ */
+export async function supprimerSortieAnticipee(
+  apprenantId: string,
+  sortieId: string
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const { data: app, error: errLoad } = await supabase
+      .from('apprenants').select('sortiesAnticipees').eq('id', apprenantId).maybeSingle();
+    if (errLoad) return { success: false, error: errLoad.message };
+    const liste = ((app as any)?.sortiesAnticipees || []) as any[];
+    const nouvelleListe = liste.filter(s => s.id !== sortieId);
+    const { error } = await supabase
+      .from('apprenants').update({ sortiesAnticipees: nouvelleListe, dateModification: new Date().toISOString() }).eq('id', apprenantId);
+    if (error) return { success: false, error: error.message };
+    return { success: true };
+  } catch (e: any) {
+    return { success: false, error: e.message || 'Erreur réseau' };
+  }
+}
+
 const CHAMPS_VALIDES = new Set<string>([
   'id', 'civilite', 'nom', 'prenom', 'sexe', 'nationalite',
   'dateNaissance', 'lieuNaissance', 'codePostalNaissance', 'departementNaissance', 'paysNaissance',
@@ -211,6 +376,9 @@ const CHAMPS_VALIDES = new Set<string>([
   'derniereClasse', 'dernierEtablissement', 'dernierOrganismeUai', 'anneeObtention',
   'dateCreation', 'dateModification',
   'pieces',
+  'dmf', 'rupture', 'ruptureSignee',
+  'motifRupture',
+  'droitImage', 'sortiesAnticipees',
 ]);
 
 /**

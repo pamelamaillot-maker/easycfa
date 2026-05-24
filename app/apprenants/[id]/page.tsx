@@ -6,7 +6,13 @@ import { APPRENANTS_REELS, DERNIERE_SITUATION_SIFA, verifierConformiteSifa, estM
 import { ENTREPRISES_REELS } from '../../../data/mockEntreprises_reels';
 import { SESSIONS } from '../../../data/mockData';
 import { COLORS } from '../../../lib/constants';
-import { chargerApprenti, creerApprenti, modifierApprenti, supprimerApprenti as supprimerApprentiSupabase } from '../../../data/apprentisSupabase';
+import { chargerApprenti, creerApprenti, modifierApprenti, supprimerApprenti as supprimerApprentiSupabase, marquerDocApprenantEnAttente, marquerDocApprenantSignee, supprimerDocApprenant } from '../../../data/apprentisSupabase';
+import { chargerEntreprises as chargerEntreprisesSupabase } from '../../../data/entreprisesSupabase';
+import { chargerApcs } from '../../../data/apcsSupabase';
+import { calculerPeriodeCr, calculerPeriodeCrFinal, nbMoisEntre } from '../../../lib/calculerPeriodeCr';
+import { assemblerDonneesDMF } from '../../../lib/donneesDMF';
+import { assemblerDonneesDroitImage } from '../../../lib/donneesDroitImage';
+import { chercherNpecParRncp } from '../../../data/npecSupabase';
 import { uploaderFichier, supprimerFichier, cheminStorage, type FichierStocke } from '../../../lib/storage';
 import Card from '../../../components/Card';
 import { useAcces } from '../../../lib/useAcces';
@@ -30,6 +36,10 @@ import {
 import { creerEntretien as creerEntretienSupabase } from '../../../data/entretiensSupabase';
 import { chargerEmargements } from '../../../data/emargementsSupabase';
 const BoutonPdfRupture = dynamic(() => import('../../../components/BoutonPdfRupture'), { ssr: false });
+const BoutonGenerationDMF = dynamic(() => import('../../../components/BoutonGenerationDMF'), { ssr: false });
+const BoutonRemplirLivret = dynamic(() => import('../../../components/BoutonRemplirLivret'), { ssr: false });
+const BoutonPdfDroitImage = dynamic(() => import('../../../components/BoutonPdfDroitImage'), { ssr: false });
+const SortiesAnticipeesManager = dynamic(() => import('../../../components/SortiesAnticipeesManager'), { ssr: false });
 
 const btnPrimary: React.CSSProperties = { backgroundColor: COLORS.primary, color: 'white', border: 'none', borderRadius: '8px', padding: '9px 16px', fontSize: '13px', fontWeight: '600', cursor: 'pointer' };
 const btnSecondary: React.CSSProperties = { backgroundColor: 'white', color: COLORS.primary, border: `1.5px solid ${COLORS.primary}`, borderRadius: '8px', padding: '9px 16px', fontSize: '13px', fontWeight: '600', cursor: 'pointer' };
@@ -670,6 +680,8 @@ export default function FicheApprenant({ params }: { params: Promise<{ id: strin
   const router = useRouter();
   const [apprenant, setApprenant] = useState<any>(null);
   const [historiqueEmargement, setHistoriqueEmargement] = useState<any[]>([]);
+  const [crsApprenant, setCrsApprenant] = useState<any[]>([]);
+  const [crFinalApprenant, setCrFinalApprenant] = useState<any>(null);
 
   // Charge l'historique d'émargement de l'apprenant (absences + retards)
   useEffect(() => {
@@ -714,6 +726,9 @@ export default function FicheApprenant({ params }: { params: Promise<{ id: strin
     })();
   }, [id]);
   const [form, setForm] = useState<any>({});
+  const [conventionEntreprise, setConventionEntreprise] = useState<any>(null);
+  const [entrepriseObj, setEntrepriseObj] = useState<any>(null);
+  const [npecApprenant, setNpecApprenant] = useState<any>(null);
   const [modeEdition, setModeEdition] = useState(false);
   const [sauvegarde, setSauvegarde] = useState(false);
   const [modaleRupture, setModaleRupture] = useState(false);
@@ -756,6 +771,127 @@ export default function FicheApprenant({ params }: { params: Promise<{ id: strin
       setChargement(false);
     })();
   }, [id]);
+
+  // Charge le NPEC correspondant à la formation de l'apprenant
+  useEffect(() => {
+    if (!apprenant?.formation) return;
+    (async () => {
+      try {
+        // On cherche par code RNCP (via numeroDossierOpco ou rncpCode) ou par codeInterne
+        const codeRncp = apprenant.rncpCode || apprenant.numeroDossierOpco || '';
+        if (codeRncp) {
+          const n = await chercherNpecParRncp(codeRncp);
+          if (n) {
+            setNpecApprenant(n);
+            return;
+          }
+        }
+        // Fallback : chercher par codeInterne (= apprenant.formation)
+        const { chargerNpec } = await import('../../../data/npecSupabase');
+        const tous = await chargerNpec();
+        const match = tous.find((x: any) => x.codeInterne === apprenant.formation);
+        if (match) setNpecApprenant(match);
+      } catch (e) {
+        console.error('[FicheApprenant] Erreur chargement NPEC:', e);
+      }
+    })();
+  }, [apprenant?.formation]);
+
+  // Charge les Certificats de Réalisation (CR) liés à cet apprenant via les APCs
+  useEffect(() => {
+    if (!apprenant) return;
+    (async () => {
+      try {
+        const apcs = await chargerApcs();
+        const apcsApp = apcs.filter((a: any) => a.apprenantId === id);
+        const lignesCr: any[] = [];
+        let crFinalTrouve: any = null;
+        apcsApp.forEach((apc: any) => {
+          // CR par échéance (sur les échéances pédago, sauf la 1ère)
+          const pedago = (apc.echeances || []).filter((e: any) => e.type === 'pedago').sort((a: any, b: any) => {
+            const pA = (a.dateEcheance || '').split('/'), pB = (b.dateEcheance || '').split('/');
+            if (pA.length !== 3 || pB.length !== 3) return 0;
+            return new Date(parseInt(pA[2]), parseInt(pA[1]) - 1, parseInt(pA[0])).getTime() - new Date(parseInt(pB[2]), parseInt(pB[1]) - 1, parseInt(pB[0])).getTime();
+          });
+          pedago.forEach((ech: any, idx: number) => {
+            if (idx === 0) return; // Pas de CR sur la 1ère échéance
+            const periode = calculerPeriodeCr(
+              apc.echeances as any,
+              ech as any,
+              apc.dateDebutContrat,
+              apc.dateFinContrat,
+              apprenant.dateRupture
+            );
+            const cr = ech.pieces?.certificatRealisation;
+            lignesCr.push({
+              apcId: apc.id,
+              opco: apc.opco,
+              echeanceLabel: ech.label,
+              periode,
+              cr: cr || null,
+              statut: cr?.statut || 'non_genere',
+            });
+          });
+
+          // CR final par APC
+          const finalPeriode = calculerPeriodeCrFinal(
+            apc.dateDebutContrat,
+            apc.dateFinContrat,
+            apprenant.dateRupture
+          );
+          if (finalPeriode) {
+            const nbMois = nbMoisEntre(finalPeriode.debut, finalPeriode.fin);
+            crFinalTrouve = {
+              apcId: apc.id,
+              opco: apc.opco,
+              periode: finalPeriode,
+              nbMois,
+            };
+          }
+        });
+        setCrsApprenant(lignesCr);
+        setCrFinalApprenant(crFinalTrouve);
+        console.log(`[FicheApprenant ${id}] ${lignesCr.length} CR(s) chargés depuis APCs ✅`);
+      } catch (e) {
+        console.error('[FicheApprenant] Erreur chargement CRs:', e);
+      }
+    })();
+  }, [apprenant, id]);
+
+  // Charge la convention signée depuis l'entreprise (lecture seule)
+  useEffect(() => {
+    if (!apprenant) return;
+    (async () => {
+      try {
+        const ents = await chargerEntreprisesSupabase();
+        // Trouve l'entreprise par nom (raisonSociale) ou par entrepriseId
+        const ent = ents.find(e =>
+          (apprenant.entrepriseId && e.id === apprenant.entrepriseId) ||
+          (apprenant.entreprise && (e.raisonSociale || '').toLowerCase().trim() === apprenant.entreprise.toLowerCase().trim())
+        );
+        if (!ent) {
+          setConventionEntreprise(null);
+          setEntrepriseObj(null);
+          return;
+        }
+        setEntrepriseObj(ent);
+        const fin = (ent as any).financementsApprenants?.[id];
+        const conv = fin?.convention;
+        if (conv) {
+          setConventionEntreprise({
+            ...conv,
+            entrepriseId: ent.id,
+            entrepriseRaisonSociale: ent.raisonSociale,
+          });
+          console.log(`[FicheApprenant ${id}] Convention chargée depuis entreprise ${ent.raisonSociale} : ${conv.statut} ✅`);
+        } else {
+          setConventionEntreprise(null);
+        }
+      } catch (e) {
+        console.error('[FicheApprenant] Erreur chargement convention entreprise:', e);
+      }
+    })();
+  }, [apprenant, id]);
 
   useEffect(() => {
     if (apprenant && (form.dateDebutContrat !== apprenant.dateDebutContrat || form.dateFinContrat !== apprenant.dateFinContrat)) {
@@ -850,10 +986,10 @@ export default function FicheApprenant({ params }: { params: Promise<{ id: strin
   }
 
   async function declarerRupture() {
-    const updated = { ...form, statut: 'Rupture', dateRupture: rupture.date, maintienFormation: rupture.maintien };
+    const updated = { ...form, statut: 'Rupture', dateRupture: rupture.date, maintienFormation: rupture.maintien, motifRupture: rupture.motif };
     // 1. Supabase d'abord
     try {
-      const res = await modifierApprenti(id, { statut: 'Rupture', dateRupture: rupture.date, maintienFormation: rupture.maintien });
+      const res = await modifierApprenti(id, { statut: 'Rupture', dateRupture: rupture.date, maintienFormation: rupture.maintien, motifRupture: rupture.motif });
       if (!res.success) {
         alert(`⚠️ Erreur Supabase : ${res.error}\nRupture enregistrée localement uniquement.`);
       } else {
@@ -968,28 +1104,15 @@ export default function FicheApprenant({ params }: { params: Promise<{ id: strin
             <>
               <button onClick={() => setModeEdition(true)} style={btnSecondary}>✏️ Modifier</button>
               <button style={btnPrimary}>Générer état mensuel</button>
-              <button onClick={() => { const a = document.createElement('a'); a.href = '/modeles/Sortie_Anticipee.pdf'; a.download = 'Sortie_Anticipee_' + form.nom + '_' + form.prenom + '.pdf'; a.click(); }} style={{ backgroundColor: '#ea580c', color: 'white', border: 'none', borderRadius: '8px', padding: '9px 16px', fontSize: '13px', fontWeight: '600', cursor: 'pointer' }}>
-                🚪 Sortie anticipée
-              </button>
-              <button onClick={() => { const a = document.createElement('a'); a.href = '/modeles/Droit_Image.pdf'; a.download = 'Droit_Image_' + form.nom + '_' + form.prenom + '.pdf'; a.click(); }} style={{ backgroundColor: '#0891b2', color: 'white', border: 'none', borderRadius: '8px', padding: '9px 16px', fontSize: '13px', fontWeight: '600', cursor: 'pointer' }}>
-                📸 Droit à l'image
-              </button>
-              <button onClick={() => {
-                const livrets: Record<string, string> = {
-                  'SC': 'https://docs.google.com/document/d/1iRHWuOb5EYT5Yy7v4YXy5rFBAA5KPOeNW88VpZUkkA4/edit?usp=drive_link',
-                  'AD': 'https://docs.google.com/document/d/16oAKKIBW5YwL3sXTZ1Be1bhlEMvwOsleByH8cvjY8a4/edit?usp=drive_link',
-                  'ARH': 'https://docs.google.com/document/d/13m_VmguC9M4sbMksiI6q8kcNMSGrCDIlveVPPoBsac8/edit?usp=drive_link',
-                  'GCF': 'https://docs.google.com/document/d/1mEW1o_VYrU5GexbSRHJQNFetJhBUHozVq3jZJeyy8IA/edit?usp=drive_link',
-                  'CATL': 'https://docs.google.com/document/d/1WM0qKJA2krngqCo4l9NNEPnFc-HGmRhEhNKftl65eaA/edit?usp=drive_link',
-                  'EC': 'https://docs.google.com/document/d/1M4-mFr49q9NnBvK5BjTJ_9gh2YFRQ-fhbodb1h0DpVA/edit?usp=drive_link',
-                  'CV': 'https://docs.google.com/document/d/1xFJxdfirIX2ZUzG7WmxB5eZkq6_yl_uw9UOdm80lcXg/edit?usp=drive_link',
-                };
-                const lien = livrets[form.formation];
-                if (lien) window.open(lien, '_blank');
-                else alert('Livret non disponible pour : ' + form.formation);
-              }} style={{ backgroundColor: '#7c3aed', color: 'white', border: 'none', borderRadius: '8px', padding: '9px 16px', fontSize: '13px', fontWeight: '600', cursor: 'pointer' }}>
-                📓 Livret d'apprentissage
-              </button>
+              <BoutonPdfDroitImage
+                donnees={assemblerDonneesDroitImage(form, entrepriseObj)}
+                nomFichier={'Droit_Image_' + form.nom + '_' + form.prenom + '.pdf'}
+              />
+              <BoutonRemplirLivret
+                apprenant={form}
+                entreprise={entrepriseObj}
+                npec={npecApprenant}
+              />
               {!estEnRupture && <button onClick={() => setModaleRupture(true)} style={btnDanger}>Déclarer rupture</button>}
               {!estEnRupture && form.statut !== 'Terminé' && (
                 <button onClick={async () => {
@@ -1078,6 +1201,10 @@ export default function FicheApprenant({ params }: { params: Promise<{ id: strin
           })()}
           {form.maintienFormation === 'OUI' && (
             <div style={{ marginTop: '10px', display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+              <BoutonGenerationDMF
+                donnees={assemblerDonneesDMF(form)}
+                nomFichier={`DMF_Maintien_${form.nom}_${form.prenom}_${(form.dateRupture || '').replace(/\//g, '-')}.pdf`}
+              />
               <button
                 onClick={async () => {
                   if (!confirm(`L'apprenti(e) ${form.prenom} ${form.nom} a trouvé une nouvelle entreprise ?\n\nCela va :\n- Clôturer la fiche actuelle (statut "Terminé")\n- Créer une nouvelle fiche apprenti pré-remplie pour le nouveau contrat`)) return;
@@ -1454,12 +1581,132 @@ export default function FicheApprenant({ params }: { params: Promise<{ id: strin
         )}
       </Card>
 
+      {/* Sorties anticipées — historique multi-PDF */}
+      <Card style={{ marginBottom: '24px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+          <h2 style={{ fontSize: '15px', fontWeight: '700', color: COLORS.primary }}>🚪 Sorties anticipées</h2>
+          <span style={{ fontSize: '12px', color: '#888' }}>Décharges de responsabilité — Historique</span>
+        </div>
+        <p style={{ fontSize: 12, color: '#666', marginBottom: 12, marginTop: 0, fontStyle: 'italic' }}>
+          Permet à l'apprenant(e) de quitter le CFA en cours de journée pour un RDV médical, France Travail, activité entreprise, urgence familiale, etc.
+        </p>
+        <SortiesAnticipeesManager
+          apprenant={form}
+          entreprise={entrepriseObj}
+          onChange={(sorties) => {
+            const updated = { ...form, sortiesAnticipees: sorties };
+            setForm(updated);
+            setApprenant(updated);
+          }}
+        />
+      </Card>
+
+      {/* Droit à l'image — workflow signature */}
+      <Card style={{ marginBottom: '24px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+          <h2 style={{ fontSize: '15px', fontWeight: '700', color: COLORS.primary }}>📸 Autorisation de droit à l'image (RGPD)</h2>
+          <span style={{ fontSize: '12px', color: '#888' }}>Document à conserver dans le dossier</span>
+        </div>
+        {(() => {
+          const di = form.droitImage || {};
+          const diStatut = di.statut || 'a_generer';
+          const bg = diStatut === 'signee' ? '#e6f4f1' : diStatut === 'en_attente' ? '#fff8e1' : '#f0f4ff';
+          const border = diStatut === 'signee' ? '#006B68' : diStatut === 'en_attente' ? '#ffe082' : '#3a5bc7';
+          const icon = diStatut === 'signee' ? '✅' : diStatut === 'en_attente' ? '⏳' : '📸';
+          const label = diStatut === 'signee' ? 'Signée' : diStatut === 'en_attente' ? 'En attente de signature' : 'À envoyer après génération';
+          return (
+            <div style={{ padding: 14, backgroundColor: bg, borderRadius: 8, border: `1.5px solid ${border}` }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 10 }}>
+                <div style={{ fontSize: 26 }}>{icon}</div>
+                <div style={{ flex: 1, minWidth: 200 }}>
+                  <div style={{ fontSize: 14, fontWeight: 700, color: diStatut === 'signee' ? '#006B68' : '#3a5bc7' }}>
+                    Autorisation droit à l'image — {label}
+                  </div>
+                  {diStatut === 'en_attente' && di.dateEnvoiEmail && (
+                    <div style={{ fontSize: 11, color: '#C8A23A', marginTop: 4 }}>
+                      📧 Envoyée pour signature le {new Date(di.dateEnvoiEmail).toLocaleDateString('fr-FR')}
+                    </div>
+                  )}
+                  {diStatut === 'signee' && di.dateSignature && (
+                    <div style={{ fontSize: 12, color: '#006B68', marginTop: 6, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                      <span>📄 {di.fichierSigneNom}</span>
+                      <a href={di.fichierSigneUrl} target="_blank" rel="noreferrer" style={{ color: '#006B68', textDecoration: 'underline', fontSize: 11 }}>⬇ Télécharger</a>
+                      <span style={{ color: '#888', fontStyle: 'italic', fontSize: 11 }}>— Importé le {new Date(di.dateSignature).toLocaleDateString('fr-FR')}</span>
+                    </div>
+                  )}
+                  {diStatut === 'a_generer' && (
+                    <div style={{ fontSize: 11, color: '#666', marginTop: 4, fontStyle: 'italic' }}>
+                      Cliquez sur 📸 Droit à l'image en haut pour télécharger le PDF, faites signer l'apprenant(e), puis importez le PDF signé ci-dessous.
+                    </div>
+                  )}
+                </div>
+              </div>
+              {peutModifier && (
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                  {diStatut === 'a_generer' && (
+                    <button
+                      onClick={async () => {
+                        if (!confirm('Marquer le Droit à l\'image comme envoyé pour signature ?\n\nAssurez-vous d\'avoir téléchargé le PDF avant.')) return;
+                        const res = await marquerDocApprenantEnAttente(id, 'droitImage', '', 'DroitImage_' + form.nom + '_' + form.prenom + '.pdf', '');
+                        if (!res.success) { alert(`⚠️ Erreur : ${res.error}`); return; }
+                        const updated = { ...form, droitImage: { statut: 'en_attente', dateEnvoiEmail: new Date().toISOString(), fichierNonSigneNom: 'DroitImage_' + form.nom + '_' + form.prenom + '.pdf' } };
+                        setForm(updated); setApprenant(updated);
+                      }}
+                      style={{ backgroundColor: '#C8A23A', color: 'white', border: 'none', borderRadius: 8, padding: '8px 14px', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}
+                    >
+                      ✉️ Marquer comme envoyée
+                    </button>
+                  )}
+                  {diStatut === 'en_attente' || diStatut === 'signee' ? (
+                    <label style={{ backgroundColor: diStatut === 'signee' ? 'white' : '#006B68', color: diStatut === 'signee' ? '#006B68' : 'white', border: diStatut === 'signee' ? '1.5px solid #006B68' : 'none', borderRadius: 8, padding: '8px 14px', fontSize: 13, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                      {diStatut === 'signee' ? '🔄 Remplacer le signé' : '📤 Importer Droit à l\'image signé'}
+                      <input type="file" accept=".pdf" style={{ display: 'none' }} onChange={async (ev) => {
+                        const f = ev.target.files?.[0];
+                        if (!f) return;
+                        const chemin = cheminStorage('apprenants', id, 'droit_image_signe', f.name);
+                        const resUp = await uploaderFichier(chemin, f);
+                        if (!resUp.success || !resUp.fichier) { alert(`⚠️ Erreur upload : ${resUp.error}`); return; }
+                        const res = await marquerDocApprenantSignee(id, 'droitImage', resUp.fichier.url, f.name, chemin);
+                        if (!res.success) { alert(`⚠️ Erreur : ${res.error}`); return; }
+                        const apprenantMaj = await chargerApprenti(id);
+                        if (apprenantMaj) { setForm(apprenantMaj); setApprenant(apprenantMaj); }
+                      }} />
+                    </label>
+                  ) : null}
+                  {diStatut !== 'a_generer' && (
+                    <button
+                      onClick={async () => {
+                        if (!confirm('Annuler/supprimer le suivi du Droit à l\'image ?')) return;
+                        const res = await supprimerDocApprenant(id, 'droitImage');
+                        if (!res.success) { alert(`⚠️ Erreur : ${res.error}`); return; }
+                        const updated = { ...form, droitImage: null };
+                        setForm(updated); setApprenant(updated);
+                      }}
+                      style={{ backgroundColor: 'white', color: '#c00', border: '1px solid #c00', borderRadius: 8, padding: '8px 12px', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}
+                    >
+                      ✕ Annuler
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+          );
+        })()}
+      </Card>
+
       {/* Pièces justificatives */}
       <Card style={{ marginBottom: '24px' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
           <h2 style={{ fontSize: '15px', fontWeight: '700', color: COLORS.primary }}>📎 Pièces justificatives</h2>
           <span style={{ fontSize: '12px', color: '#888' }}>Formats : PDF, JPG, PNG — Max 5 Mo</span>
         </div>
+
+        {/* Bandeau statut convention si en attente */}
+        {conventionEntreprise && conventionEntreprise.statut === 'en_attente' && (
+          <div style={{ padding: '10px 14px', backgroundColor: '#fff8e1', border: '1px solid #ffe082', borderRadius: 8, marginBottom: 12, fontSize: 13, color: '#7a5c00' }}>
+            ⏳ <strong>Convention en attente de signature</strong> — envoyée à {conventionEntreprise.entrepriseRaisonSociale} le {conventionEntreprise.dateEnvoiEmail ? new Date(conventionEntreprise.dateEnvoiEmail).toLocaleDateString('fr-FR') : '?'}. Une fois reçue signée, elle sera importée via la <a href={`/entreprises/${conventionEntreprise.entrepriseId}`} style={{ color: COLORS.primary, fontWeight: 600 }}>fiche entreprise</a>.
+          </div>
+        )}
 
         {[
           { id: 'cv', label: 'CV à jour', detail: 'Curriculum vitae à jour', obligatoire: false },
@@ -1472,7 +1719,22 @@ export default function FicheApprenant({ params }: { params: Promise<{ id: strin
           { id: 'dpae', label: 'DPAE', detail: 'Déclaration Préalable à l\'Embauche', obligatoire: false },
           { id: 'autre', label: 'Autre document', detail: 'Tout autre document utile', obligatoire: false },
         ].map((piece) => {
-          const fichier = form['piece_' + piece.id];
+          // Cas spécial : convention → lit depuis l'entreprise (lecture seule)
+          let fichier: any;
+          if (piece.id === 'convention' && conventionEntreprise) {
+            if (conventionEntreprise.statut === 'signee' && conventionEntreprise.fichierSigneUrl) {
+              fichier = {
+                nom: conventionEntreprise.fichierSigneNom || 'Convention signée.pdf',
+                taille: '',
+                url: conventionEntreprise.fichierSigneUrl,
+                source: `Importée le ${new Date(conventionEntreprise.dateSignature).toLocaleDateString('fr-FR')} via fiche entreprise`,
+              };
+            } else {
+              fichier = null;
+            }
+          } else {
+            fichier = form['piece_' + piece.id];
+          }
           return (
             <div key={piece.id} style={{
               display: 'flex', alignItems: 'center', gap: '16px',
@@ -1546,6 +1808,123 @@ export default function FicheApprenant({ params }: { params: Promise<{ id: strin
             </div>
           );
         })}
+      </Card>
+
+      {/* === Certificats de Réalisation (LECTURE SEULE) === */}
+      <Card style={{ marginBottom: '24px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: 8 }}>
+          <div>
+            <h2 style={{ fontSize: '15px', fontWeight: '700', color: COLORS.primary }}>📜 Certificats de Réalisation</h2>
+            <p style={{ fontSize: '11px', color: COLORS.textMuted, marginTop: 2 }}>
+              Preuves Qualiopi/OPCO de réalisation de la formation — Lecture seule
+            </p>
+          </div>
+          
+            <a href="/precomptabilite"
+            style={{ ...btnSecondary, textDecoration: 'none', display: 'inline-block', fontSize: 12 }}
+          >
+            → Gérer les CR (Facturation)
+          </a>
+        </div>
+
+        {crsApprenant.length === 0 ? (
+          <div style={{ padding: '20px', textAlign: 'center', color: COLORS.textMuted, fontSize: '13px', fontStyle: 'italic', backgroundColor: '#f9f9f9', borderRadius: '8px' }}>
+            Aucun CR généré pour cet apprenant.<br />
+            <span style={{ fontSize: 11 }}>Les CR sont générés depuis la page Facturation, à partir de l'échéance n°2 de chaque dossier APC.</span>
+          </div>
+        ) : (
+          <>
+            {/* Stats CR */}
+            {(() => {
+              const nbSignes = crsApprenant.filter(c => c.statut === 'signe').length;
+              const nbASigner = crsApprenant.filter(c => c.statut === 'a_signer').length;
+              const nbNonGen = crsApprenant.filter(c => c.statut === 'non_genere').length;
+              return (
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10, marginBottom: 14 }}>
+                  <div style={{ backgroundColor: '#dcfce7', borderRadius: 8, padding: 10, textAlign: 'center' }}>
+                    <div style={{ fontSize: 20, fontWeight: 800, color: '#15803d' }}>{nbSignes}</div>
+                    <div style={{ fontSize: 11, color: '#666' }}>Signés</div>
+                  </div>
+                  <div style={{ backgroundColor: '#fef6e4', borderRadius: 8, padding: 10, textAlign: 'center' }}>
+                    <div style={{ fontSize: 20, fontWeight: 800, color: '#C8A23A' }}>{nbASigner}</div>
+                    <div style={{ fontSize: 11, color: '#666' }}>À signer</div>
+                  </div>
+                  <div style={{ backgroundColor: '#f5f5f5', borderRadius: 8, padding: 10, textAlign: 'center' }}>
+                    <div style={{ fontSize: 20, fontWeight: 800, color: '#888' }}>{nbNonGen}</div>
+                    <div style={{ fontSize: 11, color: '#666' }}>Non générés</div>
+                  </div>
+                  <div style={{ backgroundColor: COLORS.background, borderRadius: 8, padding: 10, textAlign: 'center' }}>
+                    <div style={{ fontSize: 20, fontWeight: 800, color: COLORS.primary }}>{crsApprenant.length}</div>
+                    <div style={{ fontSize: 11, color: '#666' }}>Total</div>
+                  </div>
+                </div>
+              );
+            })()}
+
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                <thead>
+                  <tr style={{ borderBottom: `2px solid ${COLORS.background}` }}>
+                    {['OPCO', 'Échéance', 'Période', 'Statut', 'PDF signé'].map(col => (
+                      <th key={col} style={{ textAlign: 'left', padding: '8px 10px', fontSize: '11px', color: '#999', fontWeight: '600', textTransform: 'uppercase' }}>{col}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {crsApprenant.map((ligne, idx) => {
+                    const styleStatut =
+                      ligne.statut === 'signe' ? { bg: '#dcfce7', color: '#15803d', label: '✅ Signé' }
+                      : ligne.statut === 'a_signer' ? { bg: '#fef6e4', color: '#C8A23A', label: '⏳ À signer' }
+                      : { bg: '#f5f5f5', color: '#888', label: '— Non généré' };
+                    return (
+                      <tr key={idx} style={{ borderBottom: `1px solid ${COLORS.border}` }}>
+                        <td style={{ padding: '10px', fontSize: 12, fontWeight: 600, color: COLORS.text }}>{ligne.opco}</td>
+                        <td style={{ padding: '10px', fontSize: 12, color: COLORS.textMuted }}>{ligne.echeanceLabel}</td>
+                        <td style={{ padding: '10px', fontSize: 12 }}>
+                          {ligne.periode ? (
+                            <span><strong>{ligne.periode.debut}</strong> → <strong>{ligne.periode.fin}</strong></span>
+                          ) : (
+                            <span style={{ color: '#bbb', fontStyle: 'italic' }}>Période non calculable</span>
+                          )}
+                        </td>
+                        <td style={{ padding: '10px' }}>
+                          <span style={{ backgroundColor: styleStatut.bg, color: styleStatut.color, padding: '3px 10px', borderRadius: 20, fontSize: 11, fontWeight: 600, whiteSpace: 'nowrap' }}>
+                            {styleStatut.label}
+                          </span>
+                        </td>
+                        <td style={{ padding: '10px' }}>
+                          {ligne.cr?.statut === 'signe' && ligne.cr.fichierSigneUrl ? (
+                            <a href={ligne.cr.fichierSigneUrl} target="_blank" rel="noopener noreferrer" style={{ backgroundColor: '#e6f4f1', color: COLORS.primary, padding: '3px 10px', borderRadius: 6, fontSize: 11, textDecoration: 'none', fontWeight: 600 }}>
+                              📄 Voir
+                            </a>
+                          ) : (
+                            <span style={{ color: '#bbb', fontSize: 11, fontStyle: 'italic' }}>—</span>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+
+            {/* CR FINAL */}
+            {crFinalApprenant && (
+              <div style={{ marginTop: 14, padding: 12, backgroundColor: '#f0f4ff', borderRadius: 8, border: '1.5px solid #3a5bc7' }}>
+                <div style={{ fontSize: 12, fontWeight: 800, color: '#3a5bc7', marginBottom: 4 }}>
+                  🏛️ CR FINAL — pour contrôle OPCO
+                </div>
+                <div style={{ fontSize: 11, color: '#555' }}>
+                  Période complète du contrat : <strong>{crFinalApprenant.periode.debut}</strong> → <strong>{crFinalApprenant.periode.fin}</strong>
+                  <span style={{ marginLeft: 8, color: '#3a5bc7', fontWeight: 700 }}>= {crFinalApprenant.nbMois} mois</span>
+                </div>
+                <div style={{ fontSize: 10, color: '#888', fontStyle: 'italic', marginTop: 4 }}>
+                  Ce CR final est généré à la demande depuis la page Facturation, en cas de contrôle Qualiopi/OPCO.
+                </div>
+              </div>
+            )}
+          </>
+        )}
       </Card>
 
       {/* Historique des absences et retards */}
@@ -1660,14 +2039,292 @@ export default function FicheApprenant({ params }: { params: Promise<{ id: strin
             </div>
             <BoutonPdfRupture
               apprenant={form}
-              motif={rupture.motif}
+              motif={rupture.motif || form.motifRupture || ''}
               dateRupture={form.dateRupture}
               maintienFormation={form.maintienFormation}
               emailTuteur={form.emailTuteur}
               expediteur={utilisateur?.email}
               signature={utilisateur?.signatureEmail}
               nomFichier={"Rupture_" + form.nom + "_" + form.prenom + "_" + (form.dateRupture ?? 'date').replace(/\//g, '-') + ".pdf"}
+              entreprise={entrepriseObj}
             />
+            <div style={{ marginTop: 14, paddingTop: 12, borderTop: '1px dashed #ccc' }}>
+              <button
+                onClick={async () => {
+                  if (!confirm(`⚠️ Annuler la rupture de ${form.prenom} ${form.nom} ?\n\nCela va :\n- Remettre le statut "En cours"\n- Effacer la date de rupture, le motif et le maintien\n- L'apprenant redeviendra actif comme avant la rupture`)) return;
+                  // Supabase d'abord
+                  const res = await modifierApprenti(id, {
+                    statut: 'En cours',
+                    dateRupture: null as any,
+                    maintienFormation: null as any,
+                    motifRupture: null as any,
+                  });
+                  if (!res.success) { alert(`⚠️ Erreur Supabase : ${res.error}`); return; }
+                  console.log(`[FicheApprenant ${id}] Rupture annulée dans Supabase ✅`);
+                  // UI + localStorage en miroir
+                  const updated = { ...form, statut: 'En cours', dateRupture: '', maintienFormation: '', motifRupture: '' };
+                  setForm(updated);
+                  setApprenant(updated);
+                  localStorage.setItem('apprenant_' + id, JSON.stringify(updated));
+                  try {
+                    const liste = JSON.parse(localStorage.getItem('easycfa_apprenants_v2') || '[]');
+                    const idx = liste.findIndex((a: any) => a.id === id);
+                    if (idx >= 0) liste[idx] = { ...liste[idx], ...updated };
+                    localStorage.setItem('easycfa_apprenants_v2', JSON.stringify(liste));
+                  } catch {}
+                  setSauvegarde(true);
+                  setTimeout(() => setSauvegarde(false), 3000);
+                }}
+                style={{ backgroundColor: 'white', color: '#666', border: '1px solid #ccc', borderRadius: 8, padding: '7px 14px', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}
+              >
+                ↩️ Annuler la rupture (erreur de saisie)
+              </button>
+            </div>
+
+            {/* === Workflow Rupture : générer / envoyée / signée === */}
+            {(() => {
+              const r = form.rupture || {};
+              const rStatut = r.statut || 'a_generer';
+              const bg = rStatut === 'signee' ? '#e6f4f1' : rStatut === 'en_attente' ? '#fff8e1' : '#fffbf0';
+              const border = rStatut === 'signee' ? '#006B68' : rStatut === 'en_attente' ? '#ffe082' : '#C8A23A';
+              const icon = rStatut === 'signee' ? '✅' : rStatut === 'en_attente' ? '⏳' : '📤';
+              const label = rStatut === 'signee' ? 'Signée' : rStatut === 'en_attente' ? 'En attente de signature' : 'Non générée';
+              return (
+                <div style={{ marginTop: 14, padding: 12, backgroundColor: bg, borderRadius: 8, border: `1.5px solid ${border}` }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 8 }}>
+                    <div style={{ fontSize: 22 }}>{icon}</div>
+                    <div style={{ flex: 1, minWidth: 200 }}>
+                      <div style={{ fontSize: 13, fontWeight: 700, color: rStatut === 'signee' ? '#006B68' : '#7a5c00' }}>
+                        Formulaire de rupture — {label}
+                      </div>
+                      {rStatut === 'en_attente' && r.dateEnvoiEmail && (
+                        <div style={{ fontSize: 11, color: '#C8A23A', marginTop: 2 }}>
+                          📧 Envoyée pour signature le {new Date(r.dateEnvoiEmail).toLocaleDateString('fr-FR')}
+                        </div>
+                      )}
+                      {rStatut === 'signee' && r.dateSignature && (
+                        <div style={{ fontSize: 11, color: '#006B68', marginTop: 4, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                          <span>📄 {r.fichierSigneNom}</span>
+                          <a href={r.fichierSigneUrl} target="_blank" rel="noreferrer" style={{ color: '#006B68', textDecoration: 'underline', fontSize: 11 }}>⬇ Télécharger</a>
+                          <span style={{ color: '#888', fontStyle: 'italic' }}>— Importé le {new Date(r.dateSignature).toLocaleDateString('fr-FR')}</span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                  {peutModifier && (
+                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                      {rStatut === 'a_generer' && (
+                        <button
+                          onClick={async () => {
+                            // Sauvegarde un placeholder en attente (l'utilisateur a téléchargé le PDF et va l'envoyer)
+                            if (!confirm('Marquer le formulaire de rupture comme envoyé pour signature ?\n\nAssurez-vous d\'avoir téléchargé le PDF avant.')) return;
+                            const res = await marquerDocApprenantEnAttente(id, 'rupture', '', 'Rupture_' + form.nom + '_' + form.prenom + '.pdf', '');
+                            if (!res.success) { alert(`⚠️ Erreur : ${res.error}`); return; }
+                            const updated = { ...form, rupture: { statut: 'en_attente', dateEnvoiEmail: new Date().toISOString(), fichierNonSigneNom: 'Rupture_' + form.nom + '_' + form.prenom + '.pdf' } };
+                            setForm(updated); setApprenant(updated);
+                          }}
+                          style={{ backgroundColor: '#C8A23A', color: 'white', border: 'none', borderRadius: 8, padding: '7px 12px', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}
+                        >
+                          ✉️ Marquer comme envoyée
+                        </button>
+                      )}
+                      {rStatut === 'en_attente' || rStatut === 'signee' ? (
+                        <label style={{ backgroundColor: rStatut === 'signee' ? 'white' : '#006B68', color: rStatut === 'signee' ? '#006B68' : 'white', border: rStatut === 'signee' ? '1.5px solid #006B68' : 'none', borderRadius: 8, padding: '7px 12px', fontSize: 12, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                          {rStatut === 'signee' ? '🔄 Remplacer le signé' : '📤 Importer rupture signée'}
+                          <input type="file" accept=".pdf" style={{ display: 'none' }} onChange={async (ev) => {
+                            const f = ev.target.files?.[0];
+                            if (!f) return;
+                            const chemin = cheminStorage('apprenants', id, 'rupture_signee', f.name);
+                            const resUp = await uploaderFichier(chemin, f);
+                            if (!resUp.success || !resUp.fichier) { alert(`⚠️ Erreur upload : ${resUp.error}`); return; }
+                            const res = await marquerDocApprenantSignee(id, 'rupture', resUp.fichier.url, f.name, chemin);
+                            if (!res.success) { alert(`⚠️ Erreur : ${res.error}`); return; }
+                            const apprenantMaj = await chargerApprenti(id);
+                            if (apprenantMaj) { setForm(apprenantMaj); setApprenant(apprenantMaj); }
+                          }} />
+                        </label>
+                      ) : null}
+                      {rStatut !== 'a_generer' && (
+                        <button
+                          onClick={async () => {
+                            if (!confirm('Annuler/supprimer le suivi de la rupture signée ?')) return;
+                            const res = await supprimerDocApprenant(id, 'rupture');
+                            if (!res.success) { alert(`⚠️ Erreur : ${res.error}`); return; }
+                            const updated = { ...form, rupture: null };
+                            setForm(updated); setApprenant(updated);
+                          }}
+                          style={{ backgroundColor: 'white', color: '#c00', border: '1px solid #c00', borderRadius: 8, padding: '7px 10px', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}
+                        >
+                          ✕
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
+
+            {/* === Workflow DMF (visible si maintien=OUI) === */}
+            {form.maintienFormation === 'OUI' && (() => {
+              const d = form.dmf || {};
+              const dStatut = d.statut || 'a_generer';
+              const bg = dStatut === 'signee' ? '#f0f4ff' : dStatut === 'en_attente' ? '#fff8e1' : '#f9f5ff';
+              const border = dStatut === 'signee' ? '#3a5bc7' : dStatut === 'en_attente' ? '#ffe082' : '#7c3aed';
+              const icon = dStatut === 'signee' ? '✅' : dStatut === 'en_attente' ? '⏳' : '📜';
+              const label = dStatut === 'signee' ? 'Signée' : dStatut === 'en_attente' ? 'En attente de signature' : 'À envoyer après génération';
+              return (
+                <div style={{ marginTop: 10, padding: 12, backgroundColor: bg, borderRadius: 8, border: `1.5px solid ${border}` }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 8 }}>
+                    <div style={{ fontSize: 22 }}>{icon}</div>
+                    <div style={{ flex: 1, minWidth: 200 }}>
+                      <div style={{ fontSize: 13, fontWeight: 700, color: dStatut === 'signee' ? '#3a5bc7' : '#5b21b6' }}>
+                        Déclaration de Maintien en Formation (DMF) — {label}
+                      </div>
+                      {dStatut === 'en_attente' && d.dateEnvoiEmail && (
+                        <div style={{ fontSize: 11, color: '#C8A23A', marginTop: 2 }}>📧 Envoyée le {new Date(d.dateEnvoiEmail).toLocaleDateString('fr-FR')}</div>
+                      )}
+                      {dStatut === 'signee' && d.dateSignature && (
+                        <div style={{ fontSize: 11, color: '#3a5bc7', marginTop: 4, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                          <span>📄 {d.fichierSigneNom}</span>
+                          <a href={d.fichierSigneUrl} target="_blank" rel="noreferrer" style={{ color: '#3a5bc7', textDecoration: 'underline', fontSize: 11 }}>⬇ Télécharger</a>
+                          <span style={{ color: '#888', fontStyle: 'italic' }}>— Importé le {new Date(d.dateSignature).toLocaleDateString('fr-FR')}</span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                  {peutModifier && (
+                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                      {dStatut === 'a_generer' && (
+                        <button
+                          onClick={async () => {
+                            if (!confirm('Marquer le DMF comme envoyé pour signature ?\n\nAssurez-vous d\'avoir téléchargé le PDF avant.')) return;
+                            const res = await marquerDocApprenantEnAttente(id, 'dmf', '', 'DMF_' + form.nom + '_' + form.prenom + '.pdf', '');
+                            if (!res.success) { alert(`⚠️ Erreur : ${res.error}`); return; }
+                            const updated = { ...form, dmf: { statut: 'en_attente', dateEnvoiEmail: new Date().toISOString(), fichierNonSigneNom: 'DMF_' + form.nom + '_' + form.prenom + '.pdf' } };
+                            setForm(updated); setApprenant(updated);
+                          }}
+                          style={{ backgroundColor: '#C8A23A', color: 'white', border: 'none', borderRadius: 8, padding: '7px 12px', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}
+                        >
+                          ✉️ Marquer comme envoyée
+                        </button>
+                      )}
+                      {dStatut === 'en_attente' || dStatut === 'signee' ? (
+                        <label style={{ backgroundColor: dStatut === 'signee' ? 'white' : '#3a5bc7', color: dStatut === 'signee' ? '#3a5bc7' : 'white', border: dStatut === 'signee' ? '1.5px solid #3a5bc7' : 'none', borderRadius: 8, padding: '7px 12px', fontSize: 12, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                          {dStatut === 'signee' ? '🔄 Remplacer le signé' : '📤 Importer DMF signé'}
+                          <input type="file" accept=".pdf" style={{ display: 'none' }} onChange={async (ev) => {
+                            const f = ev.target.files?.[0];
+                            if (!f) return;
+                            const chemin = cheminStorage('apprenants', id, 'dmf_signe', f.name);
+                            const resUp = await uploaderFichier(chemin, f);
+                            if (!resUp.success || !resUp.fichier) { alert(`⚠️ Erreur upload : ${resUp.error}`); return; }
+                            const res = await marquerDocApprenantSignee(id, 'dmf', resUp.fichier.url, f.name, chemin);
+                            if (!res.success) { alert(`⚠️ Erreur : ${res.error}`); return; }
+                            const apprenantMaj = await chargerApprenti(id);
+                            if (apprenantMaj) { setForm(apprenantMaj); setApprenant(apprenantMaj); }
+                          }} />
+                        </label>
+                      ) : null}
+                      {dStatut !== 'a_generer' && (
+                        <button
+                          onClick={async () => {
+                            if (!confirm('Annuler/supprimer le suivi du DMF signé ?')) return;
+                            const res = await supprimerDocApprenant(id, 'dmf');
+                            if (!res.success) { alert(`⚠️ Erreur : ${res.error}`); return; }
+                            const updated = { ...form, dmf: null };
+                            setForm(updated); setApprenant(updated);
+                          }}
+                          style={{ backgroundColor: 'white', color: '#c00', border: '1px solid #c00', borderRadius: 8, padding: '7px 10px', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}
+                        >
+                          ✕
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
+
+            {/* === Ancien bloc Rupture signée legacy (à conserver pour compatibilité) === */}
+            <div style={{ display: 'none', marginTop: 14, padding: 12, backgroundColor: form.ruptureSignee?.url ? '#e6f4f1' : '#fffbf0', borderRadius: 8, border: `1.5px solid ${form.ruptureSignee?.url ? '#006B68' : '#C8A23A'}` }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+                <div style={{ fontSize: 22 }}>{form.ruptureSignee?.url ? '✅' : '📤'}</div>
+                <div style={{ flex: 1, minWidth: 200 }}>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: form.ruptureSignee?.url ? '#006B68' : '#7a5c00' }}>
+                    Formulaire de rupture signé (entreprise + apprenti)
+                  </div>
+                  {form.ruptureSignee?.url ? (
+                    <div style={{ fontSize: 12, color: '#006B68', marginTop: 4, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                      <span>📄 {form.ruptureSignee.nom}</span>
+                      <a href={form.ruptureSignee.url} target="_blank" rel="noopener noreferrer" style={{ color: '#006B68', textDecoration: 'underline', fontSize: 11 }}>⬇ Télécharger</a>
+                      <span style={{ fontWeight: 400, fontStyle: 'italic', color: '#888' }}>
+                        — Importé le {new Date(form.ruptureSignee.dateImport).toLocaleDateString('fr-FR')}
+                      </span>
+                    </div>
+                  ) : (
+                    <div style={{ fontSize: 11, color: '#888', marginTop: 2 }}>
+                      Importe ici le PDF signé par les 2 parties (PDF — Max 5 Mo)
+                    </div>
+                  )}
+                </div>
+                {peutModifier && (
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    <label style={{ backgroundColor: form.ruptureSignee?.url ? 'white' : '#006B68', color: form.ruptureSignee?.url ? '#006B68' : 'white', border: form.ruptureSignee?.url ? '1.5px solid #006B68' : 'none', borderRadius: 8, padding: '7px 12px', fontSize: 12, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                      {form.ruptureSignee?.url ? '🔄 Remplacer' : '⬆ Importer'}
+                      <input
+                        type="file"
+                        accept=".pdf"
+                        style={{ display: 'none' }}
+                        onChange={async (ev) => {
+                          const f = ev.target.files?.[0];
+                          if (!f) return;
+                          const chemin = cheminStorage('apprenants', id, 'rupture_signee', f.name);
+                          const resUpload = await uploaderFichier(chemin, f);
+                          if (!resUpload.success || !resUpload.fichier) {
+                            alert(`⚠️ Erreur upload : ${resUpload.error}`);
+                            return;
+                          }
+                          console.log(`[Apprenant ${id}] Rupture signée uploadée vers Storage ✅`);
+                          const ruptureSignee = {
+                            nom: resUpload.fichier.nom,
+                            taille: resUpload.fichier.taille,
+                            url: resUpload.fichier.url,
+                            cheminStorage: resUpload.fichier.cheminStorage,
+                            dateImport: new Date().toISOString(),
+                          };
+                          // Supabase
+                          const res = await modifierApprenti(id, { ruptureSignee } as any);
+                          if (!res.success) { alert(`⚠️ Erreur Supabase : ${res.error}`); return; }
+                          // UI + localStorage
+                          const updated = { ...form, ruptureSignee };
+                          setForm(updated);
+                          setApprenant(updated);
+                          localStorage.setItem('apprenant_' + id, JSON.stringify(updated));
+                          setSauvegarde(true);
+                          setTimeout(() => setSauvegarde(false), 3000);
+                        }}
+                      />
+                    </label>
+                    {form.ruptureSignee?.url && (
+                      <button
+                        onClick={async () => {
+                          if (!confirm('Supprimer le PDF de rupture signé importé ?')) return;
+                          // Supabase : on retire le champ
+                          const res = await modifierApprenti(id, { ruptureSignee: null } as any);
+                          if (!res.success) { alert(`⚠️ Erreur Supabase : ${res.error}`); return; }
+                          const updated = { ...form, ruptureSignee: null };
+                          setForm(updated);
+                          setApprenant(updated);
+                          localStorage.setItem('apprenant_' + id, JSON.stringify(updated));
+                        }}
+                        style={{ backgroundColor: 'white', color: '#c53030', border: '1.5px solid #c53030', borderRadius: 8, padding: '7px 10px', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}
+                      >
+                        🗑️
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
         ) : (
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px', backgroundColor: '#e6f4f1', borderRadius: '8px' }}>
