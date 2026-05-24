@@ -70,9 +70,20 @@ export default function TestAuth() {
 
   async function seDeconnecter() {
     setLoading(true);
-    await supabase.auth.signOut();
+    try {
+      await supabase.auth.signOut();
+    } catch (e) {
+      console.error('[SignOut]', e);
+    }
+    // Reset manuel immédiat
+    setUser(null);
+    setProfile(null);
+    setEmail('');
+    setPassword('');
     setMessage('👋 Déconnecté');
     setLoading(false);
+    // Hard reload pour vider tout cache résiduel
+    setTimeout(() => window.location.reload(), 300);
   }
 
   return (
