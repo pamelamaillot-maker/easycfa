@@ -1103,7 +1103,12 @@ export default function FicheApprenant({ params }: { params: Promise<{ id: strin
           ) : (
             <>
               <button onClick={() => setModeEdition(true)} style={btnSecondary}>✏️ Modifier</button>
-              <button style={btnPrimary}>Générer état mensuel</button>
+              
+              <a  href={`/emargement/mensuel?apprenantId=${id}`}
+                style={{ backgroundColor: COLORS.primary, color: 'white', border: 'none', borderRadius: '8px', padding: '9px 16px', fontSize: '13px', fontWeight: '600', cursor: 'pointer', textDecoration: 'none', display: 'inline-block' }}
+              >
+                📊 Générer état mensuel
+              </a>
               <BoutonPdfDroitImage
                 donnees={assemblerDonneesDroitImage(form, entrepriseObj)}
                 nomFichier={'Droit_Image_' + form.nom + '_' + form.prenom + '.pdf'}

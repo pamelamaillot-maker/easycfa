@@ -1,11 +1,15 @@
 'use client';
 
 import { useState, useEffect, useMemo } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { COLORS } from '../../../lib/constants';
 import Card from '../../../components/Card';
 import dynamic from 'next/dynamic';
 import { chargerEmargements } from '../../../data/emargementsSupabase';
 import type { Emargement } from '../../../data/emargementsSupabase';
+import { chargerEntreprises } from '../../../data/entreprisesSupabase';
+import { pdf } from '@react-pdf/renderer';
+import PdfEtatPresenceMensuel from '../../../components/PdfEtatPresenceMensuel';
 
 const BoutonPdfEtatMensuel = dynamic(() => import('../../../components/BoutonPdfEtatMensuel'), { ssr: false });
 
@@ -55,18 +59,28 @@ interface StatApprenantMensuel {
 }
 
 export default function RecapMensuel() {
+  const searchParams = useSearchParams();
+  const apprenantIdFiltre = searchParams.get('apprenantId') || '';
   const [emargements, setEmargements] = useState<Emargement[]>([]);
+  const [entreprises, setEntreprises] = useState<any[]>([]);
   const [chargement, setChargement] = useState(true);
   const [moisFiltre, setMoisFiltre] = useState<number>(new Date().getMonth() + 1);
   const [anneeFiltre, setAnneeFiltre] = useState<number>(new Date().getFullYear());
   const [sessionFiltre, setSessionFiltre] = useState<string>('');
+  const [envoiEnCours, setEnvoiEnCours] = useState<string | null>(null);
+  const [envoisGroupe, setEnvoisGroupe] = useState<{ encours: boolean; total: number; faits: number; erreurs: string[] }>({ encours: false, total: 0, faits: 0, erreurs: [] });
+  const [messageSucces, setMessageSucces] = useState('');
 
   useEffect(() => {
     (async () => {
       try {
-        const data = await chargerEmargements();
-        setEmargements(data);
-        console.log(`[EmargementMensuel] ${data.length} feuilles chargées depuis Supabase ✅`);
+        const [feuilles, ents] = await Promise.all([
+          chargerEmargements(),
+          chargerEntreprises(),
+        ]);
+        setEmargements(feuilles);
+        setEntreprises(ents);
+        console.log(`[EmargementMensuel] ${feuilles.length} feuilles + ${ents.length} entreprises chargées ✅`);
       } catch (e) {
         console.error('[EmargementMensuel] Erreur Supabase', e);
       }
@@ -152,15 +166,127 @@ export default function RecapMensuel() {
       });
     });
 
-    // Calculer les taux
+    // Calculer les taux + enrichir avec email entreprise depuis Supabase
     const liste = Array.from(parApprenant.values());
+    const normaliser = (s: string) => (s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/\s+/g, ' ').trim();
     liste.forEach(s => {
       s.tauxPresence = s.heuresPrevues > 0 ? Math.round((s.heuresRealisees / s.heuresPrevues) * 100) : 0;
       s.tauxAbsence = 100 - s.tauxPresence;
+      // Si emailEntreprise vide, on cherche depuis la liste des entreprises Supabase
+      if (!s.emailEntreprise) {
+        const match = entreprises.find(e => normaliser(e.raisonSociale) === normaliser(s.entreprise));
+        if (match) {
+          s.emailEntreprise = match.facturationEmail || match.email || match.rhEmail || '';
+        }
+      }
     });
 
-    return liste.sort((a, b) => a.nom.localeCompare(b.nom));
-  }, [emargements, moisFiltre, anneeFiltre, sessionFiltre]);
+    // Filtre apprenant (depuis ?apprenantId= dans l'URL)
+    const filtree = apprenantIdFiltre ? liste.filter(a => a.apprenantId === apprenantIdFiltre) : liste;
+
+    return filtree.sort((a, b) => a.nom.localeCompare(b.nom));
+  }, [emargements, entreprises, moisFiltre, anneeFiltre, sessionFiltre, apprenantIdFiltre]);
+
+  // Helper : convertit un Blob en base64
+  function blobToBase64(blob: Blob): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        const result = reader.result as string;
+        resolve(result.split(',')[1]);
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
+  }
+
+  // Envoi à UNE seule entreprise
+  async function envoyerUnEtat(stat: StatApprenantMensuel): Promise<{ success: boolean; error?: string }> {
+    if (!stat.emailEntreprise) {
+      return { success: false, error: 'Pas d\'email entreprise renseigné' };
+    }
+    try {
+      // 1. Générer le PDF
+      const blob = await pdf(
+        <PdfEtatPresenceMensuel
+          apprenant={{ nom: stat.nom, prenom: stat.prenom, email: stat.emailApprenant }}
+          entreprise={{ nom: stat.entreprise, email: stat.emailEntreprise, tuteur: '' }}
+          formation={stat.formation}
+          session={stat.session}
+          mois={stat.mois}
+          heuresPrevues={stat.heuresPrevues}
+          heuresRealisees={stat.heuresRealisees}
+          heuresAbsence={stat.heuresAbsence}
+          tauxPresence={stat.tauxPresence}
+          tauxAbsence={stat.tauxAbsence}
+          seances={stat.seances}
+        />
+      ).toBlob();
+      const base64 = await blobToBase64(blob);
+      const nomFichier = `Etat_Presence_${stat.nom}_${stat.mois.replace(/\s/g, '_')}.pdf`;
+
+      // 2. Appel API
+      const res = await fetch('/api/envoyer-etat-mensuel', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          emailEntreprise: stat.emailEntreprise,
+          nomEntreprise: stat.entreprise,
+          apprenantNom: stat.nom,
+          apprenantPrenom: stat.prenom,
+          mois: stat.mois,
+          pdfBase64: base64,
+          pdfNom: nomFichier,
+        }),
+      });
+      const data = await res.json();
+      if (!data.success) return { success: false, error: data.error || 'Erreur inconnue' };
+      return { success: true };
+    } catch (e: any) {
+      return { success: false, error: e.message };
+    }
+  }
+
+  // Envoi individuel
+  async function envoyerIndividuel(stat: StatApprenantMensuel) {
+    if (!confirm(`Envoyer l'état mensuel de ${stat.prenom} ${stat.nom} à ${stat.emailEntreprise || '(email manquant)'} ?`)) return;
+    setEnvoiEnCours(stat.apprenantId);
+    const res = await envoyerUnEtat(stat);
+    setEnvoiEnCours(null);
+    if (res.success) {
+      setMessageSucces(`✅ État mensuel envoyé à ${stat.emailEntreprise}`);
+      setTimeout(() => setMessageSucces(''), 5000);
+    } else {
+      alert(`⚠️ Erreur d'envoi : ${res.error}`);
+    }
+  }
+
+  // Envoi groupé : à toutes les entreprises
+  async function envoyerGroupe() {
+    const aEnvoyer = statsMensuelles.filter(s => s.emailEntreprise);
+    if (aEnvoyer.length === 0) {
+      alert('Aucun apprenant avec un email entreprise renseigné dans la sélection actuelle.');
+      return;
+    }
+    if (!confirm(`Envoyer ${aEnvoyer.length} états mensuels aux entreprises ?\n\nMois : ${titreMois}${titreSession}\n\nApprenants concernés : ${aEnvoyer.length}`)) return;
+    setEnvoisGroupe({ encours: true, total: aEnvoyer.length, faits: 0, erreurs: [] });
+    const erreurs: string[] = [];
+    for (let i = 0; i < aEnvoyer.length; i++) {
+      const stat = aEnvoyer[i];
+      const res = await envoyerUnEtat(stat);
+      if (!res.success) {
+        erreurs.push(`${stat.prenom} ${stat.nom} → ${res.error}`);
+      }
+      setEnvoisGroupe(prev => ({ ...prev, faits: i + 1, erreurs }));
+    }
+    setEnvoisGroupe({ encours: false, total: aEnvoyer.length, faits: aEnvoyer.length, erreurs });
+    if (erreurs.length === 0) {
+      setMessageSucces(`✅ ${aEnvoyer.length} états mensuels envoyés avec succès !`);
+    } else {
+      setMessageSucces(`⚠️ ${aEnvoyer.length - erreurs.length}/${aEnvoyer.length} envoyés. ${erreurs.length} en erreur — voir détails ci-dessous`);
+    }
+    setTimeout(() => setMessageSucces(''), 8000);
+  }
 
   if (chargement) {
     return <div style={{ padding: '32px', textAlign: 'center', color: COLORS.textMuted }}>Chargement des feuilles d'émargement...</div>;
@@ -180,8 +306,39 @@ export default function RecapMensuel() {
           <p style={{ color: COLORS.textMuted, fontSize: '14px' }}>
             {titreMois}{titreSession} — Calculé automatiquement depuis les feuilles d'émargement
           </p>
+          {apprenantIdFiltre && (
+            <p style={{ color: '#C8A23A', fontSize: '12px', marginTop: 4 }}>
+              🔍 Filtré sur un apprenant — <a href="/emargement/mensuel" style={{ color: COLORS.primary, textDecoration: 'underline' }}>voir tous</a>
+            </p>
+          )}
         </div>
+        {statsMensuelles.length > 0 && (
+          <button
+            onClick={envoyerGroupe}
+            disabled={envoisGroupe.encours}
+            style={{ backgroundColor: '#C8A23A', color: 'white', border: 'none', borderRadius: 8, padding: '10px 18px', fontSize: 13, fontWeight: 600, cursor: envoisGroupe.encours ? 'wait' : 'pointer', opacity: envoisGroupe.encours ? 0.7 : 1 }}
+          >
+            {envoisGroupe.encours
+              ? `⏳ Envoi ${envoisGroupe.faits}/${envoisGroupe.total}...`
+              : `📧 Envoyer à toutes les entreprises (${statsMensuelles.filter(s => s.emailEntreprise).length})`}
+          </button>
+        )}
       </div>
+
+      {messageSucces && (
+        <div style={{ padding: '14px 16px', backgroundColor: '#e6f4f1', borderRadius: 10, borderLeft: `4px solid ${COLORS.primary}`, marginBottom: 16, fontSize: 14, fontWeight: 600, color: COLORS.primary }}>
+          {messageSucces}
+        </div>
+      )}
+
+      {envoisGroupe.erreurs.length > 0 && !envoisGroupe.encours && (
+        <Card style={{ marginBottom: 16, borderLeft: `4px solid #e53e3e` }}>
+          <h3 style={{ fontSize: 13, fontWeight: 700, color: '#e53e3e', marginBottom: 8 }}>⚠️ {envoisGroupe.erreurs.length} envoi(s) en erreur :</h3>
+          <ul style={{ fontSize: 12, color: '#7a1a1a', paddingLeft: 20, margin: 0 }}>
+            {envoisGroupe.erreurs.map((e, i) => <li key={i}>{e}</li>)}
+          </ul>
+        </Card>
+      )}
 
       {/* Filtres */}
       <Card style={{ marginBottom: '16px' }}>
@@ -231,7 +388,7 @@ export default function RecapMensuel() {
             <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '900px' }}>
               <thead>
                 <tr style={{ borderBottom: `2px solid ${COLORS.background}` }}>
-                  {['Apprenant', 'Entreprise', 'Session', 'H. prévues', 'H. réalisées', 'H. absence', 'Taux présence', 'Alerte', 'PDF'].map((col) => (
+                  {['Apprenant', 'Entreprise', 'Email Entreprise', 'Session', 'H. prévues', 'H. réalisées', 'H. absence', 'Taux présence', 'Alerte', 'PDF', 'Envoi'].map((col) => (
                     <th key={col} style={{ textAlign: 'left', padding: '8px 12px', fontSize: '11px', color: '#999', fontWeight: '600', textTransform: 'uppercase' }}>{col}</th>
                   ))}
                 </tr>
@@ -243,6 +400,9 @@ export default function RecapMensuel() {
                       <a href={`/apprenants/${a.apprenantId}`} style={{ color: COLORS.text, textDecoration: 'none' }}>{a.prenom} {a.nom}</a>
                     </td>
                     <td style={{ padding: '12px', fontSize: '13px', color: COLORS.textMuted }}>{a.entreprise || '—'}</td>
+                    <td style={{ padding: '12px', fontSize: '11px', color: a.emailEntreprise ? COLORS.textMuted : '#e53e3e', fontStyle: a.emailEntreprise ? 'normal' : 'italic' }}>
+                      {a.emailEntreprise || '⚠ manquant'}
+                    </td>
                     <td style={{ padding: '12px', fontSize: '12px', color: COLORS.textMuted }}>{a.session || '—'}</td>
                     <td style={{ padding: '12px', fontSize: '13px', textAlign: 'center' }}>{a.heuresPrevues}h</td>
                     <td style={{ padding: '12px', fontSize: '13px', fontWeight: '600', color: COLORS.primary, textAlign: 'center' }}>{a.heuresRealisees}h</td>
@@ -273,6 +433,25 @@ export default function RecapMensuel() {
                         seances={a.seances}
                         nomFichier={`Etat_Presence_${a.nom}_${a.mois.replace(/\s/g, '_')}.pdf`}
                       />
+                    </td>
+                    <td style={{ padding: '12px' }}>
+                      <button
+                        onClick={() => envoyerIndividuel(a)}
+                        disabled={!a.emailEntreprise || envoiEnCours === a.apprenantId}
+                        title={a.emailEntreprise ? `Envoyer à ${a.emailEntreprise}` : 'Email entreprise manquant'}
+                        style={{
+                          backgroundColor: a.emailEntreprise ? '#3a5bc7' : '#ccc',
+                          color: 'white',
+                          border: 'none',
+                          borderRadius: 6,
+                          padding: '6px 10px',
+                          fontSize: 11,
+                          fontWeight: 600,
+                          cursor: a.emailEntreprise && envoiEnCours !== a.apprenantId ? 'pointer' : 'not-allowed',
+                        }}
+                      >
+                        {envoiEnCours === a.apprenantId ? '⏳' : '📧 Envoyer'}
+                      </button>
                     </td>
                   </tr>
                 ))}
