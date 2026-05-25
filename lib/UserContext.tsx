@@ -1,61 +1,180 @@
 'use client';
 
-import React, { createContext, useContext, useState, useEffect } from 'react';
-import { Utilisateur, UTILISATEURS } from '../data/mockUtilisateurs';
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import { Utilisateur } from '../data/mockUtilisateurs';
+import { supabase } from './supabaseClient';
 
 type UserContextType = {
   utilisateur: Utilisateur | null;
-  connecter: (email: string, motDePasse: string) => boolean;
-  deconnecter: () => void;
-  mettreAJour: (data: Partial<Utilisateur>) => void;
+  chargement: boolean;
+  connecter: (email: string, motDePasse: string) => Promise<{ ok: boolean; erreur?: string }>;
+  deconnecter: () => Promise<void>;
+  mettreAJour: (data: Partial<Utilisateur>) => Promise<void>;
 };
 
 const UserContext = createContext<UserContextType>({
   utilisateur: null,
-  connecter: () => false,
-  deconnecter: () => {},
-  mettreAJour: () => {},
+  chargement: true,
+  connecter: async () => ({ ok: false }),
+  deconnecter: async () => {},
+  mettreAJour: async () => {},
 });
+
+// ---------- Mapping profiles (Supabase) -> Utilisateur (type app) ----------
+function mapProfileVersUtilisateur(profile: any): Utilisateur {
+  return {
+    id: profile.id,
+    nom: profile.nom ?? '',
+    prenom: profile.prenom ?? '',
+    email: profile.email ?? '',
+    telephone: profile.telephone ?? '',
+    fonction: profile.fonction ?? '',
+    role: profile.role ?? 'lecteur',
+    motDePasse: '', // jamais renvoyé par Supabase, on conserve la prop pour la compat du type
+    signatureEmail: profile.signatureEmail ?? '',
+    actif: profile.actif ?? true,
+    avatar: profile.avatar ?? '',
+    formateurId: profile.formateurId ?? undefined,
+  };
+}
+
+async function chargerProfil(userId: string): Promise<Utilisateur | null> {
+  try {
+    // Workaround : on utilise fetch direct car supabase.from().select().single() 
+    // peut rester pendant dans certaines conditions (SDK v2.105 + clé publishable)
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) {
+      console.error('[UserContext] Pas de session pour chargerProfil');
+      return null;
+    }
+
+    const url = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+    const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+    
+    const res = await fetch(`${url}/rest/v1/profiles?select=*&id=eq.${userId}`, {
+      headers: {
+        'apikey': key,
+        'Authorization': `Bearer ${session.access_token}`,
+        'Accept': 'application/json',
+      },
+    });
+
+    if (!res.ok) {
+      console.error('[UserContext] Erreur HTTP chargerProfil :', res.status);
+      return null;
+    }
+
+    const rows = await res.json();
+    if (!rows || rows.length === 0) {
+      console.error('[UserContext] Profil non trouvé pour userId', userId);
+      return null;
+    }
+
+    return mapProfileVersUtilisateur(rows[0]);
+  } catch (err) {
+    console.error('[UserContext] Exception chargerProfil :', err);
+    return null;
+  }
+}
 
 export function UserProvider({ children }: { children: React.ReactNode }) {
   const [utilisateur, setUtilisateur] = useState<Utilisateur | null>(null);
-  const [utilisateurs, setUtilisateurs] = useState<Utilisateur[]>(UTILISATEURS);
+  const [chargement, setChargement] = useState(true);
 
+  // 1. Hydratation initiale au montage (version simplifiée sans onAuthStateChange)
   useEffect(() => {
+    let actif = true;
+
+    (async () => {
+      console.log('[UserContext] Init: getSession...');
+      const { data: { session } } = await supabase.auth.getSession();
+      console.log('[UserContext] Init: session =', session?.user?.email ?? 'aucune');
+      if (!actif) return;
+
+      if (session?.user) {
+        const profil = await chargerProfil(session.user.id);
+        if (actif) setUtilisateur(profil);
+      }
+      if (actif) setChargement(false);
+    })();
+
+    return () => { actif = false; };
+  }, []);
+
+  // 2. Connexion
+  const connecter = useCallback(async (email: string, motDePasse: string) => {
+    console.log('[UserContext] 1. Début connecter, email=', email);
+    
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email: email.trim(),
+      password: motDePasse,
+    });
+
+    console.log('[UserContext] 2. signInWithPassword retourné', { data, error });
+
+    if (error || !data.user) {
+      console.log('[UserContext] 3a. Erreur Auth');
+      return { ok: false, erreur: error?.message ?? 'Identifiants invalides' };
+    }
+
+    console.log('[UserContext] 3b. User ID =', data.user.id);
+    console.log('[UserContext] 4. Appel chargerProfil...');
+    
+    const profil = await chargerProfil(data.user.id);
+    
+    console.log('[UserContext] 5. chargerProfil retourné', profil);
+
+    if (!profil) {
+      console.log('[UserContext] 6a. Profil null, signOut');
+      await supabase.auth.signOut();
+      return { ok: false, erreur: 'Profil introuvable. Contactez l\'administrateur.' };
+    }
+    if (!profil.actif) {
+      console.log('[UserContext] 6b. Profil inactif, signOut');
+      await supabase.auth.signOut();
+      return { ok: false, erreur: 'Compte désactivé. Contactez l\'administrateur.' };
+    }
+
+    console.log('[UserContext] 7. Succès, setUtilisateur');
+    setUtilisateur(profil);
+    return { ok: true };
+  }, []);
+
+  // 3. Déconnexion
+  const deconnecter = useCallback(async () => {
+    await supabase.auth.signOut();
+    setUtilisateur(null);
+    // Nettoyage anciens vestiges du mock (au cas où)
     try {
-      const saved = sessionStorage.getItem('easycfa_user') || localStorage.getItem('easycfa_user');
-      if (saved) setUtilisateur(JSON.parse(saved));
+      sessionStorage.removeItem('easycfa_user');
+      localStorage.removeItem('easycfa_user');
     } catch {}
   }, []);
 
-  function connecter(email: string, motDePasse: string): boolean {
-    const u = utilisateurs.find(u => u.email === email && u.motDePasse === motDePasse && u.actif);
-    if (u) {
-      setUtilisateur(u);
-      sessionStorage.setItem('easycfa_user', JSON.stringify(u));
-      localStorage.setItem('easycfa_user', JSON.stringify(u));
-      return true;
-    }
-    return false;
-  }
-
-  function deconnecter() {
-    setUtilisateur(null);
-    sessionStorage.removeItem('easycfa_user');
-    localStorage.removeItem('easycfa_user');
-  }
-
-  function mettreAJour(data: Partial<Utilisateur>) {
+  // 4. Mise à jour profil
+  const mettreAJour = useCallback(async (data: Partial<Utilisateur>) => {
     if (!utilisateur) return;
-    const updated = { ...utilisateur, ...data };
-    setUtilisateur(updated);
-    sessionStorage.setItem('easycfa_user', JSON.stringify(updated));
-    localStorage.setItem('easycfa_user', JSON.stringify(updated));
-    setUtilisateurs(prev => prev.map(u => u.id === updated.id ? updated : u));
-  }
+
+    // On retire les champs qu'on ne veut JAMAIS pousser
+    const { id, motDePasse, ...patch } = data;
+
+    // La table profiles est en camelCase (signatureEmail, formateurId)
+    // donc on peut passer le patch directement, sans transformation
+    const { error } = await supabase
+      .from('profiles')
+      .update(patch)
+      .eq('id', utilisateur.id);
+
+    if (error) {
+      console.error('[UserContext] Erreur mettreAJour :', error);
+      return;
+    }
+
+    setUtilisateur({ ...utilisateur, ...data });
+  }, [utilisateur]);
 
   return (
-    <UserContext.Provider value={{ utilisateur, connecter, deconnecter, mettreAJour }}>
+    <UserContext.Provider value={{ utilisateur, chargement, connecter, deconnecter, mettreAJour }}>
       {children}
     </UserContext.Provider>
   );

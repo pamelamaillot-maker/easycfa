@@ -69,8 +69,8 @@ export default function Sidebar() {
   const { utilisateur, deconnecter } = useUser();
   const { aAcces } = useAcces();
 
-  function handleDeconnecter() {
-    deconnecter();
+  async function handleDeconnecter() {
+    await deconnecter();
     router.push('/login');
   }
 

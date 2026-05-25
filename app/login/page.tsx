@@ -14,18 +14,16 @@ export default function Login() {
   const [chargement, setChargement] = useState(false);
   const [afficherMdp, setAfficherMdp] = useState(false);
 
-  function handleSubmit() {
+  async function handleSubmit() {
     setChargement(true);
     setErreur('');
-    setTimeout(() => {
-      const ok = connecter(email, motDePasse);
-      if (ok) {
-        router.push('/');
-      } else {
-        setErreur("Email ou mot de passe incorrect. Contactez l'administrateur.");
-        setChargement(false);
-      }
-    }, 500);
+    const res = await connecter(email, motDePasse);
+    if (res.ok) {
+      router.push('/');
+    } else {
+      setErreur(res.erreur || "Email ou mot de passe incorrect. Contactez l'administrateur.");
+      setChargement(false);
+    }
   }
 
   return (
