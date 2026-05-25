@@ -1,6 +1,8 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import Link from 'next/link';
+import { supabase } from '../../lib/supabaseClient';
 import { COLORS } from '../../lib/constants';
 import { 
   chargerFormateurs as chargerFormateursSupabase,
@@ -460,6 +462,24 @@ export default function Formateurs() {
       } catch {}
     })();
   }, []);
+      // Compteur des propositions en attente (Phase 4.b)
+  const [nbPropositions, setNbPropositions] = useState(0);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session) return;
+        const res = await fetch('/api/admin/propositions?statut=en_attente', {
+          headers: { Authorization: `Bearer ${session.access_token}` },
+        });
+        if (res.ok) {
+          const data = await res.json();
+          setNbPropositions((data.propositions || []).length);
+        }
+      } catch {}
+    })();
+  }, []);
 
   function sauvegarder(liste: Formateur[]) {
     // 1. UI immédiate + localStorage en miroir
@@ -622,7 +642,39 @@ export default function Formateurs() {
           <h1 style={{ fontSize: '24px', fontWeight: '800', color: '#006B68', marginBottom: '4px' }}>👨‍🏫 Formateurs</h1>
           <p style={{ color: '#888', fontSize: '14px' }}>{formateurs.filter(f => f.statut === 'Actif').length} actif(s) — {formateurs.length} au total</p>
         </div>
-        <button onClick={() => setModale(true)} style={btnPrimary}>+ Nouveau formateur</button>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <Link
+            href="/formateurs/propositions"
+            style={{
+              backgroundColor: nbPropositions > 0 ? '#fff8e1' : 'white',
+              color: nbPropositions > 0 ? '#92400e' : '#666',
+              border: `1.5px solid ${nbPropositions > 0 ? '#fbbf24' : '#e0e0e0'}`,
+              borderRadius: 8,
+              padding: '10px 18px',
+              fontSize: 13,
+              fontWeight: 700,
+              textDecoration: 'none',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 8,
+            }}
+          >
+            📝 Propositions
+            {nbPropositions > 0 && (
+              <span style={{
+                backgroundColor: '#ef4444',
+                color: 'white',
+                borderRadius: 12,
+                padding: '2px 8px',
+                fontSize: 11,
+                fontWeight: 800,
+              }}>
+                {nbPropositions}
+              </span>
+            )}
+          </Link>
+          <button onClick={() => setModale(true)} style={btnPrimary}>+ Nouveau formateur</button>
+        </div>
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '12px', marginBottom: '24px' }}>

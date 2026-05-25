@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import { useState, useEffect } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { useUser } from '../lib/UserContext';
 import { useAcces } from '../lib/useAcces';
@@ -68,6 +69,31 @@ export default function Sidebar() {
   const router = useRouter();
   const { utilisateur, deconnecter } = useUser();
   const { aAcces } = useAcces();
+  const [nbPropositions, setNbPropositions] = useState(0);
+
+  // Compteur des propositions en attente (admin/pedagogique seulement)
+  useEffect(() => {
+    if (!utilisateur || !['admin', 'pedagogique'].includes(utilisateur.role)) return;
+
+    async function charger() {
+      try {
+        const { supabase } = await import('../lib/supabaseClient');
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session) return;
+        const res = await fetch('/api/admin/propositions?statut=en_attente', {
+          headers: { Authorization: `Bearer ${session.access_token}` },
+        });
+        if (res.ok) {
+          const data = await res.json();
+          setNbPropositions((data.propositions || []).length);
+        }
+      } catch {}
+    }
+
+    charger();
+    const interval = setInterval(charger, 30000); // toutes les 30s
+    return () => clearInterval(interval);
+  }, [utilisateur?.role]);
 
   async function handleDeconnecter() {
     await deconnecter();
@@ -105,10 +131,29 @@ export default function Sidebar() {
       );
     }
 
+    const afficheBadge = item.href === '/formateurs' && nbPropositions > 0;
+
     return (
-      <Link key={item.href} href={item.href} style={{ ...baseStyle, color: isActive ? 'var(--secondary)' : 'rgba(255,255,255,0.85)', backgroundColor: isActive ? 'rgba(255,255,255,0.08)' : 'transparent', fontWeight: isActive ? '600' : '400' }}>
-        <span style={{ fontSize: '14px', flexShrink: 0 }}>{item.icon}</span>
-        <span>{item.label}</span>
+      <Link
+        key={item.href}
+        href={item.href}
+        style={{
+          ...baseStyle,
+          color: isActive ? 'var(--secondary)' : 'rgba(255,255,255,0.85)',
+          backgroundColor: isActive ? 'rgba(255,255,255,0.08)' : 'transparent',
+          fontWeight: isActive ? '600' : '400',
+          justifyContent: 'space-between',
+        }}
+      >
+        <span style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <span style={{ fontSize: '14px', flexShrink: 0 }}>{item.icon}</span>
+          <span>{item.label}</span>
+        </span>
+        {afficheBadge && (
+          <span style={{ backgroundColor: '#ef4444', color: 'white', fontSize: '10px', fontWeight: 700, borderRadius: 10, padding: '2px 7px', minWidth: 18, textAlign: 'center' }}>
+            {nbPropositions}
+          </span>
+        )}
       </Link>
     );
   }
