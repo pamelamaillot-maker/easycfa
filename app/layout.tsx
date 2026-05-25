@@ -17,7 +17,10 @@ function AppContent({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const estPageLogin = pathname === '/login';
   // Toutes les routes /formateur/* sont gérées par app/formateur/layout.tsx
-  const estRouteFormateur = pathname === '/formateur' || pathname.startsWith('/formateur/');
+  // ET /emargement quand l'utilisateur est un formateur (Phase 4.b-bis : sidebar formateur visible)
+  const estRouteFormateurPure = pathname === '/formateur' || pathname.startsWith('/formateur/');
+  const estEmargementFormateur = !!utilisateur && utilisateur.role === 'formateur' && pathname === '/emargement';
+  const estRouteFormateur = estRouteFormateurPure || estEmargementFormateur;
 
   useEffect(() => {
     if (chargement) return;
@@ -31,8 +34,10 @@ function AppContent({ children }: { children: React.ReactNode }) {
     }
 
     // 🚨 SÉCURITÉ : un formateur ne doit JAMAIS être dans l'espace admin
-    // Tout formateur arrivant sur une route admin est redirigé vers son espace dédié
-    if (utilisateur && utilisateur.role === 'formateur' && !estPageLogin) {
+    // SAUF sur quelques routes partagées explicitement autorisées
+    const ROUTES_PARTAGEES_FORMATEUR: string[] = ['/emargement'];
+    const estRoutePartagee = ROUTES_PARTAGEES_FORMATEUR.includes(pathname);
+    if (utilisateur && utilisateur.role === 'formateur' && !estPageLogin && !estRoutePartagee) {
       router.push('/formateur');
       return;
     }

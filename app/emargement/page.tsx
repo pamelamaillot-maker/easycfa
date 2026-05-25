@@ -1,6 +1,10 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useSearchParams } from 'next/navigation';
+import SidebarFormateur from '../../components/SidebarFormateur';
+import { chargerIdsFeuillesAccessibles } from '../../lib/seancesService';
+import Link from 'next/link';
 import { FEUILLES_EMARGEMENT, EMAIL_ABSENCE_TEMPLATE } from '../../data/mockEmargement';
 import type { FeuilleEmargement, DemiJournee, PresenceApprenant, StatutPresence } from '../../data/mockEmargement';
 import { APPRENANTS_REELS } from '../../data/mockApprenants_reels';
@@ -127,6 +131,14 @@ function genererFeuilleDepuisSessions(sessionsSelectionnees: any[], date: string
 export default function Emargement() {
   const { utilisateur } = useUser();
   const { estAdmin } = useAcces();
+  const searchParams = useSearchParams();
+
+  // Phase 4.b-bis : détecter si l'utilisateur est un formateur (mode partagé)
+  const estFormateur = utilisateur?.role === 'formateur';
+  const feuilleIdUrl = searchParams.get('feuille'); // ?feuille=xxx pour pré-sélectionner
+
+  // IDs des feuilles que le formateur peut voir (filtrées par son planning)
+  const [feuillesAccessiblesIds, setFeuillesAccessiblesIds] = useState<string[]>([]);
   const [feuillesLocales, setFeuillesLocales] = useState<FeuilleEmargement[]>([]);
   const [sessions, setSessions] = useState<any[]>([]);
   const [formateurs, setFormateurs] = useState<any[]>([]);
@@ -168,7 +180,32 @@ export default function Emargement() {
     })();
   }, []);
 
-  const toutesFeuilles: FeuilleEmargement[] = [...feuillesLocales, ...FEUILLES_EMARGEMENT];
+  // Phase 4.b-bis : charger la liste des feuilles que le formateur peut voir
+  useEffect(() => {
+    if (!estFormateur || !utilisateur?.formateurId) {
+      setFeuillesAccessiblesIds([]);
+      return;
+    }
+    (async () => {
+      try {
+        const ids = await chargerIdsFeuillesAccessibles(utilisateur.formateurId!);
+        setFeuillesAccessiblesIds(ids);
+        console.log(`[Emargement formateur] ${ids.length} feuille(s) accessible(s)`);
+      } catch (e) {
+        console.error('[Emargement formateur] Erreur chargement IDs :', e);
+        setFeuillesAccessiblesIds([]);
+      }
+    })();
+  }, [estFormateur, utilisateur?.formateurId]);
+
+  const toutesFeuillesRaw: FeuilleEmargement[] = [...feuillesLocales, ...FEUILLES_EMARGEMENT];
+
+  // Phase 4.b-bis : filtrer selon le rôle
+  // - Admin/équipe : voit toutes les feuilles
+  // - Formateur : voit uniquement ses feuilles (celles où il intervient via le planning)
+  const toutesFeuilles: FeuilleEmargement[] = estFormateur
+    ? toutesFeuillesRaw.filter(f => feuillesAccessiblesIds.includes(f.id))
+    : toutesFeuillesRaw;
 
   const [feuilleId, setFeuilleId] = useState(toutesFeuilles[0]?.id ?? '');
   const [demiJourneeId, setDemiJourneeId] = useState(toutesFeuilles[0]?.demiJournees[0]?.id ?? '');
@@ -181,11 +218,19 @@ export default function Emargement() {
   const [ongletPrincipal, setOngletPrincipal] = useState<'presences' | 'intervention'>('presences');
 
   useEffect(() => {
+    // Phase 4.b-bis : si une feuille est demandée via URL, la sélectionner en priorité
+    if (feuilleIdUrl && toutesFeuilles.find(f => f.id === feuilleIdUrl)) {
+      setFeuilleId(feuilleIdUrl);
+      const f = toutesFeuilles.find(f => f.id === feuilleIdUrl)!;
+      setDemiJourneeId(f.demiJournees[0]?.id ?? '');
+      return;
+    }
+    // Sinon, sélectionner la première feuille disponible
     if (!toutesFeuilles.find(f => f.id === feuilleId) && toutesFeuilles[0]) {
       setFeuilleId(toutesFeuilles[0].id);
       setDemiJourneeId(toutesFeuilles[0].demiJournees[0]?.id ?? '');
     }
-  }, [feuillesLocales.length]);
+  }, [feuillesLocales.length, feuilleIdUrl, feuillesAccessiblesIds.length]);
 
   const feuille = toutesFeuilles.find(f => f.id === feuilleId);
   const dj = feuille?.demiJournees.find(d => d.id === demiJourneeId);
@@ -718,7 +763,8 @@ export default function Emargement() {
   const ficheSignee = !!ficheActive?.dateSignature;
   const ficheCheck = ficheActive ? ficheCompletee(ficheActive) : { ok: false, manquants: [] };
 
-  return (
+  // Phase 4.b-bis : si l'utilisateur est formateur, on enveloppe avec la sidebar formateur
+  const contenuPage = (
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '24px' }}>
         <div>
@@ -726,11 +772,25 @@ export default function Emargement() {
           <p style={{ color: COLORS.textMuted, fontSize: '14px' }}>Saisie des présences par demi-journée — Envoi automatique des alertes absence</p>
         </div>
         <div style={{ display: 'flex', gap: '8px' }}>
-          <button onClick={() => setModaleNouvelle(true)} style={btnPrimary}>+ Nouvelle feuille depuis session</button>
-          {feuille && dj && (
+          {/* Bouton "Retour Mes séances" — uniquement pour le formateur */}
+          {estFormateur && (
+            <Link
+              href="/formateur/seances"
+              style={{ backgroundColor: 'white', color: COLORS.primary, border: `1.5px solid ${COLORS.primary}`, borderRadius: '8px', padding: '9px 16px', fontSize: '13px', fontWeight: '600', textDecoration: 'none', display: 'inline-block' }}
+            >
+              ← Mes séances
+            </Link>
+          )}
+          {/* Boutons admin — masqués pour le formateur */}
+          {!estFormateur && (
+            <button onClick={() => setModaleNouvelle(true)} style={btnPrimary}>+ Nouvelle feuille depuis session</button>
+          )}
+          {feuille && dj && !estFormateur && (
             <BoutonPdfEmargement feuille={feuille} demiJournee={dj} nomFichier={`Emargement_${feuille.formation.replace(/\s/g, '_')}_${feuille.date.replace(/\//g, '-')}_${dj.type}.pdf`} />
           )}
-          <a href="/emargement/mensuel" style={{ backgroundColor: 'white', color: COLORS.primary, border: `1.5px solid ${COLORS.primary}`, borderRadius: '8px', padding: '9px 16px', fontSize: '13px', fontWeight: '600', textDecoration: 'none', display: 'inline-block' }}>📊 États mensuels</a>
+          {!estFormateur && (
+            <a href="/emargement/mensuel" style={{ backgroundColor: 'white', color: COLORS.primary, border: `1.5px solid ${COLORS.primary}`, borderRadius: '8px', padding: '9px 16px', fontSize: '13px', fontWeight: '600', textDecoration: 'none', display: 'inline-block' }}>📊 États mensuels</a>
+          )}
         </div>
       </div>
 
@@ -776,7 +836,7 @@ export default function Emargement() {
                             {(f as any).sessionNumero ? `${(f as any).sessionNumero} — ` : ''}{f.formation}
                           </div>
                         </div>
-                        {isLocale && (
+                        {isLocale && !estFormateur && (
                           <span
                             role="button"
                             onClick={(e) => { e.stopPropagation(); supprimerFeuilleLocale(f.id); }}
@@ -1462,4 +1522,18 @@ export default function Emargement() {
       )}
     </div>
   );
+
+  // Rendu final selon le rôle
+  if (estFormateur) {
+    return (
+      <div style={{ display: 'flex', minHeight: '100vh', backgroundColor: COLORS.background }}>
+        <SidebarFormateur activePath="/formateur/seances" />
+        <main style={{ flex: 1, padding: 32, overflowY: 'auto' }}>
+          {contenuPage}
+        </main>
+      </div>
+    );
+  }
+
+  return contenuPage;
 }
