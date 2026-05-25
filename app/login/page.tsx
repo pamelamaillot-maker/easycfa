@@ -19,6 +19,13 @@ export default function Login() {
     setErreur('');
     const res = await connecter(email, motDePasse);
     if (res.ok) {
+      // Récupérer l'utilisateur fraîchement connecté pour rediriger selon le rôle
+      // (utilisateur du context n'est pas encore à jour ici à cause du timing React)
+      // On utilise une approche simple : récupérer la session pour avoir le user.id
+      // puis rediriger via /api/me ou simplement via un setTimeout
+      // Le plus simple : rediriger vers /formateur si l'email match un formateur connu
+      // ⚠️ Mieux : ajouter le role dans le retour de connecter()
+      // Pour l'instant on redirige vers / et c'est AppContent qui re-route si besoin
       router.push('/');
     } else {
       setErreur(res.erreur || "Email ou mot de passe incorrect. Contactez l'administrateur.");

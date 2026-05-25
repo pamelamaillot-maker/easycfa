@@ -24,21 +24,28 @@ function AppContent({ children }: { children: React.ReactNode }) {
     if (estRouteFormateur) return; // déléguer à FormateurLayout
 
     if (!utilisateur && !estPageLogin) {
-      router.push('/login');
+      // Si on est dans le contexte formateur, on reste dans cet univers
+      const venaitFormateur = pathname.startsWith('/formateur');
+      router.push(venaitFormateur ? '/formateur/connexion' : '/login');
       return;
     }
+
+    // 🚨 SÉCURITÉ : un formateur ne doit JAMAIS être dans l'espace admin
+    // Tout formateur arrivant sur une route admin est redirigé vers son espace dédié
+    if (utilisateur && utilisateur.role === 'formateur' && !estPageLogin) {
+      router.push('/formateur');
+      return;
+    }
+
     if (utilisateur && estPageLogin) {
       router.push('/');
       return;
     }
+
     if (utilisateur && !estPageLogin && !aAcces(pathname)) {
-      if (estFormateur) {
-        router.push('/emargement');
-      } else {
-        router.push('/');
-      }
+      router.push('/');
     }
-  }, [utilisateur, pathname, chargement, estRouteFormateur]);
+  }, [utilisateur, pathname, chargement, estRouteFormateur, estPageLogin, router]);
 
   // Routes formateur : on laisse FormateurLayout gérer
   if (estRouteFormateur) return <>{children}</>;
