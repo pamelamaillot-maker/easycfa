@@ -20,8 +20,6 @@ export default function FormateurReset() {
   const [enregistrement, setEnregistrement] = useState(false);
   const [succes, setSucces] = useState(false);
 
-  // Au montage : on lit le token depuis le fragment URL (#access_token=...&refresh_token=...&type=recovery)
-  // Supabase l'envoie en fragment (pas en query) pour des raisons de sécurité (jamais loggé côté serveur).
   useEffect(() => {
     (async () => {
       try {
@@ -50,7 +48,6 @@ export default function FormateurReset() {
           return;
         }
 
-        // On nettoie le fragment de l'URL pour ne pas laisser le token visible
         window.history.replaceState(null, '', window.location.pathname);
 
         setTokenValide(true);
@@ -78,17 +75,15 @@ export default function FormateurReset() {
     const { error } = await supabase.auth.updateUser({ password: motDePasse });
 
     if (error) {
-      setErreur(error.message || 'Erreur lors de l\'enregistrement. Réessayez.');
+      setErreur(error.message || "Erreur lors de l'enregistrement. Réessayez.");
       setEnregistrement(false);
       return;
     }
 
-    // On déconnecte la session de récupération (pour forcer un vrai login propre)
     await supabase.auth.signOut();
     setSucces(true);
     setEnregistrement(false);
 
-    // Redirection automatique vers /formateur/connexion après 3 secondes
     setTimeout(() => router.push('/formateur/connexion'), 3000);
   }
 
@@ -106,14 +101,12 @@ export default function FormateurReset() {
           <p style={{ fontSize: 13, color: '#888' }}>EasyCFA — Espace Formateur</p>
         </div>
 
-        {/* Vue : vérification du token */}
         {verification && (
           <div style={{ textAlign: 'center', padding: 24, color: COLORS.primary, fontSize: 14, fontWeight: 600 }}>
             ⏳ Vérification du lien...
           </div>
         )}
 
-        {/* Vue : token invalide ou expiré */}
         {!verification && !tokenValide && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 16, textAlign: 'center' }}>
             <div style={{ fontSize: 36 }}>⚠️</div>
@@ -126,7 +119,6 @@ export default function FormateurReset() {
           </div>
         )}
 
-        {/* Vue : succès */}
         {tokenValide && succes && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 16, textAlign: 'center' }}>
             <div style={{ fontSize: 36 }}>✅</div>
@@ -137,7 +129,6 @@ export default function FormateurReset() {
           </div>
         )}
 
-        {/* Vue : saisie du nouveau mot de passe */}
         {tokenValide && !succes && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
             <div style={{ fontSize: 13, color: '#555', lineHeight: 1.5 }}>
@@ -150,7 +141,7 @@ export default function FormateurReset() {
                 <input
                   type={afficherMdp ? 'text' : 'password'}
                   value={motDePasse}
-                  onChange={e => setMotDePasse(e.target.value)}
+                  onChange={(e) => setMotDePasse(e.target.value)}
                   placeholder="••••••••••"
                   style={{ border: `1.5px solid ${motDePasse ? COLORS.primary : '#e0e0e0'}`, borderRadius: 8, padding: '11px 40px 11px 14px', fontSize: 14, width: '100%', boxSizing: 'border-box' }}
                 />
@@ -168,4 +159,33 @@ export default function FormateurReset() {
               <input
                 type={afficherMdp ? 'text' : 'password'}
                 value={motDePasseConfirme}
-                onChange={e => setMotDePasseConfirme(e.target.value)}
+                onChange={(e) => setMotDePasseConfirme(e.target.value)}
+                placeholder="••••••••••"
+                onKeyDown={(e) => e.key === 'Enter' && handleEnregistrer()}
+                style={{ border: `1.5px solid ${motDePasseConfirme ? COLORS.primary : '#e0e0e0'}`, borderRadius: 8, padding: '11px 14px', fontSize: 14, width: '100%', boxSizing: 'border-box' }}
+              />
+            </div>
+
+            {erreur && (
+              <div style={{ backgroundColor: '#fde8e8', borderRadius: 8, padding: '10px 14px', fontSize: 13, color: '#e53e3e', fontWeight: 600 }}>
+                ⚠️ {erreur}
+              </div>
+            )}
+
+            <button
+              onClick={handleEnregistrer}
+              disabled={enregistrement || !motDePasse || !motDePasseConfirme}
+              style={{ backgroundColor: enregistrement || !motDePasse || !motDePasseConfirme ? '#ccc' : COLORS.primary, color: 'white', border: 'none', borderRadius: 8, padding: 13, fontSize: 14, fontWeight: 700, cursor: enregistrement || !motDePasse || !motDePasseConfirme ? 'not-allowed' : 'pointer', marginTop: 4 }}
+            >
+              {enregistrement ? '⏳ Enregistrement...' : '✅ Enregistrer le mot de passe'}
+            </button>
+          </div>
+        )}
+
+        <div style={{ marginTop: 16, textAlign: 'center', fontSize: 11, color: '#ccc' }}>
+          EasyCFA v1.0 — PAM GROUPE © 2025
+        </div>
+      </div>
+    </div>
+  );
+}
