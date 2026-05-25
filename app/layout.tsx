@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { Inter } from 'next/font/google';
 import Sidebar from '../components/Sidebar';
@@ -11,21 +11,18 @@ import './globals.css';
 const inter = Inter({ subsets: ['latin'] });
 
 function AppContent({ children }: { children: React.ReactNode }) {
-  const { utilisateur } = useUser();
+  const { utilisateur, chargement } = useUser();
   const { aAcces, estFormateur } = useAcces();
   const router = useRouter();
   const pathname = usePathname();
   const estPageLogin = pathname === '/login';
-  const [pret, setPret] = useState(false);
+  // Toutes les routes /formateur/* sont gérées par app/formateur/layout.tsx
+  const estRouteFormateur = pathname === '/formateur' || pathname.startsWith('/formateur/');
 
   useEffect(() => {
-    // Attendre que le localStorage soit lu
-    const timer = setTimeout(() => setPret(true), 100);
-    return () => clearTimeout(timer);
-  }, []);
+    if (chargement) return;
+    if (estRouteFormateur) return; // déléguer à FormateurLayout
 
-  useEffect(() => {
-    if (!pret) return;
     if (!utilisateur && !estPageLogin) {
       router.push('/login');
       return;
@@ -41,12 +38,15 @@ function AppContent({ children }: { children: React.ReactNode }) {
         router.push('/');
       }
     }
-  }, [utilisateur, pathname, pret]);
+  }, [utilisateur, pathname, chargement, estRouteFormateur]);
+
+  // Routes formateur : on laisse FormateurLayout gérer
+  if (estRouteFormateur) return <>{children}</>;
 
   if (estPageLogin) return <>{children}</>;
 
-  // Attendre que la session soit chargée
-  if (!pret) return (
+  // Attendre que la session Supabase soit chargée
+  if (chargement) return (
     <div style={{ minHeight: '100vh', backgroundColor: '#EAF4F3', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
       <div style={{ fontSize: '14px', color: '#006B68', fontWeight: '600' }}>⏳ Chargement...</div>
     </div>
