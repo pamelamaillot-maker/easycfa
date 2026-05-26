@@ -2,6 +2,11 @@
 
 import { useState, useEffect } from 'react';
 import Card from '../../components/Card';
+import {
+  chargerExamens as chargerExamensSupabase,
+  sauvegarderExamen as sauvegarderExamenSupabase,
+  supprimerExamen as supprimerExamenSupabase,
+} from '../../data/examensSupabase';
 
 const inputStyle: React.CSSProperties = { border: '1.5px solid #e0e0e0', borderRadius: '8px', padding: '7px 10px', fontSize: '12px', width: '100%', boxSizing: 'border-box', backgroundColor: 'white' };
 const btnPrimary: React.CSSProperties = { backgroundColor: '#006B68', color: 'white', border: 'none', borderRadius: '8px', padding: '8px 14px', fontSize: '12px', fontWeight: '600', cursor: 'pointer' };
@@ -159,8 +164,17 @@ function diffJours(dateStr: string): number | null {
   if (!dateStr) return null;
   const p = dateStr.split('/');
   if (p.length !== 3) return null;
-  const d = new Date(parseInt(p[2]), parseInt(p[1]) - 1, parseInt(p[0]));
-  return Math.ceil((d.getTime() - new Date().getTime()) / 86400000);
+  const j = parseInt(p[0]);
+  const m = parseInt(p[1]);
+  let a = parseInt(p[2]);
+  // Si l'année est sur 2 chiffres (ex: "26"), on la complète en 2026
+  if (a < 100) a += 2000;
+  if (isNaN(j) || isNaN(m) || isNaN(a)) return null;
+  const d = new Date(a, m - 1, j);
+  // Date du jour à 00h00 pour calcul propre
+  const aujourdhui = new Date();
+  aujourdhui.setHours(0, 0, 0, 0);
+  return Math.ceil((d.getTime() - aujourdhui.getTime()) / 86400000);
 }
 
 function alerteCouleur(jours: number | null, seuil: number): string {
@@ -190,27 +204,58 @@ export default function Examens() {
   const [agreementsInfos, setAgreementsInfos] = useState<Record<string, { debut: string; fin: string; archive: boolean }>>({});
 
   useEffect(() => {
-    try {
-      const s = localStorage.getItem('easycfa_examens');
-      if (s) setSessions(JSON.parse(s));
-      const sf = localStorage.getItem('easycfa_sessions_v2');
-      if (sf) setSessionsFo(JSON.parse(sf));
-      const af = localStorage.getItem('easycfa_agrements_fichiers');
-      if (af) setAgrementsFichiers(JSON.parse(af));
-      const ai = localStorage.getItem('easycfa_agrements_infos');
-      if (ai) setAgreementsInfos(JSON.parse(ai));
-    } catch {}
+    (async () => {
+      // Examens : Supabase d'abord, fallback localStorage
+      try {
+        const fromSupabase = await chargerExamensSupabase();
+        if (fromSupabase && fromSupabase.length > 0) {
+          console.log(`[Examens] ${fromSupabase.length} examens chargés depuis Supabase ✅`);
+          setSessions(fromSupabase as any[]);
+          // Sync local pour fallback hors-ligne
+          localStorage.setItem('easycfa_examens', JSON.stringify(fromSupabase));
+        } else {
+          console.warn('[Examens] Supabase vide, fallback localStorage');
+          const s = localStorage.getItem('easycfa_examens');
+          if (s) setSessions(JSON.parse(s));
+        }
+      } catch (e) {
+        console.error('[Examens] Erreur Supabase, fallback localStorage', e);
+        const s = localStorage.getItem('easycfa_examens');
+        if (s) setSessions(JSON.parse(s));
+      }
+      // Autres données : restent en localStorage
+      try {
+        const sf = localStorage.getItem('easycfa_sessions_v2');
+        if (sf) setSessionsFo(JSON.parse(sf));
+        const af = localStorage.getItem('easycfa_agrements_fichiers');
+        if (af) setAgrementsFichiers(JSON.parse(af));
+        const ai = localStorage.getItem('easycfa_agrements_infos');
+        if (ai) setAgreementsInfos(JSON.parse(ai));
+      } catch {}
+    })();
   }, []);
 
-  function save(liste: SessionExamen[]) {
+  function save(liste: SessionExamen[], examenModifie?: SessionExamen) {
     setSessions(liste);
+    // Sauvegarde locale immédiate (fallback hors-ligne)
     localStorage.setItem('easycfa_examens', JSON.stringify(liste));
+    // Sauvegarde Supabase de l'examen modifié uniquement (asynchrone, best-effort)
+    if (examenModifie) {
+      sauvegarderExamenSupabase(examenModifie as any).then(res => {
+        if (!res.success) {
+          console.error(`[Examens ${examenModifie.id}] Erreur Supabase :`, res.error);
+        } else {
+          console.log(`[Examens ${examenModifie.id}] Sauvegardé dans Supabase ✅`);
+        }
+      });
+    }
   }
 
   function maj(champ: string, val: any) {
     if (!sessionSel) return;
     const u = { ...sessionSel, [champ]: val };
-    setSessionSel(u); save(sessions.map(s => s.id === u.id ? u : s));
+    setSessionSel(u);
+    save(sessions.map(s => s.id === u.id ? u : s), u);
   }
 
   function creer() {
@@ -238,7 +283,7 @@ export default function Examens() {
       pvEnvoiDemarche: '', pvCourrierReco: '', pvReceptionDeets: '', pvDeets: '',
       emargementJures: '', emargementsCandidats: {},
     };
-    save([...sessions, n]);
+    save([...sessions, n], n);
     setModale(false);
     setForm({ lieu: '1 Chemin Dubuisson 97436 Saint-Leu', responsableNom: 'MAILLOT', responsablePrenom: 'Paméla', responsableTel: '0693 55 64 92', responsableEmail: 'pamelamaillot@pamoi.re', statut: 'Planifiée', jures: [], candidats: [], affichageReglement: false, affichagePlanning: false, affichageConditions: false });
     setSessionSel(n);
