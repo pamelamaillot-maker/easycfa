@@ -1,12 +1,19 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { HEURES_FORMATEURS, SESSIONS_BPF, DONNEES_FINANCIERES_MANUELLES, TAUX_HORAIRES_FORMATEURS } from '../../data/mockBPF';
 import { COLORS } from '../../lib/constants';
 import Card from '../../components/Card';
 import StatCard from '../../components/StatCard';
+import {
+  type BPFDeclaration,
+  chargerBPFs,
+  sauvegarderBPF,
+  joursAvantEcheance,
+  getBPFEnAlerte,
+} from '../../data/bpfSupabase';
 
-const ONGLETS = ['Tableau de bord', 'Formations & Apprenants', 'Formateurs & Coûts', 'Données financières', 'Export BPF'];
+const ONGLETS = ['Tableau de bord', 'Formations & Apprenants', 'Formateurs & Coûts', 'Données financières', 'Export BPF', 'Déclarations & Télétransmission'];
 
 const btnPrimary: React.CSSProperties = { backgroundColor: COLORS.primary, color: 'white', border: 'none', borderRadius: '8px', padding: '9px 16px', fontSize: '13px', fontWeight: '600', cursor: 'pointer' };
 const btnSecondary: React.CSSProperties = { backgroundColor: 'white', color: COLORS.primary, border: `1.5px solid ${COLORS.primary}`, borderRadius: '8px', padding: '9px 16px', fontSize: '13px', fontWeight: '600', cursor: 'pointer' };
@@ -27,6 +34,22 @@ function InfoRow({ label, value, auto }: { label: string; value: string; auto?: 
 export default function BPF() {
   const [onglet, setOnglet] = useState(0);
   const [donneesFinancieres, setDonneesFinancieres] = useState(DONNEES_FINANCIERES_MANUELLES);
+
+  // ===== Chargement des déclarations BPF =====
+  const [bpfs, setBpfs] = useState<BPFDeclaration[]>([]);
+  const [bpfLoading, setBpfLoading] = useState(true);
+  const [bpfMessage, setBpfMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+
+  useEffect(() => {
+    chargerBPFs().then((data) => {
+      setBpfs(data);
+      setBpfLoading(false);
+      console.log('[BPF] Chargés :', data.length, 'déclarations');
+    });
+  }, []);
+
+  const bpfEnAlerte = getBPFEnAlerte(bpfs);
+  const joursRestants = bpfEnAlerte ? joursAvantEcheance(bpfEnAlerte) : null;
 
   // Calculs automatiques
   const totalApprenants = SESSIONS_BPF.reduce((acc, s) => acc + s.nbInscrits, 0);
@@ -59,6 +82,55 @@ export default function BPF() {
 
   return (
     <div>
+      {/* ===== BANDEAU D'ALERTE BPF ===== */}
+      {bpfEnAlerte && (
+        <div style={{
+          backgroundColor: joursRestants !== null && joursRestants < 0 ? '#fde8e8' : joursRestants !== null && joursRestants <= 7 ? '#fde8e8' : '#fef6e4',
+          borderLeft: `4px solid ${joursRestants !== null && joursRestants <= 7 ? '#e53e3e' : COLORS.secondary}`,
+          padding: '14px 18px',
+          borderRadius: '8px',
+          marginBottom: '20px',
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          gap: '16px',
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <span style={{ fontSize: '24px' }}>
+              {joursRestants !== null && joursRestants < 0 ? '🚨' : joursRestants !== null && joursRestants <= 7 ? '⚠️' : '📋'}
+            </span>
+            <div>
+              <div style={{ fontSize: '14px', fontWeight: '700', color: joursRestants !== null && joursRestants <= 7 ? '#c53030' : '#7a5c00', marginBottom: '2px' }}>
+                {joursRestants !== null && joursRestants < 0
+                  ? `BPF ${bpfEnAlerte.anneeBPF} EN RETARD — ${Math.abs(joursRestants)} jour${Math.abs(joursRestants) > 1 ? 's' : ''} de dépassement`
+                  : `BPF ${bpfEnAlerte.anneeBPF} à télétransmettre — J-${joursRestants}`}
+              </div>
+              <div style={{ fontSize: '12px', color: '#5a4000' }}>
+                Exercice du {bpfEnAlerte.exerciceDebut} au {bpfEnAlerte.exerciceFin} —
+                Échéance : <strong>{bpfEnAlerte.dateLimiteTeletransmission}</strong> —
+                À télétransmettre sur monactiviteformation.emploi.gouv.fr
+              </div>
+            </div>
+          </div>
+          <button
+            onClick={() => setOnglet(5)}
+            style={{
+              backgroundColor: joursRestants !== null && joursRestants <= 7 ? '#e53e3e' : COLORS.secondary,
+              color: 'white',
+              border: 'none',
+              borderRadius: '8px',
+              padding: '9px 16px',
+              fontSize: '13px',
+              fontWeight: '700',
+              cursor: 'pointer',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            ✅ Cocher comme télétransmis
+          </button>
+        </div>
+      )}
+
       {/* En-tête */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '24px' }}>
         <div>
@@ -404,6 +476,149 @@ export default function BPF() {
               </div>
             </div>
           </Card>
+        </div>
+      )}
+
+      {/* ===== ONGLET 6 — Déclarations & Télétransmission ===== */}
+      {onglet === 5 && (
+        <div>
+          {bpfLoading && (
+            <Card><p style={{ color: COLORS.textMuted }}>Chargement des déclarations…</p></Card>
+          )}
+
+          {!bpfLoading && bpfMessage && (
+            <div style={{
+              padding: '12px 16px',
+              borderRadius: '8px',
+              marginBottom: '16px',
+              backgroundColor: bpfMessage.type === 'success' ? '#e6f4f1' : '#fde8e8',
+              color: bpfMessage.type === 'success' ? '#006B68' : '#c53030',
+              fontSize: '13px',
+              fontWeight: '600',
+            }}>
+              {bpfMessage.text}
+            </div>
+          )}
+
+          {!bpfLoading && bpfs.length === 0 && (
+            <Card>
+              <p style={{ color: COLORS.textMuted, fontSize: '13px' }}>
+                Aucune déclaration BPF enregistrée. Contactez le support pour initialiser les données historiques.
+              </p>
+            </Card>
+          )}
+
+          {!bpfLoading && bpfs.map((bpf) => {
+            const jours = joursAvantEcheance(bpf);
+            const enRetard = jours !== null && jours < 0 && !bpf.teletransmis;
+            const urgent = jours !== null && jours <= 7 && jours >= 0 && !bpf.teletransmis;
+
+            return (
+              <Card key={bpf.id} style={{ marginBottom: '16px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '14px' }}>
+                  <div>
+                    <h2 style={{ fontSize: '17px', fontWeight: '700', color: COLORS.primary, marginBottom: '4px' }}>
+                      BPF {bpf.anneeBPF}
+                    </h2>
+                    <p style={{ fontSize: '12px', color: COLORS.textMuted }}>
+                      Exercice du {bpf.exerciceDebut} au {bpf.exerciceFin}
+                    </p>
+                  </div>
+                  <div>
+                    {bpf.teletransmis ? (
+                      <span style={{ backgroundColor: '#e6f4f1', color: '#006B68', padding: '5px 12px', borderRadius: '20px', fontSize: '12px', fontWeight: '700' }}>
+                        ✅ Télétransmis le {bpf.dateTeletransmission}
+                      </span>
+                    ) : enRetard ? (
+                      <span style={{ backgroundColor: '#fde8e8', color: '#c53030', padding: '5px 12px', borderRadius: '20px', fontSize: '12px', fontWeight: '700' }}>
+                        🚨 En retard ({Math.abs(jours!)} j)
+                      </span>
+                    ) : urgent ? (
+                      <span style={{ backgroundColor: '#fde8e8', color: '#c53030', padding: '5px 12px', borderRadius: '20px', fontSize: '12px', fontWeight: '700' }}>
+                        ⚠️ Urgent (J-{jours})
+                      </span>
+                    ) : (
+                      <span style={{ backgroundColor: '#fef6e4', color: '#7a5c00', padding: '5px 12px', borderRadius: '20px', fontSize: '12px', fontWeight: '700' }}>
+                        ⏳ En attente (J-{jours})
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '14px' }}>
+                  <InfoRow label="Date limite légale" value={bpf.dateLimiteTeletransmission || '—'} />
+                  <InfoRow label="Numéro accusé réception" value={bpf.numeroAccuseReception || '—'} />
+                  <InfoRow label="Total produits" value={bpf.totalProduits ? `${bpf.totalProduits.toLocaleString('fr-FR')} €` : '—'} />
+                  <InfoRow label="Total charges" value={bpf.totalCharges ? `${bpf.totalCharges.toLocaleString('fr-FR')} €` : '—'} />
+                </div>
+
+                {!bpf.teletransmis && (
+                  <div style={{ padding: '14px', backgroundColor: COLORS.background, borderRadius: '8px', marginBottom: '12px' }}>
+                    <div style={{ fontSize: '13px', fontWeight: '700', color: COLORS.primary, marginBottom: '10px' }}>
+                      ✅ Marquer comme télétransmis
+                    </div>
+                    <div style={{ display: 'flex', gap: '10px', alignItems: 'flex-end', flexWrap: 'wrap' }}>
+                      <div style={{ flex: 1, minWidth: '150px' }}>
+                        <label style={{ fontSize: '11px', color: '#888', textTransform: 'uppercase', fontWeight: '600', display: 'block', marginBottom: '4px' }}>
+                          Date télétransmission (JJ/MM/AAAA)
+                        </label>
+                        <input
+                          id={`date-${bpf.id}`}
+                          style={inputStyle}
+                          type="text"
+                          placeholder="ex : 28/05/2026"
+                          defaultValue={new Date().toLocaleDateString('fr-FR')}
+                        />
+                      </div>
+                      <div style={{ flex: 1, minWidth: '150px' }}>
+                        <label style={{ fontSize: '11px', color: '#888', textTransform: 'uppercase', fontWeight: '600', display: 'block', marginBottom: '4px' }}>
+                          N° accusé réception
+                        </label>
+                        <input
+                          id={`num-${bpf.id}`}
+                          style={inputStyle}
+                          type="text"
+                          placeholder="ex : 04973425197"
+                        />
+                      </div>
+                      <button
+                        style={btnPrimary}
+                        onClick={async () => {
+                          const dateEl = document.getElementById(`date-${bpf.id}`) as HTMLInputElement;
+                          const numEl = document.getElementById(`num-${bpf.id}`) as HTMLInputElement;
+                          if (!dateEl.value) {
+                            setBpfMessage({ type: 'error', text: 'La date de télétransmission est obligatoire.' });
+                            return;
+                          }
+                          const r = await sauvegarderBPF({
+                            ...bpf,
+                            teletransmis: true,
+                            dateTeletransmission: dateEl.value,
+                            numeroAccuseReception: numEl.value || null,
+                          });
+                          if (r.success) {
+                            setBpfMessage({ type: 'success', text: `BPF ${bpf.anneeBPF} marqué comme télétransmis ✅` });
+                            const data = await chargerBPFs();
+                            setBpfs(data);
+                          } else {
+                            setBpfMessage({ type: 'error', text: `Erreur : ${r.error}` });
+                          }
+                        }}
+                      >
+                        ✅ Valider
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {bpf.notes && (
+                  <div style={{ padding: '10px 12px', backgroundColor: '#f8f8f8', borderRadius: '6px', fontSize: '12px', color: COLORS.textMuted, fontStyle: 'italic' }}>
+                    📝 {bpf.notes}
+                  </div>
+                )}
+              </Card>
+            );
+          })}
         </div>
       )}
 
