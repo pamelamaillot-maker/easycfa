@@ -759,7 +759,14 @@ export default function FicheApprenant({ params }: { params: Promise<{ id: strin
       }
 
       setApprenant(trouve);
-      setForm(trouve ?? {});
+      // Hydratation : reconstruit les piece_* depuis le JSON pieces pour l'affichage
+      const trouveHydrate: any = { ...(trouve ?? {}) };
+      if (trouveHydrate.pieces && typeof trouveHydrate.pieces === 'object') {
+        Object.entries(trouveHydrate.pieces).forEach(([pieceId, fichier]) => {
+          trouveHydrate['piece_' + pieceId] = fichier;
+        });
+      }
+      setForm(trouveHydrate);
       setSessions(chargerSessions());
       setEntreprises(chargerEntreprises());
 
@@ -958,13 +965,24 @@ export default function FicheApprenant({ params }: { params: Promise<{ id: strin
   async function sauvegarder() {
     // 1. Supabase d'abord (source de vérité)
     try {
-      const res = await modifierApprenti(id, form);
+      // Nettoyage : reconstruit le champ JSON `pieces` à partir des piece_*
+      const pourSupabase: any = { ...form };
+      const piecesReconstruites: any = { ...(form.pieces || {}) };
+      Object.keys(pourSupabase).forEach((k) => {
+        if (k.startsWith('piece_')) {
+          const pieceId = k.replace('piece_', '');
+          if (pourSupabase[k]) piecesReconstruites[pieceId] = pourSupabase[k];
+          delete pourSupabase[k];
+        }
+      });
+      pourSupabase.pieces = piecesReconstruites;
+
+      const res = await modifierApprenti(id, pourSupabase);
       if (!res.success) {
         alert(`⚠️ Erreur Supabase : ${res.error}\nModifications enregistrées localement uniquement.`);
       } else {
-        console.log(`[FicheApprenant ${id}] Sauvegardé dans Supabase ✅`);
-      }
-    } catch (e) {
+        console.log(`[FicheApprenant ${id}] Sauvegardé dans Supabase ✅ (pieces:`, Object.keys(piecesReconstruites), ')');
+      } } catch (e) {
       console.error('[FicheApprenant] Erreur Supabase, sauvegarde locale uniquement', e);
     }
     // 2. localStorage en miroir (fallback / compatibilité)

@@ -120,7 +120,14 @@ export default function FicheEntreprise({ params }: { params: Promise<{ id: stri
         if (trouve) console.warn(`[FicheEntreprise ${id}] Chargée depuis localStorage (fallback)`);
       }
       setEntreprise(trouve);
-      setForm(trouve ?? {});
+      // Hydratation : reconstruit les piece_* depuis le JSON pieces pour l'affichage
+      const trouveHydrate: any = { ...(trouve ?? {}) };
+      if (trouveHydrate.pieces && typeof trouveHydrate.pieces === 'object') {
+        Object.entries(trouveHydrate.pieces).forEach(([pieceId, fichier]) => {
+          trouveHydrate['piece_' + pieceId] = fichier;
+        });
+      }
+      setForm(trouveHydrate);
       // Charger les apprenants Supabase (pour la section conventions)
       try {
         const apps = await chargerApprentis();
@@ -152,7 +159,16 @@ export default function FicheEntreprise({ params }: { params: Promise<{ id: stri
      'tuteurCivilite', 'tuteurAnneeExperience',
      'rhTelephone', 'opcoContact', 'mandatSepa', 'tarifHoraire', 'notes']
       .forEach(k => delete pourSupabase[k]);
-    Object.keys(pourSupabase).forEach(k => { if (k.startsWith('piece_')) delete pourSupabase[k]; });
+    // Reconstruit le champ JSON `pieces` à partir des piece_*
+    const piecesReconstruites: any = { ...(pourSupabase.pieces || {}) };
+    Object.keys(pourSupabase).forEach(k => {
+      if (k.startsWith('piece_')) {
+        const pieceId = k.replace('piece_', '');
+        if (pourSupabase[k]) piecesReconstruites[pieceId] = pourSupabase[k];
+        delete pourSupabase[k];
+      }
+    });
+    pourSupabase.pieces = piecesReconstruites;
 
     try {
       const res = await modifierEntreprise(id, pourSupabase);
