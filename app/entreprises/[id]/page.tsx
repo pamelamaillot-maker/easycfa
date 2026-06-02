@@ -640,9 +640,37 @@ export default function FicheEntreprise({ params }: { params: Promise<{ id: stri
 
                 <div style={{ display: 'flex', gap: 6, flexShrink: 0, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
                   {statut === 'a_generer' && (
-                    <a href="/documents/convention" style={{ ...btnSecondary, textDecoration: 'none', fontSize: 12, padding: '6px 12px' }}>
-                      → Générer
-                    </a>
+                    <>
+                      <a href="/documents/convention" style={{ ...btnSecondary, textDecoration: 'none', fontSize: 12, padding: '6px 12px' }}>
+                        → Générer
+                      </a>
+                      <label style={{
+                        backgroundColor: COLORS.primary, color: 'white', borderRadius: 8,
+                        padding: '7px 12px', fontSize: 12, fontWeight: 600, cursor: 'pointer',
+                        whiteSpace: 'nowrap',
+                      }}>
+                        📥 Importer signée
+                        <input type="file" accept=".pdf" style={{ display: 'none' }} onChange={async (ev) => {
+                          const f = ev.target.files?.[0];
+                          if (!f) return;
+                          const chemin = cheminStorage('entreprises', id, `convention_signee_${a.id}`, f.name);
+                          const resUpload = await uploaderFichier(chemin, f);
+                          if (!resUpload.success || !resUpload.fichier) {
+                            alert(`⚠️ Erreur upload : ${resUpload.error}`);
+                            return;
+                          }
+                          const resSave = await marquerConventionSignee(id, a.id, resUpload.fichier.url, f.name);
+                          if (!resSave.success) {
+                            alert(`⚠️ Erreur sauvegarde : ${resSave.error}`);
+                            return;
+                          }
+                          console.log(`[Entreprise ${id}] Convention signée (historique) importée pour ${a.nom} ${a.prenom} ✅`);
+                          const ent = await chargerEntrepriseSupabase(id);
+                          if (ent) { setEntreprise(ent); setForm(ent); }
+                          alert(`✅ Convention signée importée pour ${a.prenom} ${a.nom}`);
+                        }} />
+                      </label>
+                    </>
                   )}
                   {statut === 'en_attente' && (
                     <label style={{
