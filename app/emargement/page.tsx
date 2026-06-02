@@ -237,7 +237,13 @@ export default function Emargement() {
 
   // Charger ou créer la fiche d'intervention quand on change de feuille
   useEffect(() => {
-    if (!feuille || !formateurId) {
+    if (!feuille) {
+      setFicheActive(null);
+      return;
+    }
+    // Admin (PAMA/Betty) sans formateurId : on charge quand même la fiche en lecture seule.
+    // Formateur : on charge/crée sa fiche normalement.
+    if (!formateurId && !estAdmin) {
       setFicheActive(null);
       return;
     }
@@ -249,12 +255,12 @@ export default function Emargement() {
         feuille.formation,
         feuille.date,
         feuille.jour,
-        formateurId,
+        formateurId ?? '',
         monNomFormateur,
       );
       setFicheActive(fiche);
     })();
-  }, [feuilleId, formateurId, monNomFormateur]);
+  }, [feuilleId, formateurId, monNomFormateur, estAdmin]);
 
   function calculerHeures(statut: StatutPresence, heureArrivee?: string, heureDebut = '08:30', heureFin = '12:00'): number {
     if (statut === 'Présent' || statut === 'Absent justifié') return 3.5;
@@ -398,8 +404,11 @@ export default function Emargement() {
     }
 
     setValidationConfirm(false);
-    setMessageSuccess(`✅ Feuille validée à ${new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}. ${absentsOuRetards.length} email(s) envoyé(s) automatiquement.`);
-    setTimeout(() => setMessageSuccess(''), 5000);
+    const msgEmails = absentsOuRetards.length > 0
+      ? ` ${absentsOuRetards.length} absence(s)/retard(s) à signaler aux entreprises — envoi géré par l'administration.`
+      : '';
+    setMessageSuccess(`✅ Demi-journée validée à ${new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}.${msgEmails}`);
+    setTimeout(() => setMessageSuccess(''), 6000);
   }
 
   function creerNouvelleFeuille() {
@@ -918,7 +927,7 @@ export default function Emargement() {
               </Card>
 
               {/* ===== ONGLETS PRÉSENCES / FICHE INTERVENTION ===== */}
-              {formateurId && (
+              {(formateurId || estAdmin) && (
                 <div style={{ display: 'flex', gap: '4px', marginBottom: '16px', borderBottom: '2px solid #EAF4F3' }}>
                   <button
                     onClick={() => setOngletPrincipal('presences')}
@@ -1054,7 +1063,7 @@ export default function Emargement() {
                           </div>
                           {(nbAbsents + nbRetards) > 0 && (
                             <div style={{ fontSize: '12px', color: '#e53e3e', marginTop: '4px', fontWeight: '600' }}>
-                              📧 {nbAbsents + nbRetards} email(s) seront envoyés automatiquement
+                              📧 {nbAbsents + nbRetards} absence(s)/retard(s) à signaler — l'administration enverra les emails aux entreprises
                             </div>
                           )}
                         </div>
@@ -1277,20 +1286,9 @@ export default function Emargement() {
                                   }} />
                                 </div>
                                 <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
-                                  <label style={{ backgroundColor: justifUrl ? 'white' : '#c53030', color: justifUrl ? '#c53030' : 'white', border: justifUrl ? `1.5px solid #c53030` : 'none', borderRadius: '6px', padding: '4px 10px', fontSize: '11px', fontWeight: '600', cursor: ficheSignee ? 'default' : 'pointer', opacity: ficheSignee ? 0.5 : 1 }}>
-                                    {justifUrl ? '🔄 Remplacer justificatif' : '📎 Importer justificatif'}
-                                    <input type="file" accept=".pdf,.jpg,.jpeg,.png" disabled={ficheSignee} style={{ display: 'none' }} onChange={async e => {
-                                      const f = e.target.files?.[0];
-                                      if (f) await uploadJustificatifAbsence(idx, f);
-                                    }} />
-                                  </label>
-                                  {justifUrl && (
-                                    <>
-                                      <span style={{ fontSize: '11px', color: '#7a1d1d', fontWeight: '600' }}>📄 {justifNom}</span>
-                                      <a href={justifUrl} target="_blank" rel="noopener noreferrer" style={{ color: '#c53030', textDecoration: 'underline', fontSize: '11px', fontWeight: '600' }}>⬇ Télécharger</a>
-                                    </>
-                                  )}
-                                  {!justifUrl && <span style={{ fontSize: '10px', color: '#888', fontStyle: 'italic' }}>Importe le certificat médical, attestation employeur, etc.</span>}
+                                  <span style={{ fontSize: '10px', color: '#888', fontStyle: 'italic' }}>
+                                    📋 Le suivi du justificatif est assuré par l'administration (Betty).
+                                  </span>
                                 </div>
                               </div>
                             );
@@ -1301,7 +1299,14 @@ export default function Emargement() {
                   </Card>
 
                   {/* SECTION 4 — Validation et signature */}
-                  {!ficheSignee && (
+                  {!ficheSignee && !estFormateur && estAdmin && (
+                    <Card>
+                      <div style={{ padding: '14px 16px', backgroundColor: '#e0f2fe', borderRadius: '8px', fontSize: '13px', color: '#0c5274', borderLeft: '4px solid #0891b2' }}>
+                        🔒 En tant qu'administrateur, vous consultez cette fiche en lecture seule. <strong>Seul le formateur peut la signer</strong> depuis son espace ou l'onglet émargement, pour garantir la validité Qualiopi.
+                      </div>
+                    </Card>
+                  )}
+                  {!ficheSignee && estFormateur && (
                     <Card>
                       <h3 style={{ fontSize: '14px', fontWeight: '700', color: COLORS.primary, marginBottom: '14px' }}>
                         ✍️ Validation et signature électronique
@@ -1341,7 +1346,7 @@ export default function Emargement() {
               )}
 
               {/* Message si l'utilisateur n'est pas formateur */}
-              {!formateurId && ongletPrincipal === 'intervention' && (
+              {!formateurId && !estAdmin && ongletPrincipal === 'intervention' && (
                 <Card>
                   <div style={{ padding: '40px', textAlign: 'center', color: '#888' }}>
                     Ton compte n'est pas lié à un formateur. Contacte l'administrateur.
