@@ -10,6 +10,7 @@ import {
   modifierFormateur,
   supprimerFormateur as supprimerFormateurSupabase,
 } from '../../data/formateursSupabase';
+import { chargerInterventionsFormateur } from '../../data/interventionsSupabase';
 import Card from '../../components/Card';
 import { useAcces } from '../../lib/useAcces';
 import {
@@ -431,14 +432,20 @@ export default function Formateurs() {
   const peutEvaluer = estAdmin;
   const [evaluations, setEvaluations] = useState<EvaluationFormateur[]>([]);
   const [evaluationEnEdition, setEvaluationEnEdition] = useState<EvaluationFormateur | null>(null);
-
+  const [fichesIntervention, setFichesIntervention] = useState<any[]>([]);
+  
   useEffect(() => {
     if (selectionne) {
       setEvaluations(chargerEvaluationsFormateur(selectionne.id));
       setEvaluationEnEdition(null);
+      // Fiches d'intervention pédagogique de ce formateur (lecture seule)
+      chargerInterventionsFormateur(selectionne.id)
+        .then(fiches => setFichesIntervention(fiches))
+        .catch(() => setFichesIntervention([]));
     } else {
       setEvaluations([]);
       setEvaluationEnEdition(null);
+      setFichesIntervention([]);
     }
   }, [selectionne?.id]);
 
@@ -513,7 +520,7 @@ export default function Formateurs() {
     // localStorage + UI
     sauvegarder([...formateurs, nouveau]);
     setModale(false);
-    setForm({ statut: 'Actif', specialites: [], pieces: { cni: null, cv: null, kbis: null, recepisse_nda: null, attestation: null, rc_pro: null } });
+    setForm({ statut: 'Actif', specialites: [], pieces: { cni: null, cv: null, kbis: null, recepisse_nda: null, attestation: null, rc_pro: null, rib: null, contrat_prestation: null } });
     setSelectionne(nouveau);
   }
 
@@ -838,6 +845,7 @@ export default function Formateurs() {
               <div style={{ display: 'flex', borderBottom: '2px solid #EAF4F3', overflowX: 'auto' }}>
                 {[
                   { id: 'interventions', label: '📅 Interventions' },
+                  { id: 'fiches', label: '📝 Fiches signées' },
                   { id: 'suivi', label: '📊 Suivi mensuel' },
                   { id: 'pieces', label: '📎 Pièces justificatives' },
                   { id: 'evaluation', label: '💬 Appréciation formateur' },
@@ -1110,6 +1118,53 @@ export default function Formateurs() {
                           peutEvaluer={peutEvaluer}
                         />
                       ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {ongletFormateur === 'fiches' && (
+                <div>
+                  <div style={{ marginBottom: '14px' }}>
+                    <h3 style={{ fontSize: '14px', fontWeight: '700', color: '#006B68' }}>📝 Fiches d'intervention pédagogique</h3>
+                    <p style={{ fontSize: '10px', color: '#888' }}>🛡️ Qualiopi — Fiches signées dans l'espace formateur ou l'émargement (lecture seule)</p>
+                  </div>
+                  {fichesIntervention.length === 0 ? (
+                    <div style={{ padding: '20px', textAlign: 'center', color: '#888', fontSize: '12px', fontStyle: 'italic' }}>
+                      Aucune fiche d'intervention pour ce formateur.
+                    </div>
+                  ) : (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                      {fichesIntervention
+                        .slice()
+                        .sort((a, b) => (b.date || '').localeCompare(a.date || ''))
+                        .map(fi => {
+                          const signee = !!fi.dateSignature;
+                          return (
+                            <div key={fi.id} style={{ backgroundColor: signee ? '#e6f4f1' : '#fffbf0', borderRadius: '8px', padding: '10px 12px', border: `1px solid ${signee ? '#006B68' : '#C8A23A'}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '10px' }}>
+                              <div>
+                                <div style={{ fontSize: '13px', fontWeight: '700', color: '#006B68' }}>
+                                  {fi.jour} {fi.date}{fi.sessionNumero ? ` — ${fi.sessionNumero}` : ''}
+                                </div>
+                                <div style={{ fontSize: '11px', color: '#888', marginTop: '2px' }}>
+                                  {fi.formationLabel || '—'}{fi.seance ? ` • ${fi.seance}` : ''}
+                                </div>
+                                <div style={{ fontSize: '11px', marginTop: '4px' }}>
+                                  {signee ? (
+                                    <span style={{ color: '#15803d', fontWeight: '600' }}>
+                                      ✅ Signée le {new Date(fi.dateSignature).toLocaleDateString('fr-FR')} à {fi.heureSignature}
+                                    </span>
+                                  ) : (
+                                    <span style={{ color: '#C8A23A', fontWeight: '600' }}>⏳ Non signée</span>
+                                  )}
+                                </div>
+                              </div>
+                              <Link href={`/emargement?feuille=${fi.id}`} style={{ ...btnSecondary, padding: '6px 12px', fontSize: '11px', textDecoration: 'none', whiteSpace: 'nowrap' }}>
+                                Ouvrir →
+                              </Link>
+                            </div>
+                          );
+                        })}
                     </div>
                   )}
                 </div>
