@@ -71,6 +71,14 @@ export interface Apprenti {
   contratPrecedent?: string;
   contratSuivant?: string;
   archive?: boolean;
+  motifRupture?: string;
+  pieces?: Record<string, any>;
+  dmf?: any;
+  rupture?: any;
+  ruptureSignee?: any;
+  dfmf?: any;
+  droitImage?: any;
+  sortiesAnticipees?: any[];
 
   // SIFA
   situationAvant?: string;
