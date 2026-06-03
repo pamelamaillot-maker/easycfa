@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { APPRENANTS_REELS } from '../../data/mockApprenants_reels';
+import { chargerApprentis } from '../../data/apprentisSupabase';
 import { COLORS } from '../../lib/constants';
 import { 
   chargerSessions as chargerSessionsSupabase,
@@ -182,6 +183,7 @@ export default function Sessions() {
   const [filtreStatut, setFiltreStatut] = useState('Tous');
   const [form, setForm] = useState<Partial<Session>>({ formation: 'SC', annee: '2026', statut: 'À venir', apprenantIds: [], modules: [] });
   const [formateurs, setFormateurs] = useState<any[]>([]);
+  const [apprenants, setApprenants] = useState<any[]>([]);
   const [vuePlanning, setVuePlanning] = useState<'liste' | 'mois'>('liste');
   const [refreshKey, setRefreshKey] = useState(0); // pour rafraîchir l'affichage des apprenants
   const [modeEditionPlanning, setModeEditionPlanning] = useState(false);
@@ -211,6 +213,14 @@ export default function Sessions() {
         const fSaved = localStorage.getItem('easycfa_formateurs');
         if (fSaved) setFormateurs(JSON.parse(fSaved));
       } catch {}
+      // Apprenants (pour l'affectation aux sessions) : Supabase, table 'apprenants'
+      try {
+        const apprenantsSupabase = await chargerApprentis();
+        console.log(`[Sessions] ${apprenantsSupabase.length} apprenants chargés depuis Supabase ✅`);
+        setApprenants(apprenantsSupabase as any[]);
+      } catch (e) {
+        console.error('[Sessions] Erreur chargement apprenants Supabase', e);
+      }
     })();
   }, []);
 
@@ -362,7 +372,7 @@ export default function Sessions() {
   };
 
   // === Apprenants pour cette formation (CA + P2S, non archivés) ===
-  const apprenantsDispo = selectionne ? APPRENANTS_REELS
+  const apprenantsDispo = selectionne ? apprenants
     .filter((a: any) => !a.archive && a.formation === selectionne.formation && (a.statut === 'En cours' || a.statut === 'P2S'))
     .sort((a: any, b: any) => {
       // CA d'abord, P2S ensuite, puis tri par nom
