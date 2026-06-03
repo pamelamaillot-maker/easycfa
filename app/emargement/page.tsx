@@ -8,6 +8,7 @@ import Link from 'next/link';
 import { FEUILLES_EMARGEMENT, EMAIL_ABSENCE_TEMPLATE } from '../../data/mockEmargement';
 import type { FeuilleEmargement, DemiJournee, PresenceApprenant, StatutPresence } from '../../data/mockEmargement';
 import { APPRENANTS_REELS } from '../../data/mockApprenants_reels';
+import { chargerApprentis } from '../../data/apprentisSupabase';
 import { useUser } from '../../lib/UserContext';
 import { useAcces, tracerAction } from '../../lib/useAcces';
 import {
@@ -69,18 +70,19 @@ function getApprenantSessionId(apprenantId: string): string | undefined {
   return base?.sessionId;
 }
 
-function genererFeuilleDepuisSessions(sessionsSelectionnees: any[], date: string, jour: string): FeuilleEmargement {
+function genererFeuilleDepuisSessions(sessionsSelectionnees: any[], date: string, jour: string, apprenants: any[]): FeuilleEmargement {
   if (sessionsSelectionnees.length === 0) throw new Error('Au moins une session est nécessaire');
   const sessionPrincipale = sessionsSelectionnees[0];
   const formationLabel = FORMATIONS_LABELS[sessionPrincipale.formation] ?? sessionPrincipale.formation;
 
   // Agréger TOUS les apprenants de TOUTES les sessions cochées (sans doublon)
+  // Source : apprenants Supabase, rattachement via session.apprenantIds (fiable)
   const idsDejaAjoutes = new Set<string>();
   const apprenantsInscrits: any[] = [];
   sessionsSelectionnees.forEach(session => {
-    APPRENANTS_REELS.forEach((a: any) => {
+    apprenants.forEach((a: any) => {
       if (idsDejaAjoutes.has(a.id)) return;
-      const dansSession = session.apprenantIds?.includes(a.id) || getApprenantSessionId(a.id) === session.id;
+      const dansSession = session.apprenantIds?.includes(a.id);
       if (dansSession) {
         apprenantsInscrits.push(a);
         idsDejaAjoutes.add(a.id);
@@ -142,6 +144,7 @@ export default function Emargement() {
   const [feuillesLocales, setFeuillesLocales] = useState<FeuilleEmargement[]>([]);
   const [sessions, setSessions] = useState<any[]>([]);
   const [formateurs, setFormateurs] = useState<any[]>([]);
+  const [apprenants, setApprenants] = useState<any[]>([]);
   const [modaleNouvelle, setModaleNouvelle] = useState(false);
   const [modaleForm, setModaleForm] = useState<{ sessionIds: string[]; date: string; jour: string; formationCode: string }>({ sessionIds: [], date: '', jour: '', formationCode: '' });
 
@@ -177,6 +180,14 @@ export default function Emargement() {
         const fSaved = localStorage.getItem('easycfa_formateurs');
         if (fSaved) setFormateurs(JSON.parse(fSaved));
       } catch {}
+      // Apprenants : Supabase (table 'apprenants') — pour la création des feuilles
+      try {
+        const apprenantsSupabase = await chargerApprentis();
+        console.log(`[Emargement] ${apprenantsSupabase.length} apprenants chargés depuis Supabase ✅`);
+        setApprenants(apprenantsSupabase as any[]);
+      } catch (e) {
+        console.error('[Emargement] Erreur chargement apprenants Supabase', e);
+      }
     })();
   }, []);
 
@@ -425,7 +436,7 @@ export default function Emargement() {
       jour = ['Dimanche', 'Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi'][d.getDay()];
     }
 
-    const nouvelleFeuille = genererFeuilleDepuisSessions(sessionsSelectionnees as any[], modaleForm.date, jour);
+    const nouvelleFeuille = genererFeuilleDepuisSessions(sessionsSelectionnees as any[], modaleForm.date, jour, apprenants);
 
     setFeuillesLocales(prev => {
       const existante = prev.find(f => f.id === nouvelleFeuille.id);
