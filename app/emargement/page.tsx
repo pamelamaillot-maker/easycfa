@@ -9,6 +9,7 @@ import { FEUILLES_EMARGEMENT, EMAIL_ABSENCE_TEMPLATE } from '../../data/mockEmar
 import type { FeuilleEmargement, DemiJournee, PresenceApprenant, StatutPresence } from '../../data/mockEmargement';
 import { APPRENANTS_REELS } from '../../data/mockApprenants_reels';
 import { chargerApprentis } from '../../data/apprentisSupabase';
+import { chargerEntreprises } from '../../data/entreprisesSupabase';
 import { useUser } from '../../lib/UserContext';
 import { useAcces, tracerAction } from '../../lib/useAcces';
 import {
@@ -145,6 +146,126 @@ export default function Emargement() {
   const [sessions, setSessions] = useState<any[]>([]);
   const [formateurs, setFormateurs] = useState<any[]>([]);
   const [apprenants, setApprenants] = useState<any[]>([]);
+  const [entreprises, setEntreprises] = useState<any[]>([]);
+
+  // Résout l'email destinataire (entreprise) pour un apprenant absent/en retard.
+  // Priorité : tuteurEmail de l'entreprise, repli sur email général de l'entreprise.
+  // Renvoie aussi le nom de l'entreprise et l'email de l'apprenti (pour le Cc).
+  function resoudreDestinataires(presence: any): { emailEntreprise: string | null; nomEntreprise: string; emailApprenant: string | null; entrepriseTrouvee: boolean } {
+    // 1. Retrouver l'apprenant Supabase (pour son entrepriseId / nom entreprise / email)
+    const app = apprenants.find(a => a.id === presence.apprenantId);
+    const nomEntrepriseApp = (app?.entreprise || presence.entreprise || '').trim();
+    const emailApprenant = app?.email || presence.emailApprenant || null;
+
+    // 2. Retrouver la fiche entreprise (par entrepriseId si dispo, sinon par nom raisonSociale)
+    const ent = entreprises.find(e =>
+      (app?.entrepriseId && e.id === app.entrepriseId) ||
+      (nomEntrepriseApp && (e.raisonSociale || '').toLowerCase().trim() === nomEntrepriseApp.toLowerCase())
+    );
+
+    // 3. Email entreprise : tuteur en priorité, repli sur email général
+    const emailEntreprise = ent?.tuteurEmail || ent?.email || null;
+
+    return {
+      emailEntreprise: emailEntreprise || null,
+      nomEntreprise: ent?.raisonSociale || nomEntrepriseApp || '(entreprise inconnue)',
+      emailApprenant,
+      entrepriseTrouvee: !!ent,
+    };
+  }
+
+  const [envoiEnCours, setEnvoiEnCours] = useState(false);
+
+  // Envoi groupé des alertes absence/retard aux entreprises (admin uniquement, après validation)
+  async function envoyerAlertesAbsence(feuilleCible: FeuilleEmargement, djCible: DemiJournee) {
+    const concernes = djCible.presences.filter(p => (p.statut === 'Absent' || p.statut === 'Retard') && !p.emailEnvoye);
+    if (concernes.length === 0) {
+      alert('Aucune alerte à envoyer (déjà toutes envoyées, ou aucun absent/retard).');
+      return;
+    }
+
+    const alertes = concernes.map(p => {
+      const d = resoudreDestinataires(p);
+      const corps = EMAIL_ABSENCE_TEMPLATE.corps
+        .replace('{{APPRENANT_PRENOM}}', p.prenom)
+        .replace('{{APPRENANT_NOM}}', p.nom)
+        .replace('{{STATUT}}', p.statut === 'Absent' ? 'absent(e)' : 'en retard')
+        .replace('{{DATE}}', feuilleCible.date)
+        .replace('{{DEMI_JOURNEE}}', djCible.type)
+        .replace('{{FORMATION}}', feuilleCible.formation)
+        .replace('{{MESSAGE_SPECIFIQUE}}', p.statut === 'Retard'
+          ? `Heure d'arrivée enregistrée : ${p.heureArrivee ?? 'non précisée'}.`
+          : `Cette absence sera comptabilisée comme injustifiée si aucun justificatif n'est transmis dans les 48 heures.`);
+      return {
+        apprenantId: p.apprenantId,
+        apprenantNom: `${p.prenom} ${p.nom}`,
+        emailEntreprise: d.emailEntreprise,
+        emailApprenant: d.emailApprenant,
+        sujet: EMAIL_ABSENCE_TEMPLATE.sujet,
+        corps,
+      };
+    });
+
+    const sansEmail = alertes.filter(a => !a.emailEntreprise);
+    if (sansEmail.length > 0) {
+      const noms = sansEmail.map(a => a.apprenantNom).join(', ');
+      if (!confirm(`⚠️ ${sansEmail.length} apprenant(s) sans email entreprise : ${noms}\n\nIls seront ignorés. Continuer avec les autres ?`)) return;
+    }
+
+    const aEnvoyer = alertes.filter(a => a.emailEntreprise);
+    if (aEnvoyer.length === 0) {
+      alert('Aucun email entreprise disponible — rien à envoyer.');
+      return;
+    }
+    if (!confirm(`Envoyer ${aEnvoyer.length} alerte(s) aux entreprises ?`)) return;
+
+    setEnvoiEnCours(true);
+    try {
+      const res = await fetch('/api/envoyer-alertes-absence', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ alertes: aEnvoyer }),
+      });
+      const data = await res.json();
+
+      const idsReussis = new Set<string>(
+        (data.resultats || [])
+          .map((r: any, i: number) => (r.success ? aEnvoyer[i]?.apprenantId : null))
+          .filter(Boolean)
+      );
+
+      setFeuillesLocales(prev => {
+        const nouvelles = prev.map(f => {
+          if (f.id !== feuilleCible.id) return f;
+          return {
+            ...f,
+            demiJournees: f.demiJournees.map(dd => {
+              if (dd.id !== djCible.id) return dd;
+              return {
+                ...dd,
+                presences: dd.presences.map(p => idsReussis.has(p.apprenantId) ? { ...p, emailEnvoye: true } : p),
+              };
+            }),
+          };
+        });
+        localStorage.setItem('easycfa_emargement_v2', JSON.stringify(nouvelles));
+        const fMod = nouvelles.find(f => f.id === feuilleCible.id);
+        if (fMod) creerEmargementSupabase(fMod as any);
+        return nouvelles;
+      });
+
+      tracerAction('ENVOI_ALERTES_ABSENCE', 'emargement', `${feuilleCible.id}_${djCible.id}`,
+        `${feuilleCible.formation} — ${feuilleCible.date} — ${djCible.type} — ${data.nbReussis}/${data.nbTotal} envoyé(s)`, utilisateur);
+
+      setMessageSuccess(`✅ ${data.nbReussis}/${data.nbTotal} alerte(s) envoyée(s) aux entreprises.`);
+      setTimeout(() => setMessageSuccess(''), 6000);
+    } catch (e: any) {
+      console.error('[Alertes absence] Erreur envoi:', e);
+      alert(`⚠️ Erreur lors de l'envoi : ${e.message}`);
+    } finally {
+      setEnvoiEnCours(false);
+    }
+  }
   const [modaleNouvelle, setModaleNouvelle] = useState(false);
   const [modaleForm, setModaleForm] = useState<{ sessionIds: string[]; date: string; jour: string; formationCode: string }>({ sessionIds: [], date: '', jour: '', formationCode: '' });
 
@@ -187,6 +308,14 @@ export default function Emargement() {
         setApprenants(apprenantsSupabase as any[]);
       } catch (e) {
         console.error('[Emargement] Erreur chargement apprenants Supabase', e);
+      }
+      // Entreprises : Supabase — pour récupérer les emails (alertes absence aux entreprises)
+      try {
+        const entreprisesSupabase = await chargerEntreprises();
+        console.log(`[Emargement] ${entreprisesSupabase.length} entreprises chargées depuis Supabase ✅`);
+        setEntreprises(entreprisesSupabase as any[]);
+      } catch (e) {
+        console.error('[Emargement] Erreur chargement entreprises Supabase', e);
       }
     })();
   }, []);
@@ -395,7 +524,7 @@ export default function Emargement() {
                 heureValidation: new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }),
                 presences: d.presences.map(p => ({
                   ...p,
-                  emailEnvoye: p.statut === 'Absent' || p.statut === 'Retard' ? true : p.emailEnvoye,
+                  // emailEnvoye reste tel quel : il ne passera à true qu'après un envoi réel par l'admin
                 })),
               };
             }),
@@ -927,6 +1056,19 @@ export default function Emargement() {
                       <span style={{ backgroundColor: '#e6f4f1', color: '#006B68', padding: '6px 14px', borderRadius: '20px', fontSize: '13px', fontWeight: '700' }}>
                         ✅ Validé à {dj.heureValidation}
                       </span>
+                      {estAdmin && !estFormateur && (() => {
+                        const aEnvoyer = dj.presences.filter(p => (p.statut === 'Absent' || p.statut === 'Retard') && !p.emailEnvoye).length;
+                        if (aEnvoyer === 0) return null;
+                        return (
+                          <button
+                            onClick={() => envoyerAlertesAbsence(feuille, dj)}
+                            disabled={envoiEnCours}
+                            style={{ backgroundColor: '#3a5bc7', color: 'white', border: 'none', borderRadius: '8px', padding: '5px 12px', fontSize: '12px', fontWeight: '600', cursor: envoiEnCours ? 'wait' : 'pointer', opacity: envoiEnCours ? 0.6 : 1 }}
+                          >
+                            {envoiEnCours ? '⏳ Envoi…' : `📧 Envoyer ${aEnvoyer} alerte(s) aux entreprises`}
+                          </button>
+                        );
+                      })()}
                       {estAdmin && (
                         <button onClick={rouvrirDemiJournee} style={{ backgroundColor: 'white', color: '#c53030', border: '1.5px solid #c53030', borderRadius: '8px', padding: '5px 12px', fontSize: '12px', fontWeight: '600', cursor: 'pointer' }}>
                           ↺ Rouvrir
@@ -1045,7 +1187,7 @@ export default function Emargement() {
                                           {STATUT_STYLE[statut].icon} {statut}
                                         </button>
                                       ))}
-                                      {(p.statut === 'Absent' || p.statut === 'Retard') && (
+                                      {(p.statut === 'Absent' || p.statut === 'Retard') && !estFormateur && (
                                         <button onClick={() => setEmailPreview({ apprenant: p, dj, feuille })} style={{ backgroundColor: '#3a5bc7', color: 'white', border: 'none', borderRadius: '5px', padding: '3px 7px', fontSize: '10px', fontWeight: '600', cursor: 'pointer' }}>
                                           📧 Email
                                         </button>
@@ -1076,6 +1218,23 @@ export default function Emargement() {
                             <div style={{ fontSize: '12px', color: '#e53e3e', marginTop: '4px', fontWeight: '600' }}>
                               📧 {nbAbsents + nbRetards} absence(s)/retard(s) à signaler — l'administration enverra les emails aux entreprises
                             </div>
+                          )}
+                          {!estFormateur && (nbAbsents + nbRetards) > 0 && (
+                            <button
+                              onClick={() => {
+                                console.log('=== TEST destinataires alertes absence ===');
+                                dj.presences
+                                  .filter(p => p.statut === 'Absent' || p.statut === 'Retard')
+                                  .forEach(p => {
+                                    const d = resoudreDestinataires(p);
+                                    console.log(`${p.prenom} ${p.nom} [${p.statut}] → entreprise: ${d.nomEntreprise} | À: ${d.emailEntreprise || '⚠️ AUCUN EMAIL'} | Cc: ${d.emailApprenant || '⚠️ aucun'} | fiche entreprise trouvée: ${d.entrepriseTrouvee ? 'oui' : 'NON'}`);
+                                  });
+                                console.log('=== fin test ===');
+                              }}
+                              style={{ marginTop: '8px', backgroundColor: '#f0f0f0', color: '#555', border: '1px solid #ccc', borderRadius: '6px', padding: '4px 10px', fontSize: '11px', fontWeight: '600', cursor: 'pointer' }}
+                            >
+                              🔍 Tester les destinataires (console)
+                            </button>
                           )}
                         </div>
                         <div style={{ display: 'flex', gap: '8px' }}>

@@ -2,10 +2,8 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import SidebarFormateur from '../../../components/SidebarFormateur';
 import { useUser } from '../../../lib/UserContext';
 import { chargerInterventionsFormateur } from '../../../data/interventionsSupabase';
-import { COLORS } from '../../../lib/constants';
 
 const btnSecondary: React.CSSProperties = { backgroundColor: 'white', color: '#006B68', border: '1.5px solid #006B68', borderRadius: '8px', padding: '6px 12px', fontSize: '11px', fontWeight: '600', cursor: 'pointer', textDecoration: 'none', whiteSpace: 'nowrap', display: 'inline-block' };
 
@@ -85,12 +83,5 @@ export default function FormateurFiches() {
     </div>
   );
 
-  return (
-    <div style={{ display: 'flex', minHeight: '100vh', backgroundColor: COLORS.background }}>
-      <SidebarFormateur activePath="/formateur/fiches" />
-      <main style={{ flex: 1, padding: 32, overflowY: 'auto' }}>
-        {contenu}
-      </main>
-    </div>
-  );
+  return contenu;
 }
