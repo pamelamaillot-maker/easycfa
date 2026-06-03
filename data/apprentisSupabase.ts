@@ -215,7 +215,7 @@ export interface DocumentApprenant {
  */
 export async function marquerDocApprenantEnAttente(
   apprenantId: string,
-  type: 'dmf' | 'rupture' | 'droitImage',
+  type: 'dmf' | 'rupture' | 'droitImage' | 'dfmf',
   fichierUrl: string,
   fichierNom: string,
   cheminStorage: string
@@ -248,7 +248,7 @@ export async function marquerDocApprenantEnAttente(
  */
 export async function marquerDocApprenantSignee(
   apprenantId: string,
-  type: 'dmf' | 'rupture' | 'droitImage',
+  type: 'dmf' | 'rupture' | 'droitImage' | 'dfmf',
   fichierUrl: string,
   fichierNom: string,
   cheminStorage: string
@@ -280,7 +280,7 @@ export async function marquerDocApprenantSignee(
  */
 export async function supprimerDocApprenant(
   apprenantId: string,
-  type: 'dmf' | 'rupture' | 'droitImage'
+  type: 'dmf' | 'rupture' | 'droitImage' | 'dfmf'
 ): Promise<{ success: boolean; error?: string }> {
   try {
     const { error } = await supabase
@@ -376,7 +376,7 @@ const CHAMPS_VALIDES = new Set<string>([
   'derniereClasse', 'dernierEtablissement', 'dernierOrganismeUai', 'anneeObtention',
   'dateCreation', 'dateModification',
   'pieces',
-  'dmf', 'rupture', 'ruptureSignee',
+  'dmf', 'rupture', 'ruptureSignee', 'dfmf',
   'motifRupture',
   'droitImage', 'sortiesAnticipees',
 ]);

@@ -2187,8 +2187,8 @@ export default function FicheApprenant({ params }: { params: Promise<{ id: strin
               );
             })()}
 
-            {/* === Workflow DMF (visible si maintien=OUI) === */}
-            {form.maintienFormation === 'OUI' && (() => {
+            {/* === Workflow DMF (visible si rupture déclarée avec maintien renseigné OUI ou NON) === */}
+            {(form.maintienFormation === 'OUI' || form.maintienFormation === 'NON') && (() => {
               const d = form.dmf || {};
               const dStatut = d.statut || 'a_generer';
               const bg = dStatut === 'signee' ? '#f0f4ff' : dStatut === 'en_attente' ? '#fff8e1' : '#f9f5ff';
@@ -2217,6 +2217,10 @@ export default function FicheApprenant({ params }: { params: Promise<{ id: strin
                   </div>
                   {peutModifier && (
                     <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                      <BoutonGenerationDMF
+                        donnees={assemblerDonneesDMF(form)}
+                        nomFichier={`DMF_${form.nom}_${form.prenom}_${(form.dateRupture || '').replace(/\//g, '-')}.pdf`}
+                      />
                       {dStatut === 'a_generer' && (
                         <button
                           onClick={async () => {
@@ -2231,7 +2235,7 @@ export default function FicheApprenant({ params }: { params: Promise<{ id: strin
                           ✉️ Marquer comme envoyée
                         </button>
                       )}
-                      {dStatut === 'en_attente' || dStatut === 'signee' ? (
+                      {dStatut === 'a_generer' || dStatut === 'en_attente' || dStatut === 'signee' ? (
                         <label style={{ backgroundColor: dStatut === 'signee' ? 'white' : '#3a5bc7', color: dStatut === 'signee' ? '#3a5bc7' : 'white', border: dStatut === 'signee' ? '1.5px solid #3a5bc7' : 'none', borderRadius: 8, padding: '7px 12px', fontSize: 12, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' }}>
                           {dStatut === 'signee' ? '🔄 Remplacer le signé' : '📤 Importer DMF signé'}
                           <input type="file" accept=".pdf" style={{ display: 'none' }} onChange={async (ev) => {
@@ -2254,6 +2258,67 @@ export default function FicheApprenant({ params }: { params: Promise<{ id: strin
                             const res = await supprimerDocApprenant(id, 'dmf');
                             if (!res.success) { alert(`⚠️ Erreur : ${res.error}`); return; }
                             const updated = { ...form, dmf: null };
+                            setForm(updated); setApprenant(updated);
+                          }}
+                          style={{ backgroundColor: 'white', color: '#c00', border: '1px solid #c00', borderRadius: 8, padding: '7px 10px', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}
+                        >
+                          ✕
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
+
+            {/* === Workflow DFMF (Fin de maintien) — toujours visible === */}
+            {(() => {
+              const fd = form.dfmf || {};
+              const fdStatut = fd.statut || 'a_generer';
+              const bg = fdStatut === 'signee' ? '#e6f4f1' : fdStatut === 'en_attente' ? '#fff8e1' : '#fffbf0';
+              const border = fdStatut === 'signee' ? '#006B68' : fdStatut === 'en_attente' ? '#ffe082' : '#C8A23A';
+              const icon = fdStatut === 'signee' ? '✅' : fdStatut === 'en_attente' ? '⏳' : '📋';
+              const label = fdStatut === 'signee' ? 'Signée' : fdStatut === 'en_attente' ? 'En attente de signature' : 'À importer une fois la fin de maintien complétée';
+              return (
+                <div style={{ marginTop: 10, padding: 12, backgroundColor: bg, borderRadius: 8, border: `1.5px solid ${border}` }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 8 }}>
+                    <div style={{ fontSize: 22 }}>{icon}</div>
+                    <div style={{ flex: 1, minWidth: 200 }}>
+                      <div style={{ fontSize: 13, fontWeight: 700, color: fdStatut === 'signee' ? '#006B68' : '#7a5c00' }}>
+                        Fin de maintien en formation (DFMF) — {label}
+                      </div>
+                      {fdStatut === 'signee' && fd.dateSignature && (
+                        <div style={{ fontSize: 11, color: '#006B68', marginTop: 4, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                          <span>📄 {fd.fichierSigneNom}</span>
+                          <a href={fd.fichierSigneUrl} target="_blank" rel="noreferrer" style={{ color: '#006B68', textDecoration: 'underline', fontSize: 11 }}>⬇ Télécharger</a>
+                          <span style={{ color: '#888', fontStyle: 'italic' }}>— Importé le {new Date(fd.dateSignature).toLocaleDateString('fr-FR')}</span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                  {peutModifier && (
+                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                      <label style={{ backgroundColor: fdStatut === 'signee' ? 'white' : '#006B68', color: fdStatut === 'signee' ? '#006B68' : 'white', border: fdStatut === 'signee' ? '1.5px solid #006B68' : 'none', borderRadius: 8, padding: '7px 12px', fontSize: 12, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                        {fdStatut === 'signee' ? '🔄 Remplacer le signé' : '📤 Importer DFMF signé'}
+                        <input type="file" accept=".pdf" style={{ display: 'none' }} onChange={async (ev) => {
+                          const f = ev.target.files?.[0];
+                          if (!f) return;
+                          const chemin = cheminStorage('apprenants', id, 'dfmf_signe', f.name);
+                          const resUp = await uploaderFichier(chemin, f);
+                          if (!resUp.success || !resUp.fichier) { alert(`⚠️ Erreur upload : ${resUp.error}`); return; }
+                          const res = await marquerDocApprenantSignee(id, 'dfmf', resUp.fichier.url, f.name, chemin);
+                          if (!res.success) { alert(`⚠️ Erreur : ${res.error}`); return; }
+                          const apprenantMaj = await chargerApprenti(id);
+                          if (apprenantMaj) { setForm(apprenantMaj); setApprenant(apprenantMaj); }
+                        }} />
+                      </label>
+                      {fdStatut !== 'a_generer' && (
+                        <button
+                          onClick={async () => {
+                            if (!confirm('Annuler/supprimer le suivi du DFMF signé ?')) return;
+                            const res = await supprimerDocApprenant(id, 'dfmf');
+                            if (!res.success) { alert(`⚠️ Erreur : ${res.error}`); return; }
+                            const updated = { ...form, dfmf: null };
                             setForm(updated); setApprenant(updated);
                           }}
                           style={{ backgroundColor: 'white', color: '#c00', border: '1px solid #c00', borderRadius: 8, padding: '7px 10px', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}

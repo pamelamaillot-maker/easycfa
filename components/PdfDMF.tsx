@@ -96,9 +96,10 @@ export default function PdfDMF({ donnees: d }: Props) {
         <Text style={S.row}><Text style={S.label}>Formation suivie : </Text>{d.FORMATION_LIBELLE}</Text>
 
         {/* === DÉCLARATION DE MAINTIEN === */}
+        {/* Cases volontairement vides : l'apprenti(e) indique son choix, coché à la main */}
         <Text style={S.sectionTitle}>Déclaration de maintien en formation</Text>
-        <View style={S.checkRow}><PdfCheckBox label="Oui" checked={d.MAINTIEN === 'OUI'} /></View>
-        <View style={S.checkRow}><PdfCheckBox label="Non" checked={d.MAINTIEN === 'NON'} /></View>
+        <View style={S.checkRow}><PdfCheckBox label="Oui" checked={false} /></View>
+        <View style={S.checkRow}><PdfCheckBox label="Non" checked={false} /></View>
         <Text style={[S.row, { marginTop: 6 }]}><Text style={S.label}>Date de déclaration ASP effective : </Text>{d.DATE_RUPTURE_CONTRAT}</Text>
         <Text style={S.row}><Text style={S.label}>Date limite de maintien en formation (≤ 6 mois) : </Text>{d.DATE_FIN_MAINTIEN}</Text>
 
