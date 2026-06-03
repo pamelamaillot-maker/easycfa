@@ -349,7 +349,7 @@ export default function Emargement() {
 
   const [feuilleId, setFeuilleId] = useState(toutesFeuilles[0]?.id ?? '');
   const [demiJourneeId, setDemiJourneeId] = useState(toutesFeuilles[0]?.demiJournees[0]?.id ?? '');
-  const [emailPreview, setEmailPreview] = useState<{ apprenant: PresenceApprenant; dj: DemiJournee; feuille: FeuilleEmargement } | null>(null);
+  
   const [validationConfirm, setValidationConfirm] = useState(false);
   const [messageSuccess, setMessageSuccess] = useState('');
 
@@ -1187,11 +1187,7 @@ export default function Emargement() {
                                           {STATUT_STYLE[statut].icon} {statut}
                                         </button>
                                       ))}
-                                      {(p.statut === 'Absent' || p.statut === 'Retard') && !estFormateur && (
-                                        <button onClick={() => setEmailPreview({ apprenant: p, dj, feuille })} style={{ backgroundColor: '#3a5bc7', color: 'white', border: 'none', borderRadius: '5px', padding: '3px 7px', fontSize: '10px', fontWeight: '600', cursor: 'pointer' }}>
-                                          📧 Email
-                                        </button>
-                                      )}
+                                      
                                     </div>
                                   )}
                                   {dj.valide && <span style={{ fontSize: '11px', color: '#aaa' }}>Feuille validée</span>}
@@ -1219,23 +1215,7 @@ export default function Emargement() {
                               📧 {nbAbsents + nbRetards} absence(s)/retard(s) à signaler — l'administration enverra les emails aux entreprises
                             </div>
                           )}
-                          {!estFormateur && (nbAbsents + nbRetards) > 0 && (
-                            <button
-                              onClick={() => {
-                                console.log('=== TEST destinataires alertes absence ===');
-                                dj.presences
-                                  .filter(p => p.statut === 'Absent' || p.statut === 'Retard')
-                                  .forEach(p => {
-                                    const d = resoudreDestinataires(p);
-                                    console.log(`${p.prenom} ${p.nom} [${p.statut}] → entreprise: ${d.nomEntreprise} | À: ${d.emailEntreprise || '⚠️ AUCUN EMAIL'} | Cc: ${d.emailApprenant || '⚠️ aucun'} | fiche entreprise trouvée: ${d.entrepriseTrouvee ? 'oui' : 'NON'}`);
-                                  });
-                                console.log('=== fin test ===');
-                              }}
-                              style={{ marginTop: '8px', backgroundColor: '#f0f0f0', color: '#555', border: '1px solid #ccc', borderRadius: '6px', padding: '4px 10px', fontSize: '11px', fontWeight: '600', cursor: 'pointer' }}
-                            >
-                              🔍 Tester les destinataires (console)
-                            </button>
-                          )}
+                          
                         </div>
                         <div style={{ display: 'flex', gap: '8px' }}>
                           {!validationConfirm ? (
@@ -1658,44 +1638,7 @@ export default function Emargement() {
         </div>
       )}
 
-      {/* MODALE EMAIL PREVIEW */}
-      {emailPreview && (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <div style={{ backgroundColor: 'white', borderRadius: '12px', padding: '32px', maxWidth: '600px', width: '90%', maxHeight: '80vh', overflowY: 'auto' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-              <h2 style={{ fontSize: '16px', fontWeight: '700', color: COLORS.primary }}>Aperçu de l'email automatique</h2>
-              <button onClick={() => setEmailPreview(null)} style={{ backgroundColor: '#f0f0f0', border: 'none', borderRadius: '6px', padding: '6px 12px', cursor: 'pointer', fontSize: '13px' }}>Fermer ✕</button>
-            </div>
-            <div style={{ backgroundColor: COLORS.background, borderRadius: '8px', padding: '16px', marginBottom: '16px' }}>
-              <div style={{ fontSize: '12px', color: '#888', marginBottom: '4px' }}>De :</div>
-              <div style={{ fontSize: '13px', fontWeight: '600' }}>pedagogie@pamoi.re (PAM OI Formation)</div>
-              <div style={{ fontSize: '12px', color: '#888', marginTop: '8px', marginBottom: '4px' }}>À :</div>
-              <div style={{ fontSize: '13px' }}>{emailPreview.apprenant.emailApprenant}</div>
-              <div style={{ fontSize: '12px', color: '#888', marginTop: '8px', marginBottom: '4px' }}>Sujet :</div>
-              <div style={{ fontSize: '13px', fontWeight: '600' }}>{EMAIL_ABSENCE_TEMPLATE.sujet}</div>
-            </div>
-            <div style={{ backgroundColor: 'white', border: '1px solid #e0e0e0', borderRadius: '8px', padding: '16px', fontSize: '13px', lineHeight: '1.8', whiteSpace: 'pre-wrap', color: COLORS.text }}>
-              {EMAIL_ABSENCE_TEMPLATE.corps
-                .replace('{{APPRENANT_PRENOM}}', emailPreview.apprenant.prenom)
-                .replace('{{APPRENANT_NOM}}', emailPreview.apprenant.nom)
-                .replace('{{STATUT}}', emailPreview.apprenant.statut === 'Absent' ? 'absent(e)' : 'en retard')
-                .replace('{{DATE}}', emailPreview.feuille.date)
-                .replace('{{DEMI_JOURNEE}}', emailPreview.dj.type)
-                .replace('{{FORMATION}}', emailPreview.feuille.formation)
-                .replace('{{MESSAGE_SPECIFIQUE}}', emailPreview.apprenant.statut === 'Retard'
-                  ? `Heure d'arrivée enregistrée : ${emailPreview.apprenant.heureArrivee ?? 'non précisée'}.`
-                  : `Cette absence sera comptabilisée comme injustifiée si aucun justificatif n'est transmis dans les 48 heures.`
-                )
-              }
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '16px' }}>
-              <button onClick={() => setEmailPreview(null)} style={btnSecondary}>Fermer</button>
-              <button style={btnPrimary}>📧 Envoyer maintenant</button>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
+      </div>
   );
 
   // Rendu final selon le rôle
