@@ -178,7 +178,7 @@ export default function Emargement() {
 
   // Envoi groupé des alertes absence/retard aux entreprises (admin uniquement, après validation)
   async function envoyerAlertesAbsence(feuilleCible: FeuilleEmargement, djCible: DemiJournee) {
-    const concernes = djCible.presences.filter(p => (p.statut === 'Absent' || p.statut === 'Retard') && !p.emailEnvoye);
+    const concernes = djCible.presences.filter(p => (p.statut === 'Absent' || p.statut === 'Retard' || p.statut === 'Absent justifié') && !p.emailEnvoye);
     if (concernes.length === 0) {
       alert('Aucune alerte à envoyer (déjà toutes envoyées, ou aucun absent/retard).');
       return;
@@ -189,13 +189,16 @@ export default function Emargement() {
       const corps = EMAIL_ABSENCE_TEMPLATE.corps
         .replace('{{APPRENANT_PRENOM}}', p.prenom)
         .replace('{{APPRENANT_NOM}}', p.nom)
-        .replace('{{STATUT}}', p.statut === 'Absent' ? 'absent(e)' : 'en retard')
+        .replace('{{STATUT}}', p.statut === 'Retard' ? 'en retard' : 'absent(e)')
         .replace('{{DATE}}', feuilleCible.date)
         .replace('{{DEMI_JOURNEE}}', djCible.type)
         .replace('{{FORMATION}}', feuilleCible.formation)
-        .replace('{{MESSAGE_SPECIFIQUE}}', p.statut === 'Retard'
-          ? `Heure d'arrivée enregistrée : ${p.heureArrivee ?? 'non précisée'}.`
-          : `Cette absence sera comptabilisée comme injustifiée si aucun justificatif n'est transmis dans les 48 heures.`);
+        .replace('{{MESSAGE_SPECIFIQUE}}',
+          p.statut === 'Retard'
+            ? `Heure d'arrivée enregistrée : ${p.heureArrivee ?? 'non précisée'}.`
+            : p.statut === 'Absent justifié'
+              ? `Cette absence a été justifiée (justificatif reçu par le CFA). Nous vous en informons pour la gestion de la paie de l'apprenti(e).`
+              : `Cette absence sera comptabilisée comme injustifiée si aucun justificatif n'est transmis dans les 48 heures.`);
       return {
         apprenantId: p.apprenantId,
         apprenantNom: `${p.prenom} ${p.nom}`,
@@ -343,9 +346,20 @@ export default function Emargement() {
   // Phase 4.b-bis : filtrer selon le rôle
   // - Admin/équipe : voit toutes les feuilles
   // - Formateur : voit uniquement ses feuilles (celles où il intervient via le planning)
-  const toutesFeuilles: FeuilleEmargement[] = estFormateur
+  const toutesFeuillesFiltrees: FeuilleEmargement[] = estFormateur
     ? toutesFeuillesRaw.filter(f => feuillesAccessiblesIds.includes(f.id))
     : toutesFeuillesRaw;
+
+  // Tri chronologique : la journée la plus récente en haut.
+  // Les dates sont au format JJ/MM/AAAA → on les convertit en vraie date pour comparer.
+  function dateEnTimestamp(dateStr: string): number {
+    const parts = (dateStr || '').split('/');
+    if (parts.length !== 3) return 0;
+    return new Date(parseInt(parts[2]), parseInt(parts[1]) - 1, parseInt(parts[0])).getTime();
+  }
+  const toutesFeuilles: FeuilleEmargement[] = [...toutesFeuillesFiltrees].sort(
+    (a, b) => dateEnTimestamp(b.date) - dateEnTimestamp(a.date)
+  );
 
   const [feuilleId, setFeuilleId] = useState(toutesFeuilles[0]?.id ?? '');
   const [demiJourneeId, setDemiJourneeId] = useState(toutesFeuilles[0]?.demiJournees[0]?.id ?? '');
@@ -1057,7 +1071,7 @@ export default function Emargement() {
                         ✅ Validé à {dj.heureValidation}
                       </span>
                       {estAdmin && !estFormateur && (() => {
-                        const aEnvoyer = dj.presences.filter(p => (p.statut === 'Absent' || p.statut === 'Retard') && !p.emailEnvoye).length;
+                        const aEnvoyer = dj.presences.filter(p => (p.statut === 'Absent' || p.statut === 'Retard' || p.statut === 'Absent justifié') && !p.emailEnvoye).length;
                         if (aEnvoyer === 0) return null;
                         return (
                           <button
