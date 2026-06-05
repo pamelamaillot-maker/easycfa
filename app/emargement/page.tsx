@@ -1090,29 +1090,7 @@ export default function Emargement() {
               </div>
             </Card>
 
-            {feuille && (
-              <Card>
-                <h2 style={{ fontSize: '14px', fontWeight: '700', color: COLORS.primary, marginBottom: '12px' }}>Demi-journée</h2>
-                {feuille.demiJournees.map((d) => (
-                  <div key={d.id} onClick={() => setDemiJourneeId(d.id)} style={{
-                    width: '100%', padding: '10px 12px',
-                    backgroundColor: demiJourneeId === d.id ? COLORS.background : 'transparent',
-                    border: demiJourneeId === d.id ? `1.5px solid ${COLORS.primary}` : '1.5px solid #e0e0e0',
-                    borderRadius: '8px', cursor: 'pointer', marginBottom: '8px',
-                  }}>
-                    <div style={{ fontSize: '13px', fontWeight: '700', color: COLORS.primary }}>{d.type === 'Matin' ? '🌅' : '🌇'} {d.type}</div>
-                    <div style={{ fontSize: '11px', color: COLORS.textMuted }}>{d.heureDebut} – {d.heureFin} ({d.heures}h)</div>
-                    <div style={{ fontSize: '11px', color: COLORS.textMuted }}>{d.theme}</div>
-                    <div style={{ fontSize: '11px', marginTop: '2px' }}>
-                      <span style={{ backgroundColor: d.valide ? '#e6f4f1' : '#fef6e4', color: d.valide ? '#006B68' : '#C8A23A', padding: '2px 6px', borderRadius: '4px', fontWeight: '600' }}>
-                        {d.valide ? `✅ Validé à ${d.heureValidation}` : '⏳ En attente'}
-                      </span>
-                    </div>
-                  </div>
-                ))}
-              </Card>
-            )}
-          </div>
+            </div>
 
           {/* PANNEAU DROIT — Détail */}
           {feuille && dj ? (
@@ -1176,6 +1154,30 @@ export default function Emargement() {
                   )}
                 </div>
               </Card>
+
+              {/* Sélection demi-journée — horizontale, au-dessus du détail */}
+              <div style={{ display: 'flex', gap: '8px', marginBottom: '16px' }}>
+                {feuille.demiJournees.map((d) => (
+                  <div key={d.id} onClick={() => setDemiJourneeId(d.id)} style={{
+                    flex: 1, padding: '10px 14px', cursor: 'pointer',
+                    backgroundColor: demiJourneeId === d.id ? COLORS.background : 'white',
+                    border: demiJourneeId === d.id ? `2px solid ${COLORS.primary}` : '1.5px solid #e0e0e0',
+                    borderRadius: '8px',
+                  }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px' }}>
+                      <span style={{ fontSize: '14px', fontWeight: '700', color: COLORS.primary }}>
+                        {d.type === 'Matin' ? '🌅' : '🌇'} {d.type}
+                      </span>
+                      <span style={{ backgroundColor: d.valide ? '#e6f4f1' : '#fef6e4', color: d.valide ? '#006B68' : '#C8A23A', padding: '2px 8px', borderRadius: '12px', fontSize: '11px', fontWeight: '600' }}>
+                        {d.valide ? '✅ Validé' : '⏳ En attente'}
+                      </span>
+                    </div>
+                    <div style={{ fontSize: '11px', color: COLORS.textMuted, marginTop: '4px' }}>
+                      {d.heureDebut} – {d.heureFin} ({d.heures}h) — {d.theme}
+                    </div>
+                  </div>
+                ))}
+              </div>
 
               {/* ===== ONGLETS PRÉSENCES / FICHE INTERVENTION ===== */}
               {(formateurId || estAdmin) && (
