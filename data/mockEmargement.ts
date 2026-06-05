@@ -35,6 +35,11 @@ export type DemiJournee = {
   valide: boolean;
   heureValidation?: string;
   presences: PresenceApprenant[];
+  // === PDF émargement signé (importé depuis sign.plus) ===
+  pdfSigneUrl?: string;              // URL Storage du PDF signé
+  pdfSigneNom?: string;             // Nom du fichier
+  pdfSigneCheminStorage?: string;   // Chemin Storage (pour suppression)
+  pdfSigneDateImport?: string;      // Date ISO de l'import
 };
 
 export type FeuilleEmargement = {

@@ -85,7 +85,7 @@ export async function supprimerFichier(cheminStorage: string): Promise<{ success
  * Le nom de la pièce (pieceId) sert de préfixe pour éviter les conflits si plusieurs fichiers du même nom.
  */
 export function cheminStorage(
-  categorie: 'apprenants' | 'entreprises' | 'entretiens' | 'mandats' | 'apcs' | 'justificatifs',
+  categorie: 'apprenants' | 'entreprises' | 'entretiens' | 'mandats' | 'apcs' | 'justificatifs' | 'emargements',
   parentId: string,
   pieceId: string,
   nomFichier: string,

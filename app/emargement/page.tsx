@@ -269,6 +269,56 @@ export default function Emargement() {
       setEnvoiEnCours(false);
     }
   }
+
+  // Import du PDF d'émargement signé (depuis sign.plus) pour une demi-journée précise.
+  // Stocke dans Supabase Storage + enregistre les infos sur la demi-journée (localStorage + Supabase).
+  async function importerPdfSigne(feuilleCible: FeuilleEmargement, djCible: DemiJournee, file: File) {
+    if (file.type !== 'application/pdf') {
+      alert('⚠️ Merci d\'importer un fichier PDF.');
+      return;
+    }
+    const chemin = cheminStorage('emargements', feuilleCible.id, `${djCible.id}_signe`, file.name);
+    const resUpload = await uploaderFichier(chemin, file);
+    if (!resUpload.success || !resUpload.fichier) {
+      alert(`⚠️ Erreur upload : ${resUpload.error}`);
+      return;
+    }
+    console.log(`[Émargement signé] ${feuilleCible.date} — ${djCible.type} uploadé ✅`);
+
+    setFeuillesLocales(prev => {
+      const nouvelles = prev.map(f => {
+        if (f.id !== feuilleCible.id) return f;
+        return {
+          ...f,
+          demiJournees: f.demiJournees.map(dd => {
+            if (dd.id !== djCible.id) return dd;
+            return {
+              ...dd,
+              pdfSigneUrl: resUpload.fichier!.url,
+              pdfSigneNom: resUpload.fichier!.nom,
+              pdfSigneCheminStorage: resUpload.fichier!.cheminStorage,
+              pdfSigneDateImport: new Date().toISOString(),
+            };
+          }),
+        };
+      });
+      localStorage.setItem('easycfa_emargement_v2', JSON.stringify(nouvelles));
+      const fMod = nouvelles.find(f => f.id === feuilleCible.id);
+      if (fMod) {
+        creerEmargementSupabase(fMod as any).then(res => {
+          if (!res.success) console.error(`[Émargement ${feuilleCible.id}] Erreur sauvegarde PDF signé :`, res.error);
+          else console.log(`[Émargement ${feuilleCible.id}] PDF signé enregistré dans Supabase ✅`);
+        });
+      }
+      return nouvelles;
+    });
+
+    tracerAction('IMPORT_EMARGEMENT_SIGNE', 'emargement', `${feuilleCible.id}_${djCible.id}`,
+      `${feuilleCible.formation} — ${feuilleCible.date} — ${djCible.type}`, utilisateur);
+
+    setMessageSuccess(`✅ Émargement signé importé pour ${djCible.type} du ${feuilleCible.date}.`);
+    setTimeout(() => setMessageSuccess(''), 6000);
+  }
   const [modaleNouvelle, setModaleNouvelle] = useState(false);
   const [modaleForm, setModaleForm] = useState<{ sessionIds: string[]; date: string; jour: string; formationCode: string }>({ sessionIds: [], date: '', jour: '', formationCode: '' });
 
@@ -360,6 +410,19 @@ export default function Emargement() {
   const toutesFeuilles: FeuilleEmargement[] = [...toutesFeuillesFiltrees].sort(
     (a, b) => dateEnTimestamp(b.date) - dateEnTimestamp(a.date)
   );
+
+  // Une feuille est "archivée/passée" quand TOUTES ses demi-journées ont leur PDF signé importé.
+  function feuilleEstArchivee(f: FeuilleEmargement): boolean {
+    if (!f.demiJournees || f.demiJournees.length === 0) return false;
+    return f.demiJournees.every(dj => !!(dj as any).pdfSigneUrl);
+  }
+
+  // Séparation : feuilles en cours (colonne gauche) vs feuilles passées (futur tableau)
+  const feuillesEnCours = toutesFeuilles.filter(f => !feuilleEstArchivee(f));
+  const feuillesPassees = toutesFeuilles.filter(f => feuilleEstArchivee(f));
+
+  // Vérification temporaire (à retirer ensuite)
+  console.log(`[Emargement] ${feuillesEnCours.length} feuille(s) en cours, ${feuillesPassees.length} feuille(s) passée(s) (PDF signés importés)`);
 
   const [feuilleId, setFeuilleId] = useState(toutesFeuilles[0]?.id ?? '');
   const [demiJourneeId, setDemiJourneeId] = useState(toutesFeuilles[0]?.demiJournees[0]?.id ?? '');
@@ -979,11 +1042,15 @@ export default function Emargement() {
           <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
             <Card>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-                <h2 style={{ fontSize: '14px', fontWeight: '700', color: COLORS.primary }}>Journées de formation</h2>
-                <span style={{ backgroundColor: '#EAF4F3', color: COLORS.primary, padding: '2px 8px', borderRadius: '10px', fontSize: '10px', fontWeight: '700' }}>{toutesFeuilles.length}</span>
+                <h2 style={{ fontSize: '14px', fontWeight: '700', color: COLORS.primary }}>Journées en cours</h2>
+                <span style={{ backgroundColor: '#EAF4F3', color: COLORS.primary, padding: '2px 8px', borderRadius: '10px', fontSize: '10px', fontWeight: '700' }}>{feuillesEnCours.length}</span>
               </div>
               <div style={{ maxHeight: '500px', overflowY: 'auto' }}>
-                {toutesFeuilles.map((f) => {
+                {feuillesEnCours.length === 0 ? (
+                  <div style={{ padding: '20px', textAlign: 'center', color: '#aaa', fontSize: '12px', fontStyle: 'italic' }}>
+                    Aucune journée en cours
+                  </div>
+                ) : feuillesEnCours.map((f) => {
                   const isLocale = !!feuillesLocales.find(fl => fl.id === f.id);
                   return (
                     <div key={f.id} onClick={() => { setFeuilleId(f.id); setDemiJourneeId(f.demiJournees[0].id); setOngletPrincipal('presences'); }} style={{
@@ -1083,6 +1150,23 @@ export default function Emargement() {
                           </button>
                         );
                       })()}
+                      {estAdmin && !estFormateur && (
+                        (dj as any).pdfSigneUrl ? (
+                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                            <span style={{ backgroundColor: '#dcfce7', color: '#15803d', padding: '5px 10px', borderRadius: '8px', fontSize: '12px', fontWeight: '600' }}>📄 Émargement signé</span>
+                            <a href={(dj as any).pdfSigneUrl} target="_blank" rel="noopener noreferrer" style={{ color: COLORS.primary, fontSize: '12px', fontWeight: '600', textDecoration: 'underline' }}>Consulter</a>
+                            <label style={{ color: '#888', fontSize: '11px', cursor: 'pointer', textDecoration: 'underline' }}>
+                              Remplacer
+                              <input type="file" accept="application/pdf" style={{ display: 'none' }} onChange={(e) => { const file = e.target.files?.[0]; if (file) importerPdfSigne(feuille, dj, file); e.target.value = ''; }} />
+                            </label>
+                          </span>
+                        ) : (
+                          <label style={{ backgroundColor: '#006B68', color: 'white', borderRadius: '8px', padding: '5px 12px', fontSize: '12px', fontWeight: '600', cursor: 'pointer', display: 'inline-block' }}>
+                            📎 Importer l'émargement signé
+                            <input type="file" accept="application/pdf" style={{ display: 'none' }} onChange={(e) => { const file = e.target.files?.[0]; if (file) importerPdfSigne(feuille, dj, file); e.target.value = ''; }} />
+                          </label>
+                        )
+                      )}
                       {estAdmin && (
                         <button onClick={rouvrirDemiJournee} style={{ backgroundColor: 'white', color: '#c53030', border: '1.5px solid #c53030', borderRadius: '8px', padding: '5px 12px', fontSize: '12px', fontWeight: '600', cursor: 'pointer' }}>
                           ↺ Rouvrir
@@ -1524,6 +1608,58 @@ export default function Emargement() {
             </Card>
           )}
         </div>
+      )}
+
+      {/* ===== TABLEAU DES JOURNÉES PASSÉES (émargements signés archivés) ===== */}
+      {!estFormateur && feuillesPassees.length > 0 && (
+        <Card style={{ marginTop: '24px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+            <h2 style={{ fontSize: '16px', fontWeight: '700', color: COLORS.primary }}>📁 Journées passées — émargements signés</h2>
+            <span style={{ backgroundColor: '#EAF4F3', color: COLORS.primary, padding: '2px 10px', borderRadius: '10px', fontSize: '11px', fontWeight: '700' }}>{feuillesPassees.length}</span>
+          </div>
+          <p style={{ fontSize: '12px', color: COLORS.textMuted, marginBottom: '14px' }}>
+            Feuilles d'émargement signées et archivées (les deux demi-journées importées). Consultables pour audit Qualiopi.
+          </p>
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <thead>
+              <tr style={{ borderBottom: `2px solid ${COLORS.background}` }}>
+                {['Date', 'Formation', 'Émargements signés', 'Consulter'].map(col => (
+                  <th key={col} style={{ textAlign: 'left', padding: '8px 10px', fontSize: '11px', color: '#999', fontWeight: '600', textTransform: 'uppercase' }}>{col}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {feuillesPassees.map(f => {
+                const matin = f.demiJournees.find(d => d.type === 'Matin');
+                const aprem = f.demiJournees.find(d => d.type === 'Après-midi');
+                return (
+                  <tr key={f.id} style={{ borderBottom: `1px solid ${COLORS.border}` }}>
+                    <td style={{ padding: '12px 10px', fontSize: '13px', fontWeight: '700', color: COLORS.primary }}>{f.jour} {f.date}</td>
+                    <td style={{ padding: '12px 10px', fontSize: '12px', color: COLORS.text }}>
+                      {(f as any).sessionNumero ? `${(f as any).sessionNumero} — ` : ''}{f.formation}
+                    </td>
+                    <td style={{ padding: '12px 10px' }}>
+                      <span style={{ display: 'inline-flex', gap: '6px', flexWrap: 'wrap' }}>
+                        <span style={{ backgroundColor: '#dcfce7', color: '#15803d', padding: '2px 8px', borderRadius: '4px', fontSize: '11px', fontWeight: '600' }}>🌅 Matin ✅</span>
+                        <span style={{ backgroundColor: '#dcfce7', color: '#15803d', padding: '2px 8px', borderRadius: '4px', fontSize: '11px', fontWeight: '600' }}>🌇 Après-midi ✅</span>
+                      </span>
+                    </td>
+                    <td style={{ padding: '12px 10px' }}>
+                      <span style={{ display: 'inline-flex', gap: '10px', flexWrap: 'wrap' }}>
+                        {matin && (matin as any).pdfSigneUrl && (
+                          <a href={(matin as any).pdfSigneUrl} target="_blank" rel="noopener noreferrer" style={{ color: COLORS.primary, fontSize: '12px', fontWeight: '600', textDecoration: 'underline' }}>📄 Matin</a>
+                        )}
+                        {aprem && (aprem as any).pdfSigneUrl && (
+                          <a href={(aprem as any).pdfSigneUrl} target="_blank" rel="noopener noreferrer" style={{ color: COLORS.primary, fontSize: '12px', fontWeight: '600', textDecoration: 'underline' }}>📄 Après-midi</a>
+                        )}
+                      </span>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </Card>
       )}
 
       {/* MODALE NOUVELLE FEUILLE — multi-sessions */}
