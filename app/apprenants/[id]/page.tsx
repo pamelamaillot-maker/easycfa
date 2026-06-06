@@ -727,6 +727,7 @@ export default function FicheApprenant({ params }: { params: Promise<{ id: strin
   }, [id]);
   const [form, setForm] = useState<any>({});
   const [conventionEntreprise, setConventionEntreprise] = useState<any>(null);
+  const [contratEntreprise, setContratEntreprise] = useState<any>(null);
   const [entrepriseObj, setEntrepriseObj] = useState<any>(null);
   const [npecApprenant, setNpecApprenant] = useState<any>(null);
   const [modeEdition, setModeEdition] = useState(false);
@@ -893,6 +894,17 @@ export default function FicheApprenant({ params }: { params: Promise<{ id: strin
           console.log(`[FicheApprenant ${id}] Convention chargée depuis entreprise ${ent.raisonSociale} : ${conv.statut} ✅`);
         } else {
           setConventionEntreprise(null);
+        }
+        const contrat = fin?.contratApprentissage;
+        if (contrat) {
+          setContratEntreprise({
+            ...contrat,
+            entrepriseId: ent.id,
+            entrepriseRaisonSociale: ent.raisonSociale,
+          });
+          console.log(`[FicheApprenant ${id}] Contrat chargé depuis entreprise ${ent.raisonSociale} : ${contrat.statut} ✅`);
+        } else {
+          setContratEntreprise(null);
         }
       } catch (e) {
         console.error('[FicheApprenant] Erreur chargement convention entreprise:', e);
@@ -1724,13 +1736,6 @@ export default function FicheApprenant({ params }: { params: Promise<{ id: strin
           <span style={{ fontSize: '12px', color: '#888' }}>Formats : PDF, JPG, PNG — Max 5 Mo</span>
         </div>
 
-        {/* Bandeau statut convention si en attente */}
-        {conventionEntreprise && conventionEntreprise.statut === 'en_attente' && (
-          <div style={{ padding: '10px 14px', backgroundColor: '#fff8e1', border: '1px solid #ffe082', borderRadius: 8, marginBottom: 12, fontSize: 13, color: '#7a5c00' }}>
-            ⏳ <strong>Convention en attente de signature</strong> — envoyée à {conventionEntreprise.entrepriseRaisonSociale} le {conventionEntreprise.dateEnvoiEmail ? new Date(conventionEntreprise.dateEnvoiEmail).toLocaleDateString('fr-FR') : '?'}. Une fois reçue signée, elle sera importée via la <a href={`/entreprises/${conventionEntreprise.entrepriseId}`} style={{ color: COLORS.primary, fontWeight: 600 }}>fiche entreprise</a>.
-          </div>
-        )}
-
         {[
           { id: 'cv', label: 'CV à jour', detail: 'Curriculum vitae à jour', obligatoire: false },
           { id: 'cni', label: 'Pièce d\'identité valide', detail: 'CNI, passeport ou titre de séjour', obligatoire: true },
@@ -1738,19 +1743,18 @@ export default function FicheApprenant({ params }: { params: Promise<{ id: strin
           { id: 'vitale', label: 'Carte vitale / attestation SS', detail: 'NIR obligatoire pour le CERFA', obligatoire: true },
           { id: 'diplomes', label: 'Diplômes obtenus', detail: 'Derniers diplômes', obligatoire: true },
           { id: 'contrat', label: 'Contrat signé', detail: 'Importé depuis fiche entreprise', obligatoire: true, readonly: true },
-          { id: 'convention', label: 'Convention signée', detail: 'Importée depuis fiche entreprise', obligatoire: false, readonly: true },
           { id: 'dpae', label: 'DPAE', detail: 'Déclaration Préalable à l\'Embauche', obligatoire: false },
           { id: 'autre', label: 'Autre document', detail: 'Tout autre document utile', obligatoire: false },
         ].map((piece) => {
-          // Cas spécial : convention → lit depuis l'entreprise (lecture seule)
+          // Cas spécial : contrat → lit depuis l'entreprise (lecture seule)
           let fichier: any;
-          if (piece.id === 'convention' && conventionEntreprise) {
-            if (conventionEntreprise.statut === 'signee' && conventionEntreprise.fichierSigneUrl) {
+          if (piece.id === 'contrat' && contratEntreprise) {
+            if (contratEntreprise.statut === 'signee' && contratEntreprise.fichierSigneUrl) {
               fichier = {
-                nom: conventionEntreprise.fichierSigneNom || 'Convention signée.pdf',
+                nom: contratEntreprise.fichierSigneNom || 'Contrat d\'apprentissage signé.pdf',
                 taille: '',
-                url: conventionEntreprise.fichierSigneUrl,
-                source: `Importée le ${new Date(conventionEntreprise.dateSignature).toLocaleDateString('fr-FR')} via fiche entreprise`,
+                url: contratEntreprise.fichierSigneUrl,
+                source: `Importé le ${new Date(contratEntreprise.dateSignature).toLocaleDateString('fr-FR')} via fiche entreprise`,
               };
             } else {
               fichier = null;

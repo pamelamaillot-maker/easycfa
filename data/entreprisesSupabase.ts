@@ -48,6 +48,18 @@ export interface ConventionStatut {
   fichierSigneNom?: string;
 }
 
+// Contrat d'apprentissage (CERFA) — même structure que la convention.
+// Document tripartite (CFA + entreprise + apprenti), un par apprenant.
+export interface ContratStatut {
+  statut: 'a_generer' | 'en_attente' | 'signee';
+  dateGeneration?: string;
+  dateEnvoiEmail?: string;
+  emailDestinataire?: string;
+  dateSignature?: string;
+  fichierSigneUrl?: string;
+  fichierSigneNom?: string;
+}
+
 export interface FinancementApprenant {
   coutPedagogiqueAnnee1?: number;
   coutPedagogiqueAnnee2?: number;
@@ -61,6 +73,7 @@ export interface FinancementApprenant {
   codeRncpManuel?: string;
   dateMaj?: string;
   convention?: ConventionStatut;
+  contratApprentissage?: ContratStatut;
 }
 
 const CHAMPS_VALIDES_ENTREPRISE = new Set<string>([
@@ -260,6 +273,84 @@ export async function marquerConventionSignee(
           fichierSigneNom: fichierNom,
         },
       },
+    };
+    const { error } = await supabase
+      .from('entreprises')
+      .update({ financementsApprenants: updated, dateModification: new Date().toISOString() })
+      .eq('id', entrepriseId);
+    if (error) return { success: false, error: error.message };
+    return { success: true };
+  } catch (e: any) {
+    return { success: false, error: e.message || 'Erreur réseau' };
+  }
+}
+
+/**
+ * Marque le contrat d'apprentissage d'un apprenant comme signé après upload du PDF signé.
+ */
+export async function marquerContratSignee(
+  entrepriseId: string,
+  apprenantId: string,
+  fichierUrl: string,
+  fichierNom: string
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const { data: ent, error: errLoad } = await supabase
+      .from('entreprises')
+      .select('financementsApprenants')
+      .eq('id', entrepriseId)
+      .maybeSingle();
+    if (errLoad) return { success: false, error: errLoad.message };
+
+    const current = (ent?.financementsApprenants || {}) as Record<string, FinancementApprenant>;
+    const apprenantFin = current[apprenantId] || {};
+    const updated = {
+      ...current,
+      [apprenantId]: {
+        ...apprenantFin,
+        contratApprentissage: {
+          ...(apprenantFin.contratApprentissage || {}),
+          statut: 'signee' as const,
+          dateSignature: new Date().toISOString(),
+          fichierSigneUrl: fichierUrl,
+          fichierSigneNom: fichierNom,
+        },
+      },
+    };
+    const { error } = await supabase
+      .from('entreprises')
+      .update({ financementsApprenants: updated, dateModification: new Date().toISOString() })
+      .eq('id', entrepriseId);
+    if (error) return { success: false, error: error.message };
+    return { success: true };
+  } catch (e: any) {
+    return { success: false, error: e.message || 'Erreur réseau' };
+  }
+}
+
+/**
+ * Supprime le contrat d'apprentissage d'un apprenant (conserve les autres données).
+ */
+export async function supprimerContratApprenant(
+  entrepriseId: string,
+  apprenantId: string
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const { data: ent, error: errLoad } = await supabase
+      .from('entreprises')
+      .select('financementsApprenants')
+      .eq('id', entrepriseId)
+      .maybeSingle();
+    if (errLoad) return { success: false, error: errLoad.message };
+
+    const current = (ent?.financementsApprenants || {}) as Record<string, FinancementApprenant>;
+    const apprenantFin = current[apprenantId];
+    if (!apprenantFin) return { success: true };
+
+    const { contratApprentissage: _c, ...sansContrat } = apprenantFin;
+    const updated = {
+      ...current,
+      [apprenantId]: sansContrat,
     };
     const { error } = await supabase
       .from('entreprises')

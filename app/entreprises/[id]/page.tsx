@@ -4,7 +4,7 @@ import { useRouter } from 'next/navigation';
 import { ENTREPRISES_REELS } from '../../../data/mockEntreprises_reels';
 import { APPRENANTS_REELS } from '../../../data/mockApprenants_reels';
 import { COLORS } from '../../../lib/constants';
-import { chargerEntreprise as chargerEntrepriseSupabase, modifierEntreprise, supprimerEntreprise as supprimerEntrepriseSupabase, marquerConventionSignee, supprimerConventionApprenant, type ConventionStatut } from '../../../data/entreprisesSupabase';
+import { chargerEntreprise as chargerEntrepriseSupabase, modifierEntreprise, supprimerEntreprise as supprimerEntrepriseSupabase, marquerConventionSignee, supprimerConventionApprenant, marquerContratSignee, supprimerContratApprenant, type ConventionStatut, type ContratStatut } from '../../../data/entreprisesSupabase';
 import { chargerApprentis } from '../../../data/apprentisSupabase';
 import Card from '../../../components/Card';
 import StatCard from '../../../components/StatCard';
@@ -741,6 +741,162 @@ export default function FicheEntreprise({ params }: { params: Promise<{ id: stri
                         if (ent) { setEntreprise(ent); setForm(ent); }
                       }}
                       title="Supprimer la convention"
+                      style={{
+                        backgroundColor: 'white', color: '#c00',
+                        border: '1.5px solid #c00', borderRadius: 8,
+                        padding: '7px 10px', fontSize: 12, fontWeight: 700,
+                        cursor: 'pointer',
+                      }}
+                    >
+                      ✕
+                    </button>
+                  )}
+                </div>
+              </div>
+            );
+          });
+        })()}
+      </Card>
+
+      {/* Contrats d'apprentissage par apprenant (CERFA — tripartite) */}
+      <Card style={{ marginBottom: '24px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+          <h2 style={{ fontSize: '15px', fontWeight: '700', color: COLORS.primary }}>📝 Contrats d'apprentissage</h2>
+          <span style={{ fontSize: 11, color: COLORS.textMuted, fontStyle: 'italic' }}>CERFA — un par apprenti</span>
+        </div>
+        {(() => {
+          // Mêmes sources que les conventions : Supabase + legacy + orphelins
+          const mapApprenants = new Map<string, any>();
+          apprentisSupabase
+            .filter(a => (a.entrepriseId && a.entrepriseId === id) || memeEntreprise(a.entreprise, e.raisonSociale))
+            .forEach(a => mapApprenants.set(a.id, a));
+          chargerTousApprenants()
+            .filter(a => (a.entrepriseId && a.entrepriseId === id) || memeEntreprise(a.entreprise, e.raisonSociale))
+            .forEach(a => { if (!mapApprenants.has(a.id)) mapApprenants.set(a.id, a); });
+          const finApps = (form.financementsApprenants || {});
+          Object.keys(finApps).forEach(aId => {
+            if (finApps[aId]?.contratApprentissage && !mapApprenants.has(aId)) {
+              const trouve = apprentisSupabase.find(x => x.id === aId)
+                || chargerTousApprenants().find(x => x.id === aId)
+                || { id: aId, nom: aId, prenom: '(introuvable)', formation: '' };
+              mapApprenants.set(aId, trouve);
+            }
+          });
+
+          const apprentisListe = Array.from(mapApprenants.values())
+            .sort((a, b) => `${a.nom} ${a.prenom}`.localeCompare(`${b.nom} ${b.prenom}`));
+
+          if (apprentisListe.length === 0) {
+            return <div style={{ padding: '20px', textAlign: 'center', color: COLORS.textMuted, fontStyle: 'italic', fontSize: 13 }}>Aucun apprenti rattaché — aucun contrat à gérer.</div>;
+          }
+          return apprentisListe.map((a) => {
+            const fin = (form.financementsApprenants || {})[a.id] || {};
+            const contrat: ContratStatut | undefined = fin.contratApprentissage;
+            const statut = contrat?.statut || 'a_generer';
+            const config = {
+              a_generer: { bg: '#fafafa', border: '#e0e0e0', icon: '📄', label: 'À générer', color: '#666' },
+              en_attente: { bg: '#fff8e1', border: '#ffe082', icon: '⏳', label: 'En attente de signature', color: '#C8A23A' },
+              signee: { bg: '#e8f5e9', border: '#a5d6a7', icon: '✅', label: 'Signé', color: '#2e7d32' },
+            }[statut];
+
+            return (
+              <div key={a.id} style={{
+                display: 'flex', alignItems: 'center', gap: 16,
+                padding: '12px 14px', borderRadius: 10, marginBottom: 8,
+                backgroundColor: config.bg, border: `1.5px solid ${config.border}`,
+              }}>
+                <div style={{ fontSize: 22, flexShrink: 0 }}>{config.icon}</div>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: COLORS.primary }}>
+                    {a.nom} {a.prenom}
+                    <span style={{ marginLeft: 10, fontSize: 11, color: config.color, fontWeight: 600 }}>
+                      • {config.label}
+                    </span>
+                  </div>
+                  <div style={{ fontSize: 11, color: '#888', marginTop: 2 }}>
+                    {a.formation}
+                  </div>
+                  {statut === 'signee' && contrat?.dateSignature && (
+                    <div style={{ fontSize: 11, color: '#2e7d32', marginTop: 4, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                      <span>✅ Signé le {new Date(contrat.dateSignature).toLocaleDateString('fr-FR')}</span>
+                      {contrat.fichierSigneUrl && (
+                        <a href={contrat.fichierSigneUrl} target="_blank" rel="noreferrer" style={{ color: COLORS.primary, textDecoration: 'underline', fontWeight: 600 }}>
+                          📄 Voir le PDF signé
+                        </a>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                <div style={{ display: 'flex', gap: 6, flexShrink: 0, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                  {statut !== 'signee' && (
+                    <label style={{
+                      backgroundColor: COLORS.primary, color: 'white', borderRadius: 8,
+                      padding: '7px 12px', fontSize: 12, fontWeight: 600, cursor: 'pointer',
+                      whiteSpace: 'nowrap',
+                    }}>
+                      📥 Importer contrat signé
+                      <input type="file" accept=".pdf" style={{ display: 'none' }} onChange={async (ev) => {
+                        const f = ev.target.files?.[0];
+                        if (!f) return;
+                        const chemin = cheminStorage('entreprises', id, `contrat_signe_${a.id}`, f.name);
+                        const resUpload = await uploaderFichier(chemin, f);
+                        if (!resUpload.success || !resUpload.fichier) {
+                          alert(`⚠️ Erreur upload : ${resUpload.error}`);
+                          return;
+                        }
+                        const resSave = await marquerContratSignee(id, a.id, resUpload.fichier.url, f.name);
+                        if (!resSave.success) {
+                          alert(`⚠️ Erreur sauvegarde : ${resSave.error}`);
+                          return;
+                        }
+                        console.log(`[Entreprise ${id}] Contrat signé importé pour ${a.nom} ${a.prenom} ✅`);
+                        const ent = await chargerEntrepriseSupabase(id);
+                        if (ent) { setEntreprise(ent); setForm(ent); }
+                        alert(`✅ Contrat d'apprentissage importé pour ${a.prenom} ${a.nom}`);
+                      }} />
+                    </label>
+                  )}
+                  {statut === 'signee' && (
+                    <label style={{
+                      backgroundColor: 'white', color: COLORS.primary, borderRadius: 8,
+                      border: `1.5px solid ${COLORS.primary}`,
+                      padding: '7px 12px', fontSize: 12, fontWeight: 600, cursor: 'pointer',
+                      whiteSpace: 'nowrap',
+                    }}>
+                      🔄 Remplacer
+                      <input type="file" accept=".pdf" style={{ display: 'none' }} onChange={async (ev) => {
+                        const f = ev.target.files?.[0];
+                        if (!f) return;
+                        const chemin = cheminStorage('entreprises', id, `contrat_signe_${a.id}`, f.name);
+                        const resUpload = await uploaderFichier(chemin, f);
+                        if (!resUpload.success || !resUpload.fichier) {
+                          alert(`⚠️ Erreur upload : ${resUpload.error}`);
+                          return;
+                        }
+                        const resSave = await marquerContratSignee(id, a.id, resUpload.fichier.url, f.name);
+                        if (!resSave.success) {
+                          alert(`⚠️ Erreur : ${resSave.error}`);
+                          return;
+                        }
+                        const ent = await chargerEntrepriseSupabase(id);
+                        if (ent) { setEntreprise(ent); setForm(ent); }
+                      }} />
+                    </label>
+                  )}
+                  {statut !== 'a_generer' && (
+                    <button
+                      onClick={async () => {
+                        if (!confirm(`Supprimer le contrat de ${a.prenom} ${a.nom} ?\n\nCela ne supprime pas le PDF du Storage, mais retire le suivi sur la fiche entreprise.`)) return;
+                        const res = await supprimerContratApprenant(id, a.id);
+                        if (!res.success) {
+                          alert(`⚠️ Erreur : ${res.error}`);
+                          return;
+                        }
+                        const ent = await chargerEntrepriseSupabase(id);
+                        if (ent) { setEntreprise(ent); setForm(ent); }
+                      }}
+                      title="Supprimer le contrat"
                       style={{
                         backgroundColor: 'white', color: '#c00',
                         border: '1.5px solid #c00', borderRadius: 8,
