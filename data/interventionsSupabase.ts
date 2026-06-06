@@ -11,7 +11,7 @@ const CHAMPS_VALIDES_INTERVENTION = new Set<string>([
   'formateurId', 'formateurNom',
   'activiteType', 'competence', 'seance',
   'objectifsSeance', 'contenusVus', 'evaluationRealisee', 'formatEvaluation',
-  'outils', 'ressourcesUrl', 'lienDistanciel', 'difficultes',
+  'outils', 'ressourcesUrl', 'ressourcesSupplementaires', 'lienDistanciel', 'difficultes',
   'retards', 'absences',
   'certifiee', 'dateSignature', 'heureSignature',
   'dateCreation', 'dateModification',

@@ -25,7 +25,8 @@ export type FicheIntervention = {
   evaluationRealisee: 'OUI' | 'NON' | ''; // 3. Évaluation réalisée ?
   formatEvaluation: string;              // 4. Format de l'évaluation (si oui)
   outils: string;                        // 5. Outils utilisés
-  ressourcesUrl: string;                 // 6. Ressources de synthèse (URL)
+  ressourcesUrl: string;                 // 6. Ressources de synthèse (URL principale)
+  ressourcesSupplementaires?: string[];  // 6 bis. Ressources additionnelles (liste dynamique)
   lienDistanciel: string;                // 7. Lien si en ligne (URL)
   difficultes: string;                   // 8. Difficultés rencontrées
 
@@ -49,6 +50,7 @@ export const FICHE_VIDE: Omit<FicheIntervention, 'id' | 'sessionId' | 'sessionNu
   formatEvaluation: '',
   outils: '',
   ressourcesUrl: '',
+  ressourcesSupplementaires: [],
   lienDistanciel: '',
   difficultes: '',
   retards: [],

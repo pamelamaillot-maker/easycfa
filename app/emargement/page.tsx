@@ -57,7 +57,7 @@ const btnPrimary: React.CSSProperties = { backgroundColor: COLORS.primary, color
 const btnSecondary: React.CSSProperties = { backgroundColor: 'white', color: COLORS.primary, border: `1.5px solid ${COLORS.primary}`, borderRadius: '8px', padding: '9px 16px', fontSize: '13px', fontWeight: '600', cursor: 'pointer' };
 const btnDanger: React.CSSProperties = { backgroundColor: '#e53e3e', color: 'white', border: 'none', borderRadius: '8px', padding: '9px 16px', fontSize: '13px', fontWeight: '600', cursor: 'pointer' };
 const inputStyle: React.CSSProperties = { border: '1.5px solid #e0e0e0', borderRadius: '8px', padding: '8px 12px', fontSize: '13px', color: COLORS.text, backgroundColor: 'white' };
-const textareaStyle: React.CSSProperties = { ...inputStyle, minHeight: '70px', resize: 'vertical', fontFamily: 'inherit' };
+const textareaStyle: React.CSSProperties = { ...inputStyle, width: '100%', minHeight: '120px', resize: 'vertical', fontFamily: 'inherit', lineHeight: '1.5', boxSizing: 'border-box' };
 
 function getApprenantSessionId(apprenantId: string): string | undefined {
   try {
@@ -1456,7 +1456,39 @@ export default function Emargement() {
                       </div>
                       <div>
                         <label style={{ fontSize: '11px', color: '#888', textTransform: 'uppercase', fontWeight: '600', display: 'block', marginBottom: '4px' }}>6. Ressources de synthèse (URL Google Drive, ...)</label>
-                        <input type="url" disabled={ficheSignee} style={inputStyle} value={ficheActive.ressourcesUrl} onChange={e => majFiche('ressourcesUrl', e.target.value)} placeholder="https://drive.google.com/..." />
+                        <input type="url" disabled={ficheSignee} style={{ ...inputStyle, width: '100%', boxSizing: 'border-box' }} value={ficheActive.ressourcesUrl} onChange={e => majFiche('ressourcesUrl', e.target.value)} placeholder="https://drive.google.com/..." />
+                        {(ficheActive.ressourcesSupplementaires || []).map((url, idx) => (
+                          <div key={idx} style={{ display: 'flex', gap: '6px', alignItems: 'center', marginTop: '6px' }}>
+                            <input
+                              type="url"
+                              disabled={ficheSignee}
+                              style={{ ...inputStyle, width: '100%', boxSizing: 'border-box' }}
+                              value={url}
+                              onChange={e => {
+                                const nouvelles = [...(ficheActive.ressourcesSupplementaires || [])];
+                                nouvelles[idx] = e.target.value;
+                                majFiche('ressourcesSupplementaires', nouvelles);
+                              }}
+                              placeholder="https://..."
+                            />
+                            {!ficheSignee && (
+                              <button
+                                onClick={() => {
+                                  const nouvelles = (ficheActive.ressourcesSupplementaires || []).filter((_, i) => i !== idx);
+                                  majFiche('ressourcesSupplementaires', nouvelles);
+                                }}
+                                style={{ backgroundColor: '#fde8e8', color: '#e53e3e', border: 'none', borderRadius: '6px', padding: '8px 10px', fontSize: '12px', fontWeight: '600', cursor: 'pointer', flexShrink: 0 }}
+                                title="Retirer cette ressource"
+                              >✕</button>
+                            )}
+                          </div>
+                        ))}
+                        {!ficheSignee && (
+                          <button
+                            onClick={() => majFiche('ressourcesSupplementaires', [...(ficheActive.ressourcesSupplementaires || []), ''])}
+                            style={{ ...btnSecondary, marginTop: '8px', fontSize: '12px', padding: '6px 12px' }}
+                          >+ Ajouter une ressource</button>
+                        )}
                       </div>
                       <div>
                         <label style={{ fontSize: '11px', color: '#888', textTransform: 'uppercase', fontWeight: '600', display: 'block', marginBottom: '4px' }}>7. Lien si séance en distanciel (Zoom, Meet...)</label>
