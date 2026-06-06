@@ -11,6 +11,7 @@ import {
   supprimerFormateur as supprimerFormateurSupabase,
 } from '../../data/formateursSupabase';
 import { chargerInterventionsFormateur } from '../../data/interventionsSupabase';
+import { chargerEmargements as chargerEmargementsSupabase } from '../../data/emargementsSupabase';
 import Card from '../../components/Card';
 import { useAcces } from '../../lib/useAcces';
 import {
@@ -49,6 +50,7 @@ type Intervention = {
   type: 'presentiel' | 'distanciel';
   emargement: string;
   sessionId: string;
+  feuilleId?: string;   // Liaison vers la feuille d'émargement source (anti-doublon génération auto)
 };
 
 type SuiviMensuel = {
@@ -433,6 +435,7 @@ export default function Formateurs() {
   const [evaluations, setEvaluations] = useState<EvaluationFormateur[]>([]);
   const [evaluationEnEdition, setEvaluationEnEdition] = useState<EvaluationFormateur | null>(null);
   const [fichesIntervention, setFichesIntervention] = useState<any[]>([]);
+  const [emargements, setEmargements] = useState<any[]>([]);
   
   useEffect(() => {
     if (selectionne) {
@@ -467,6 +470,23 @@ export default function Formateurs() {
         const saved = localStorage.getItem('easycfa_formateurs');
         if (saved) setFormateurs(JSON.parse(saved));
       } catch {}
+    })();
+  }, []);
+
+  // Charger les feuilles d'émargement (pour générer les interventions automatiquement)
+  useEffect(() => {
+    (async () => {
+      try {
+        const fromSupabase = await chargerEmargementsSupabase();
+        console.log(`[Formateurs] ${fromSupabase.length} feuilles d'émargement chargées ✅`);
+        setEmargements(fromSupabase as any[]);
+      } catch (e) {
+        console.error('[Formateurs] Erreur chargement émargements', e);
+        try {
+          const s = localStorage.getItem('easycfa_emargement_v2');
+          if (s) setEmargements(JSON.parse(s));
+        } catch {}
+      }
     })();
   }, []);
       // Compteur des propositions en attente (Phase 4.b)
@@ -631,6 +651,91 @@ export default function Formateurs() {
     sauvegarderEvaluation(evaluation, utilisateur);
     rechargerEvaluations();
     setEvaluationEnEdition(evaluation);
+  }
+
+  // Une feuille est "signée/archivée" quand TOUTES ses demi-journées ont leur PDF signé importé.
+  function feuilleEstSignee(f: any): boolean {
+    if (!f.demiJournees || f.demiJournees.length === 0) return false;
+    return f.demiJournees.every((dj: any) => !!dj.pdfSigneUrl);
+  }
+
+  // Génère les interventions (rémunération) du formateur sélectionné depuis les feuilles
+  // d'émargement validées ET signées. Règle : 1 ligne par (formateur + modalité) par feuille.
+  // Anti-doublon par signature feuilleId + nom formateur + modalité.
+  function genererInterventionsDepuisEmargements() {
+    if (!selectionne) return;
+    const nomFormateur = `${selectionne.prenom} ${selectionne.nom}`;
+    const nomFormateurInverse = `${selectionne.nom} ${selectionne.prenom}`;
+
+    // Interventions déjà présentes : on construit l'ensemble des signatures existantes
+    const interventionsExistantes = selectionne.interventions || [];
+    const signaturesExistantes = new Set(
+      interventionsExistantes
+        .filter(iv => iv.feuilleId)
+        .map(iv => `${iv.feuilleId}__${nomFormateur}__${iv.type}`)
+    );
+
+    const nouvellesLignes: Intervention[] = [];
+    let feuillesScannees = 0;
+    let feuillesIgnoreesNonSignees = 0;
+
+    emargements.forEach((f: any) => {
+      // 1. La feuille doit être validée (2 demi-journées) ET signée (PDF importés)
+      const toutesValidees = (f.demiJournees || []).every((dj: any) => dj.valide);
+      if (!toutesValidees || !feuilleEstSignee(f)) {
+        feuillesIgnoreesNonSignees++;
+        return;
+      }
+
+      // 2. Repérer les demi-journées animées par CE formateur
+      const djFormateur = (f.demiJournees || []).filter((dj: any) =>
+        dj.formateur === nomFormateur || dj.formateur === nomFormateurInverse
+      );
+      if (djFormateur.length === 0) return;
+      feuillesScannees++;
+
+      // 3. Grouper par modalité (Présentiel / Distanciel)
+      const parModalite: Record<string, number> = {};
+      djFormateur.forEach((dj: any) => {
+        const modalite = (dj.modalite === 'Distanciel') ? 'distanciel' : 'presentiel';
+        parModalite[modalite] = (parModalite[modalite] || 0) + (dj.heures || 3.5);
+      });
+
+      // 4. Récupérer l'AT/CP depuis la fiche d'intervention de cette feuille (si dispo)
+      const fiche = fichesIntervention.find((fi: any) => fi.id === f.id);
+      const moduleAtCp = fiche
+        ? [fiche.activiteType, fiche.competence].filter(Boolean).join(' / ')
+        : '';
+
+      // 5. Créer une ligne par modalité (si pas déjà présente)
+      Object.entries(parModalite).forEach(([type, heures]) => {
+        const signature = `${f.id}__${nomFormateur}__${type}`;
+        if (signaturesExistantes.has(signature)) return; // déjà généré
+
+        nouvellesLignes.push({
+          id: `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+          date: f.date || '',
+          formation: f.formationCode || '',
+          module: moduleAtCp,
+          heures,
+          type: type as 'presentiel' | 'distanciel',
+          emargement: '',
+          sessionId: f.sessionId || '',
+          feuilleId: f.id,
+        });
+        signaturesExistantes.add(signature);
+      });
+    });
+
+    if (nouvellesLignes.length === 0) {
+      alert(`Aucune nouvelle intervention à générer pour ${nomFormateur}.\n\n${feuillesScannees} feuille(s) signée(s) trouvée(s) pour ce formateur — déjà toutes générées, ou aucune feuille validée+signée le concernant.`);
+      return;
+    }
+
+    if (!confirm(`Générer ${nouvellesLignes.length} intervention(s) pour ${nomFormateur} depuis les émargements signés ?\n\nElles s'ajouteront au tableau (les lignes existantes ne sont pas touchées).`)) return;
+
+    mettreAJour('interventions', [...interventionsExistantes, ...nouvellesLignes]);
+    alert(`✅ ${nouvellesLignes.length} intervention(s) générée(s) pour ${nomFormateur}.`);
   }
 
   const formateursFiltres = formateurs.filter(f => {
@@ -860,12 +965,17 @@ export default function Formateurs() {
               <div style={{ padding: '16px' }}>
               {ongletFormateur === 'interventions' && (
                 <div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px', gap: '8px', flexWrap: 'wrap' }}>
                     <h3 style={{ fontSize: '13px', fontWeight: '700', color: '#006B68' }}>Sessions animées</h3>
-                    <button onClick={() => {
-                      const nouv: Intervention = { id: Date.now().toString(), date: '', formation: '', module: '', heures: 0, type: 'presentiel', emargement: '', sessionId: '' };
-                      mettreAJour('interventions', [...(selectionne.interventions || []), nouv]);
-                    }} style={{ ...btnPrimary, padding: '5px 10px', fontSize: '11px' }}>+ Ajouter</button>
+                    <div style={{ display: 'flex', gap: '6px' }}>
+                      <button onClick={genererInterventionsDepuisEmargements} style={{ backgroundColor: '#C8A23A', color: 'white', border: 'none', borderRadius: '8px', padding: '5px 10px', fontSize: '11px', fontWeight: '600', cursor: 'pointer' }}>
+                        ⚡ Générer depuis les émargements
+                      </button>
+                      <button onClick={() => {
+                        const nouv: Intervention = { id: Date.now().toString(), date: '', formation: '', module: '', heures: 0, type: 'presentiel', emargement: '', sessionId: '' };
+                        mettreAJour('interventions', [...(selectionne.interventions || []), nouv]);
+                      }} style={{ ...btnPrimary, padding: '5px 10px', fontSize: '11px' }}>+ Ajouter</button>
+                    </div>
                   </div>
                   {(selectionne.interventions || []).length === 0 ? (
                     <div style={{ padding: '20px', textAlign: 'center', color: '#888', fontSize: '12px', fontStyle: 'italic' }}>Aucune intervention enregistrée</div>

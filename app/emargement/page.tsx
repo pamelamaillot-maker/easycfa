@@ -871,6 +871,53 @@ export default function Emargement() {
     });
   }
 
+  // Récupère le formateur depuis le planning de la session principale et le réenregistre
+  // sur les demi-journées de la feuille (corrige les feuilles "À définir" anciennes).
+  function rafraichirFormateurDepuisPlanning(feuilleCible: FeuilleEmargement) {
+    if (!estAdmin) {
+      alert('⚠️ Action réservée à la direction.');
+      return;
+    }
+    // Session principale (1ère cochée) : son id est dans feuille.sessionId
+    const sessionPrincipale = sessions.find(s => s.id === (feuilleCible as any).sessionId);
+    if (!sessionPrincipale) {
+      alert('⚠️ Session introuvable pour cette feuille — impossible de récupérer le formateur.');
+      return;
+    }
+    const planningDuJour = sessionPrincipale.planning?.find((p: any) => p.date === feuilleCible.date);
+    const nomPlanning = planningDuJour?.formateurNom;
+    if (!nomPlanning) {
+      alert(`⚠️ Aucun formateur renseigné dans le planning de ${sessionPrincipale.numero} à la date du ${feuilleCible.date}.\n\nVérifie le planning de la session.`);
+      return;
+    }
+    if (!confirm(`Récupérer le formateur "${nomPlanning}" depuis le planning et l'appliquer aux deux demi-journées du ${feuilleCible.date} ?`)) return;
+
+    setFeuillesLocales(prev => {
+      const nouvelles = prev.map(f => {
+        if (f.id !== feuilleCible.id) return f;
+        return {
+          ...f,
+          demiJournees: f.demiJournees.map(d => ({ ...d, formateur: nomPlanning })),
+        };
+      });
+      localStorage.setItem('easycfa_emargement_v2', JSON.stringify(nouvelles));
+      const fMod = nouvelles.find(f => f.id === feuilleCible.id);
+      if (fMod) {
+        creerEmargementSupabase(fMod as any).then(res => {
+          if (!res.success) console.error(`[Emargement ${feuilleCible.id}] Erreur rafraîchissement formateur:`, res.error);
+          else console.log(`[Emargement ${feuilleCible.id}] Formateur rafraîchi : ${nomPlanning} ✅`);
+        });
+      }
+      return nouvelles;
+    });
+
+    tracerAction('RAFRAICHIR_FORMATEUR', 'emargement', feuilleCible.id,
+      `${feuilleCible.formation} — ${feuilleCible.date} — formateur ${nomPlanning}`, utilisateur);
+
+    setMessageSuccess(`✅ Formateur "${nomPlanning}" récupéré depuis le planning pour le ${feuilleCible.date}.`);
+    setTimeout(() => setMessageSuccess(''), 6000);
+  }
+
   // Upload justificatif pour une absence
   async function uploadJustificatifAbsence(idxAbsence: number, file: File) {
     if (!ficheActive || !feuille) return;
@@ -1198,9 +1245,16 @@ export default function Emargement() {
                     <h2 style={{ fontSize: '16px', fontWeight: '700', color: COLORS.primary, marginBottom: '4px' }}>
                       {(feuille as any).sessionNumero ? `${(feuille as any).sessionNumero} — ` : ''}{feuille.formation} — {feuille.jour} {feuille.date}
                     </h2>
-                    <div style={{ display: 'flex', gap: '16px', fontSize: '13px', color: COLORS.textMuted, flexWrap: 'wrap' }}>
+                    <div style={{ display: 'flex', gap: '16px', fontSize: '13px', color: COLORS.textMuted, flexWrap: 'wrap', alignItems: 'center' }}>
                       <span>🕐 {dj.heureDebut} – {dj.heureFin}</span>
                       <span>👨‍🏫 {dj.formateur}</span>
+                      {dj.formateur === 'À définir' && estAdmin && !estFormateur && (
+                        <button
+                          onClick={() => rafraichirFormateurDepuisPlanning(feuille)}
+                          style={{ backgroundColor: '#C8A23A', color: 'white', border: 'none', borderRadius: '6px', padding: '3px 10px', fontSize: '11px', fontWeight: '600', cursor: 'pointer' }}
+                          title="Récupérer le formateur depuis le planning de la session"
+                        >🔄 Récupérer le formateur</button>
+                      )}
                       <span>📚 {dj.theme}</span>
                       <span>🏫 {dj.modalite}</span>
                       <span>📍 {feuille.salle}</span>
@@ -1813,7 +1867,7 @@ export default function Emargement() {
           <table style={{ width: '100%', borderCollapse: 'collapse' }}>
             <thead>
               <tr style={{ borderBottom: `2px solid ${COLORS.background}` }}>
-                {['Date', 'Formation', 'Émargements signés', 'Consulter'].map(col => (
+                {['Date', 'Formation', 'Formateur', 'Émargements signés', 'Consulter', 'Actions'].map(col => (
                   <th key={col} style={{ textAlign: 'left', padding: '8px 10px', fontSize: '11px', color: '#999', fontWeight: '600', textTransform: 'uppercase' }}>{col}</th>
                 ))}
               </tr>
@@ -1822,11 +1876,28 @@ export default function Emargement() {
               {feuillesPassees.map(f => {
                 const matin = f.demiJournees.find(d => d.type === 'Matin');
                 const aprem = f.demiJournees.find(d => d.type === 'Après-midi');
+                const formateurFeuille = f.demiJournees[0]?.formateur || 'À définir';
                 return (
                   <tr key={f.id} style={{ borderBottom: `1px solid ${COLORS.border}` }}>
                     <td style={{ padding: '12px 10px', fontSize: '13px', fontWeight: '700', color: COLORS.primary }}>{f.jour} {f.date}</td>
                     <td style={{ padding: '12px 10px', fontSize: '12px', color: COLORS.text }}>
                       {(f as any).sessionNumero ? `${(f as any).sessionNumero} — ` : ''}{f.formation}
+                    </td>
+                    <td style={{ padding: '12px 10px', fontSize: '12px' }}>
+                      {formateurFeuille === 'À définir' ? (
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                          <span style={{ color: '#C8A23A', fontWeight: '600' }}>⚠️ À définir</span>
+                          {estAdmin && (
+                            <button
+                              onClick={() => rafraichirFormateurDepuisPlanning(f)}
+                              style={{ backgroundColor: '#C8A23A', color: 'white', border: 'none', borderRadius: '6px', padding: '2px 8px', fontSize: '10px', fontWeight: '600', cursor: 'pointer' }}
+                              title="Récupérer le formateur depuis le planning"
+                            >🔄 Récupérer</button>
+                          )}
+                        </span>
+                      ) : (
+                        <span style={{ color: COLORS.text, fontWeight: '600' }}>{formateurFeuille}</span>
+                      )}
                     </td>
                     <td style={{ padding: '12px 10px' }}>
                       <span style={{ display: 'inline-flex', gap: '6px', flexWrap: 'wrap' }}>
@@ -1843,6 +1914,15 @@ export default function Emargement() {
                           <a href={(aprem as any).pdfSigneUrl} target="_blank" rel="noopener noreferrer" style={{ color: COLORS.primary, fontSize: '12px', fontWeight: '600', textDecoration: 'underline' }}>📄 Après-midi</a>
                         )}
                       </span>
+                    </td>
+                    <td style={{ padding: '12px 10px' }}>
+                      {estAdmin && (
+                        <button
+                          onClick={() => supprimerFeuilleLocale(f.id)}
+                          style={{ backgroundColor: '#fde8e8', color: '#e53e3e', border: 'none', borderRadius: '6px', padding: '3px 10px', fontSize: '11px', fontWeight: '600', cursor: 'pointer' }}
+                          title="Supprimer cette feuille (réservé direction)"
+                        >🗑️ Supprimer</button>
+                      )}
                     </td>
                   </tr>
                 );
