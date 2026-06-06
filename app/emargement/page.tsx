@@ -10,6 +10,7 @@ import type { FeuilleEmargement, DemiJournee, PresenceApprenant, StatutPresence 
 import { APPRENANTS_REELS } from '../../data/mockApprenants_reels';
 import { chargerApprentis } from '../../data/apprentisSupabase';
 import { chargerEntreprises } from '../../data/entreprisesSupabase';
+import { REFERENTIEL_FORMATIONS } from '../../data/mockData';
 import { useUser } from '../../lib/UserContext';
 import { useAcces, tracerAction } from '../../lib/useAcces';
 import {
@@ -149,6 +150,45 @@ export default function Emargement() {
   const [formateurs, setFormateurs] = useState<any[]>([]);
   const [apprenants, setApprenants] = useState<any[]>([]);
   const [entreprises, setEntreprises] = useState<any[]>([]);
+  const [formationsRef, setFormationsRef] = useState<any[]>([]);
+
+  // Code formation court → mot-clé distinctif pour retrouver le bon référentiel
+  const MOTCLE_FORMATION: Record<string, string> = {
+    SC: 'Secrétaire Comptable',
+    GCF: 'Gestionnaire Comptable',
+    AD: 'Direction',
+    ARH: 'Ressources Humaines',
+    EC: 'Commercial',
+    CV: 'Conseiller',
+    CATL: 'Accueil Touristique',
+    FPA: 'Formateur',
+  };
+
+  // Retrouve le référentiel (CCP) de la formation NON archivée correspondant à un code court.
+  function trouverReferentiel(codeFormation: string): any | null {
+    const motcle = MOTCLE_FORMATION[codeFormation];
+    if (!motcle) return null;
+    const candidates = formationsRef.filter(f =>
+      (f.intitule || '').toLowerCase().includes(motcle.toLowerCase()) && !f.archive
+    );
+    return candidates[0] || null;
+  }
+
+  // Aplatit les compétences de tous les CCP en une liste CP1..CPn (numérotation continue),
+  // en gardant le rattachement à chaque AT (= CCP).
+  function construireAtEtCp(formationRef: any): { ats: { code: string; libelle: string; idxCcp: number }[]; cps: { code: string; libelle: string; idxCcp: number }[] } {
+    const ats: { code: string; libelle: string; idxCcp: number }[] = [];
+    const cps: { code: string; libelle: string; idxCcp: number }[] = [];
+    let cpCompteur = 0;
+    (formationRef?.ccps || []).forEach((ccp: any, idx: number) => {
+      ats.push({ code: `AT${idx + 1}`, libelle: ccp.libelle || '', idxCcp: idx });
+      (ccp.competences || []).forEach((comp: string) => {
+        cpCompteur++;
+        cps.push({ code: `CP${cpCompteur}`, libelle: comp, idxCcp: idx });
+      });
+    });
+    return { ats, cps };
+  }
 
   // Résout l'email destinataire (entreprise) pour un apprenant absent/en retard.
   // Priorité : tuteurEmail de l'entreprise, repli sur email général de l'entreprise.
@@ -396,6 +436,15 @@ export default function Emargement() {
       } catch (e) {
         console.error('[Emargement] Erreur chargement entreprises Supabase', e);
       }
+      // Référentiel formations (CCP/compétences) — pour les listes déroulantes de la fiche intervention
+      try {
+        const saved = localStorage.getItem('easycfa_formations_v2');
+        const formsRef = saved ? JSON.parse(saved) : REFERENTIEL_FORMATIONS;
+        console.log(`[Emargement] ${formsRef.length} formations (référentiel) chargées ✅`);
+        setFormationsRef(formsRef);
+      } catch (e) {
+        console.error('[Emargement] Erreur chargement référentiel formations', e);
+      }
     })();
   }, []);
 
@@ -513,7 +562,7 @@ export default function Emargement() {
       }
       setFicheActive(fiche);
     })();
-  }, [feuilleId, formateurId, monNomFormateur, estAdmin, formateurs]);
+  }, [feuilleId, formateurId, monNomFormateur, estAdmin, formateurs.length]);
 
   function calculerHeures(statut: StatutPresence, heureArrivee?: string, heureDebut = '08:30', heureFin = '12:00'): number {
     if (statut === 'Présent' || statut === 'Absent justifié') return 3.5;
@@ -1025,6 +1074,17 @@ export default function Emargement() {
   const ficheSignee = !!ficheActive?.dateSignature;
   const ficheCheck = ficheActive ? ficheCompletee(ficheActive) : { ok: false, manquants: [] };
 
+  // Référentiel AT/CP de la formation de la feuille active (pour les listes déroulantes de la fiche)
+  const refFormation = feuille ? trouverReferentiel((feuille as any).formationCode) : null;
+  const { ats: atsDispo, cps: cpsDispo } = refFormation ? construireAtEtCp(refFormation) : { ats: [], cps: [] };
+  // Index du CCP correspondant à l'AT actuellement choisi dans la fiche (pour filtrer les CP)
+  const idxCcpChoisi = (() => {
+    if (!ficheActive?.activiteType) return -1;
+    const at = atsDispo.find(a => ficheActive.activiteType.startsWith(a.code));
+    return at ? at.idxCcp : -1;
+  })();
+  const cpsFiltres = idxCcpChoisi >= 0 ? cpsDispo.filter(c => c.idxCcp === idxCcpChoisi) : cpsDispo;
+
   // Phase 4.b-bis : si l'utilisateur est formateur, on enveloppe avec la sidebar formateur
   const contenuPage = (
     <div>
@@ -1407,11 +1467,35 @@ export default function Emargement() {
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '12px' }}>
                       <div>
                         <label style={{ fontSize: '11px', color: '#888', textTransform: 'uppercase', fontWeight: '600', display: 'block', marginBottom: '4px' }}>Activité Type <span style={{ color: '#e53e3e' }}>*</span></label>
-                        <input type="text" disabled={ficheSignee} style={inputStyle} value={ficheActive.activiteType} onChange={e => majFiche('activiteType', e.target.value)} placeholder="ex: AT2" />
+                        <select
+                          disabled={ficheSignee || atsDispo.length === 0}
+                          style={{ ...inputStyle, width: '100%', boxSizing: 'border-box' }}
+                          value={ficheActive.activiteType || ''}
+                          onChange={e => {
+                            // Changer d'AT réinitialise la compétence (les CP dépendent de l'AT)
+                            majFiche('activiteType', e.target.value);
+                            if (ficheActive.competence) majFiche('competence', '');
+                          }}
+                        >
+                          <option value="">{atsDispo.length === 0 ? '— Aucun référentiel trouvé —' : '— Sélectionner une AT —'}</option>
+                          {atsDispo.map(at => (
+                            <option key={at.code} value={`${at.code} — ${at.libelle}`}>{at.code} — {at.libelle}</option>
+                          ))}
+                        </select>
                       </div>
                       <div>
                         <label style={{ fontSize: '11px', color: '#888', textTransform: 'uppercase', fontWeight: '600', display: 'block', marginBottom: '4px' }}>Compétence <span style={{ color: '#e53e3e' }}>*</span></label>
-                        <input type="text" disabled={ficheSignee} style={inputStyle} value={ficheActive.competence} onChange={e => majFiche('competence', e.target.value)} placeholder="ex: C2.1" />
+                        <select
+                          disabled={ficheSignee || !ficheActive.activiteType}
+                          style={{ ...inputStyle, width: '100%', boxSizing: 'border-box' }}
+                          value={ficheActive.competence || ''}
+                          onChange={e => majFiche('competence', e.target.value)}
+                        >
+                          <option value="">{!ficheActive.activiteType ? '— Choisir d\'abord une AT —' : '— Sélectionner une CP —'}</option>
+                          {cpsFiltres.map(cp => (
+                            <option key={cp.code} value={`${cp.code} — ${cp.libelle}`}>{cp.code} — {cp.libelle}</option>
+                          ))}
+                        </select>
                       </div>
                       <div>
                         <label style={{ fontSize: '11px', color: '#888', textTransform: 'uppercase', fontWeight: '600', display: 'block', marginBottom: '4px' }}>Séance <span style={{ color: '#e53e3e' }}>*</span></label>
