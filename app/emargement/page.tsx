@@ -501,9 +501,19 @@ export default function Emargement() {
         formateurId ?? '',
         monNomFormateur,
       );
+      // Si la fiche n'a pas encore de formateur renseigné, on l'hérite du planning
+      // (le formateur de la 1ère demi-journée, déjà résolu depuis le planning de session).
+      if (!fiche.formateurId || !fiche.formateurNom) {
+        const nomPlanning = feuille.demiJournees[0]?.formateur;
+        if (nomPlanning && nomPlanning !== 'À définir') {
+          const fMatch = formateurs.find(f => `${f.prenom} ${f.nom}` === nomPlanning || `${f.nom} ${f.prenom}` === nomPlanning);
+          fiche.formateurNom = nomPlanning;
+          if (fMatch) fiche.formateurId = fMatch.id;
+        }
+      }
       setFicheActive(fiche);
     })();
-  }, [feuilleId, formateurId, monNomFormateur, estAdmin]);
+  }, [feuilleId, formateurId, monNomFormateur, estAdmin, formateurs]);
 
   function calculerHeures(statut: StatutPresence, heureArrivee?: string, heureDebut = '08:30', heureFin = '12:00'): number {
     if (statut === 'Présent' || statut === 'Absent justifié') return 3.5;
