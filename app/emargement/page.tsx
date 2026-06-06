@@ -94,7 +94,9 @@ function genererFeuilleDepuisSessions(sessionsSelectionnees: any[], date: string
   // Planning + thème : on prend ceux de la session principale (la 1ère cochée)
   const planningDuJour = sessionPrincipale.planning?.find((p: any) => p.date === date);
   const moduleAssocie = planningDuJour?.moduleId ? sessionPrincipale.modules?.find((m: any) => m.id === planningDuJour.moduleId) : null;
-  const formateurNom = moduleAssocie?.formateurNom || 'À définir';
+  // Le formateur est stocké directement dans l'entrée de planning (formateurNom).
+  // Repli sur le module associé si jamais, sinon "À définir".
+  const formateurNom = planningDuJour?.formateurNom || moduleAssocie?.formateurNom || 'À définir';
   const themeJour = moduleAssocie?.nom || (planningDuJour?.type === 'examen' ? 'Examen' : planningDuJour?.type === 'revision' ? 'Révisions' : 'Cours');
 
   const fabriquerPresence = (a: any): PresenceApprenant => ({
