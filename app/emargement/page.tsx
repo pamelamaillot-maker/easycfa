@@ -319,6 +319,30 @@ export default function Emargement() {
     setMessageSuccess(`✅ Émargement signé importé pour ${djCible.type} du ${feuilleCible.date}.`);
     setTimeout(() => setMessageSuccess(''), 6000);
   }
+
+  // Import d'un PDF de ressource pédagogique pour la fiche d'intervention (ressource à l'index idx).
+  async function importerPdfRessource(idx: number, file: File) {
+    if (!ficheActive) return;
+    if (file.type !== 'application/pdf') {
+      alert('⚠️ Merci d\'importer un fichier PDF.');
+      return;
+    }
+    const chemin = cheminStorage('ressources', ficheActive.id, `ressource_${idx}_${Date.now()}`, file.name);
+    const resUpload = await uploaderFichier(chemin, file);
+    if (!resUpload.success || !resUpload.fichier) {
+      alert(`⚠️ Erreur upload : ${resUpload.error}`);
+      return;
+    }
+    const nouvelles = [...(ficheActive.ressourcesSupplementaires || [])];
+    nouvelles[idx] = {
+      type: 'pdf',
+      valeur: resUpload.fichier.url,
+      nomFichier: resUpload.fichier.nom,
+      cheminStorage: resUpload.fichier.cheminStorage,
+    };
+    majFiche('ressourcesSupplementaires', nouvelles);
+    console.log(`[Ressource PDF] ${resUpload.fichier.nom} importée ✅`);
+  }
   const [modaleNouvelle, setModaleNouvelle] = useState(false);
   const [modaleForm, setModaleForm] = useState<{ sessionIds: string[]; date: string; jour: string; formationCode: string }>({ sessionIds: [], date: '', jour: '', formationCode: '' });
 
@@ -1457,35 +1481,71 @@ export default function Emargement() {
                       <div>
                         <label style={{ fontSize: '11px', color: '#888', textTransform: 'uppercase', fontWeight: '600', display: 'block', marginBottom: '4px' }}>6. Ressources de synthèse (URL Google Drive, ...)</label>
                         <input type="url" disabled={ficheSignee} style={{ ...inputStyle, width: '100%', boxSizing: 'border-box' }} value={ficheActive.ressourcesUrl} onChange={e => majFiche('ressourcesUrl', e.target.value)} placeholder="https://drive.google.com/..." />
-                        {(ficheActive.ressourcesSupplementaires || []).map((url, idx) => (
-                          <div key={idx} style={{ display: 'flex', gap: '6px', alignItems: 'center', marginTop: '6px' }}>
-                            <input
-                              type="url"
-                              disabled={ficheSignee}
-                              style={{ ...inputStyle, width: '100%', boxSizing: 'border-box' }}
-                              value={url}
-                              onChange={e => {
-                                const nouvelles = [...(ficheActive.ressourcesSupplementaires || [])];
-                                nouvelles[idx] = e.target.value;
-                                majFiche('ressourcesSupplementaires', nouvelles);
-                              }}
-                              placeholder="https://..."
-                            />
-                            {!ficheSignee && (
-                              <button
-                                onClick={() => {
-                                  const nouvelles = (ficheActive.ressourcesSupplementaires || []).filter((_, i) => i !== idx);
+                        {(ficheActive.ressourcesSupplementaires || []).map((ressource, idx) => (
+                          <div key={idx} style={{ border: '1px solid #e0e0e0', borderRadius: '8px', padding: '10px', marginTop: '8px', backgroundColor: '#fafafa' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                              <div style={{ display: 'flex', gap: '4px' }}>
+                                <button
+                                  disabled={ficheSignee}
+                                  onClick={() => {
+                                    const nouvelles = [...(ficheActive.ressourcesSupplementaires || [])];
+                                    nouvelles[idx] = { type: 'lien', valeur: '' };
+                                    majFiche('ressourcesSupplementaires', nouvelles);
+                                  }}
+                                  style={{ backgroundColor: ressource.type === 'lien' ? COLORS.primary : '#f0f0f0', color: ressource.type === 'lien' ? 'white' : '#555', border: 'none', borderRadius: '6px', padding: '4px 10px', fontSize: '11px', fontWeight: '600', cursor: ficheSignee ? 'default' : 'pointer' }}
+                                >🔗 Lien</button>
+                                <button
+                                  disabled={ficheSignee}
+                                  onClick={() => {
+                                    const nouvelles = [...(ficheActive.ressourcesSupplementaires || [])];
+                                    nouvelles[idx] = { type: 'pdf', valeur: '' };
+                                    majFiche('ressourcesSupplementaires', nouvelles);
+                                  }}
+                                  style={{ backgroundColor: ressource.type === 'pdf' ? COLORS.primary : '#f0f0f0', color: ressource.type === 'pdf' ? 'white' : '#555', border: 'none', borderRadius: '6px', padding: '4px 10px', fontSize: '11px', fontWeight: '600', cursor: ficheSignee ? 'default' : 'pointer' }}
+                                >📎 PDF</button>
+                              </div>
+                              {!ficheSignee && (
+                                <button
+                                  onClick={() => {
+                                    const nouvelles = (ficheActive.ressourcesSupplementaires || []).filter((_, i) => i !== idx);
+                                    majFiche('ressourcesSupplementaires', nouvelles);
+                                  }}
+                                  style={{ backgroundColor: '#fde8e8', color: '#e53e3e', border: 'none', borderRadius: '6px', padding: '4px 9px', fontSize: '12px', fontWeight: '600', cursor: 'pointer' }}
+                                  title="Retirer cette ressource"
+                                >✕</button>
+                              )}
+                            </div>
+                            {ressource.type === 'lien' ? (
+                              <input
+                                type="url"
+                                disabled={ficheSignee}
+                                style={{ ...inputStyle, width: '100%', boxSizing: 'border-box' }}
+                                value={ressource.valeur}
+                                onChange={e => {
+                                  const nouvelles = [...(ficheActive.ressourcesSupplementaires || [])];
+                                  nouvelles[idx] = { ...ressource, valeur: e.target.value };
                                   majFiche('ressourcesSupplementaires', nouvelles);
                                 }}
-                                style={{ backgroundColor: '#fde8e8', color: '#e53e3e', border: 'none', borderRadius: '6px', padding: '8px 10px', fontSize: '12px', fontWeight: '600', cursor: 'pointer', flexShrink: 0 }}
-                                title="Retirer cette ressource"
-                              >✕</button>
+                                placeholder="https://..."
+                              />
+                            ) : (
+                              ressource.valeur ? (
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '12px' }}>
+                                  <span style={{ color: '#15803d', fontWeight: '600' }}>📄 {ressource.nomFichier || 'Fichier importé'}</span>
+                                  <a href={ressource.valeur} target="_blank" rel="noopener noreferrer" style={{ color: COLORS.primary, fontWeight: '600', textDecoration: 'underline' }}>Consulter</a>
+                                </div>
+                              ) : (
+                                <label style={{ backgroundColor: '#006B68', color: 'white', borderRadius: '6px', padding: '6px 12px', fontSize: '12px', fontWeight: '600', cursor: ficheSignee ? 'default' : 'pointer', display: 'inline-block' }}>
+                                  📎 Importer un PDF
+                                  <input type="file" accept="application/pdf" disabled={ficheSignee} style={{ display: 'none' }} onChange={(e) => { const file = e.target.files?.[0]; if (file) importerPdfRessource(idx, file); e.target.value = ''; }} />
+                                </label>
+                              )
                             )}
                           </div>
                         ))}
                         {!ficheSignee && (
                           <button
-                            onClick={() => majFiche('ressourcesSupplementaires', [...(ficheActive.ressourcesSupplementaires || []), ''])}
+                            onClick={() => majFiche('ressourcesSupplementaires', [...(ficheActive.ressourcesSupplementaires || []), { type: 'lien', valeur: '' }])}
                             style={{ ...btnSecondary, marginTop: '8px', fontSize: '12px', padding: '6px 12px' }}
                           >+ Ajouter une ressource</button>
                         )}

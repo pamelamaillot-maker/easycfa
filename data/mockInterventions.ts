@@ -26,7 +26,7 @@ export type FicheIntervention = {
   formatEvaluation: string;              // 4. Format de l'évaluation (si oui)
   outils: string;                        // 5. Outils utilisés
   ressourcesUrl: string;                 // 6. Ressources de synthèse (URL principale)
-  ressourcesSupplementaires?: string[];  // 6 bis. Ressources additionnelles (liste dynamique)
+  ressourcesSupplementaires?: { type: 'lien' | 'pdf'; valeur: string; nomFichier?: string; cheminStorage?: string }[];  // 6 bis. Ressources additionnelles (lien ou PDF importé)
   lienDistanciel: string;                // 7. Lien si en ligne (URL)
   difficultes: string;                   // 8. Difficultés rencontrées
 
