@@ -1744,6 +1744,9 @@ export default function FicheApprenant({ params }: { params: Promise<{ id: strin
           { id: 'diplomes', label: 'Diplômes obtenus', detail: 'Derniers diplômes', obligatoire: true },
           { id: 'contrat', label: 'Contrat signé', detail: 'Importé depuis fiche entreprise', obligatoire: true, readonly: true },
           { id: 'dpae', label: 'DPAE', detail: 'Déclaration Préalable à l\'Embauche', obligatoire: false },
+          { id: 'p2s', label: 'P2S', detail: 'Document P2S (stagiaire)', obligatoire: false },
+          { id: 'attestation_hebergement', label: 'Attestation d\'hébergement', detail: 'Si l\'apprenant est hébergé', obligatoire: false },
+          { id: 'piece_identite_hebergeur', label: 'Pièce d\'identité de l\'hébergeur', detail: 'CNI ou titre de séjour de l\'hébergeant', obligatoire: false },
           { id: 'autre', label: 'Autre document', detail: 'Tout autre document utile', obligatoire: false },
         ].map((piece) => {
           // Cas spécial : contrat → lit depuis l'entreprise (lecture seule)
