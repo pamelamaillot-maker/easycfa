@@ -10,6 +10,7 @@ import {
   supprimerApc as supprimerApcSupabase,
   modifierEcheance,
   creerEcheance,
+  supprimerEcheance,
   sauvegarderCrEcheance,
   marquerCrSignee,
   supprimerCrEcheance,
@@ -34,7 +35,7 @@ const ANNEES = ['2024','2025','2026','2027'];
 type Echeance = {
   id: string; label: string; type: 'pedago'|'equipement'|'repas';
   annee: number; pourcentage: number; montantPrevu: number;
-  dateEcheancier: string; numeroFacture: string; dateFacture: string;
+  dateEcheance: string; numeroFacture: string; dateFacture: string;
   dateDepotOpco: string; dateEcheance30j: string; datePaiement: string;
   montantPaye: number; anneePaiement?: string; fichierFacture: string; modifiee: boolean;
 };
@@ -361,6 +362,21 @@ export default function Facturation() {
     else console.log(`[Echeance ${eid}] ${champ} mis à jour dans Supabase ✅`);
     // UI + localStorage
     const u={...apcSel,echeances:echs}; setApcSel(u); save(apcs.map(a=>a.id===u.id?u:a));
+  }
+
+  // Supprime une échéance : DELETE réel dans Supabase (pas un upsert, qui ne supprimerait rien)
+  async function supprimerEcheanceLocale(echeanceId: string) {
+    if (!apcSel) return;
+    if (!confirm('Supprimer cette échéance ?\n\nCette suppression est définitive (côté base de données).')) return;
+    const res = await supprimerEcheance(echeanceId);
+    if (!res.success) {
+      alert(`⚠️ Erreur Supabase : ${res.error}`);
+      return;
+    }
+    console.log(`[Echeance ${echeanceId}] Supprimée de Supabase ✅`);
+    const u = { ...apcSel, echeances: apcSel.echeances.filter(ec => ec.id !== echeanceId) };
+    setApcSel(u);
+    save(apcs.map(a => a.id === u.id ? u : a));
   }
 
   /**
@@ -980,7 +996,7 @@ export default function Facturation() {
                               </div>
                               <div style={{display:'flex',gap:'4px',alignItems:'center'}}>
                                 <span style={{fontSize:'12px',fontWeight:'800',color:'white'}}>{e.montantPrevu.toLocaleString('fr-FR')} €</span>
-                                <button onClick={()=>maj('echeances',apcSel.echeances.filter(ec=>ec.id!==e.id))} style={{backgroundColor:'rgba(255,255,255,0.2)',color:'white',border:'none',borderRadius:'4px',padding:'1px 5px',fontSize:'10px',cursor:'pointer'}}>✕</button>
+                                <button onClick={()=>supprimerEcheanceLocale(e.id)} style={{backgroundColor:'rgba(255,255,255,0.2)',color:'white',border:'none',borderRadius:'4px',padding:'1px 5px',fontSize:'10px',cursor:'pointer'}}>✕</button>
                               </div>
                             </div>
                             <div style={{padding:'8px 10px',display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:'6px'}}>

@@ -248,6 +248,19 @@ export default function FicheEntreprise({ params }: { params: Promise<{ id: stri
 
   const e = entreprise;
 
+  // Combine les apprentis des 2 sources (Supabase + legacy localStorage), dédupliqués par id,
+  // et filtrés sur cette entreprise (par entrepriseId ou par nom).
+  function apprentisRattaches(): any[] {
+    const map = new Map<string, any>();
+    apprentisSupabase
+      .filter(a => (a.entrepriseId && a.entrepriseId === id) || memeEntreprise(a.entreprise, e.raisonSociale))
+      .forEach(a => map.set(a.id, a));
+    chargerTousApprenants()
+      .filter(a => (a.entrepriseId && a.entrepriseId === id) || memeEntreprise(a.entreprise, e.raisonSociale))
+      .forEach(a => { if (!map.has(a.id)) map.set(a.id, a); });
+    return Array.from(map.values());
+  }
+
   return (
     <div>
       <a href="/entreprises" style={{ color: COLORS.primary, fontSize: '13px', textDecoration: 'none', fontWeight: '600' }}>
@@ -349,7 +362,7 @@ export default function FicheEntreprise({ params }: { params: Promise<{ id: stri
           <Card>
             <h2 style={{ fontSize: '15px', fontWeight: '700', color: COLORS.primary, marginBottom: '12px' }}>Récapitulatif apprentis</h2>
             {(() => {
-              const tous = chargerTousApprenants().filter(a => (a.entrepriseId && a.entrepriseId === id) || memeEntreprise(a.entreprise, e.raisonSociale));
+              const tous = apprentisRattaches();
               const enCours = tous.filter(a => a.statut === 'En cours');
               const p2s = tous.filter(a => a.statut === 'P2S');
               const rupture = tous.filter(a => a.statut === 'Rupture');
@@ -534,7 +547,7 @@ export default function FicheEntreprise({ params }: { params: Promise<{ id: stri
           </thead>
           <tbody>
             {(() => {
-              const apprentisListe = chargerTousApprenants().filter(a => (a.entrepriseId && a.entrepriseId === id) || memeEntreprise(a.entreprise, e.raisonSociale));
+              const apprentisListe = apprentisRattaches();
               if (apprentisListe.length === 0) {
                 return <tr><td colSpan={7} style={{ padding: '20px', textAlign: 'center', color: COLORS.textMuted, fontStyle: 'italic' }}>Aucun apprenti rattaché</td></tr>;
               }
