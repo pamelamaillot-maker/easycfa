@@ -1362,6 +1362,78 @@ export default function FicheApprenant({ params }: { params: Promise<{ id: strin
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '24px', marginBottom: '24px' }}>
         <Card>
           <h2 style={{ fontSize: '15px', fontWeight: '700', color: COLORS.primary, marginBottom: '12px' }}>Identité</h2>
+
+          {/* 📷 Photo d'identité — repère visuel équipe + future carte étudiante */}
+          {(() => {
+            const photo = form.piece_photo_identite || form.pieces?.photo_identite;
+            return (
+              <div style={{ display: 'flex', gap: '14px', alignItems: 'flex-start', marginBottom: '14px', paddingBottom: '14px', borderBottom: `1px solid ${COLORS.border}` }}>
+                <div style={{
+                  width: '84px', aspectRatio: '35 / 45', borderRadius: '8px', overflow: 'hidden',
+                  backgroundColor: '#f0f0f0', border: `1.5px solid ${photo?.url ? COLORS.primary : '#e0e0e0'}`,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+                }}>
+                  {photo?.url ? (
+                    <img src={photo.url} alt={`Photo de ${form.prenom} ${form.nom}`} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                  ) : (
+                    <span style={{ fontSize: '32px', opacity: 0.35 }}>👤</span>
+                  )}
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: '11px', color: '#888', textTransform: 'uppercase', fontWeight: '600', marginBottom: '4px' }}>Photo d'identité</div>
+                  <div style={{ fontSize: '11px', color: '#888', marginBottom: '8px' }}>
+                    Format portrait — servira pour la carte étudiante (JPG, PNG — Max 5 Mo)
+                  </div>
+                  {peutModifier ? (
+                    <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                      <label style={{ backgroundColor: photo?.url ? 'white' : COLORS.primary, color: photo?.url ? COLORS.primary : 'white', border: photo?.url ? `1.5px solid ${COLORS.primary}` : 'none', borderRadius: '8px', padding: '6px 12px', fontSize: '12px', fontWeight: '600', cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                        {photo?.url ? '🔄 Remplacer' : '⬆ Importer'}
+                        <input type="file" accept=".jpg,.jpeg,.png" style={{ display: 'none' }} onChange={async (e) => {
+                          const f = e.target.files?.[0];
+                          if (!f) return;
+                          const chemin = cheminStorage('apprenants', id, 'photo_identite', f.name);
+                          const resStorage = await uploaderFichier(chemin, f);
+                          if (!resStorage.success || !resStorage.fichier) { alert(`⚠️ Erreur upload : ${resStorage.error}`); return; }
+                          console.log(`[Apprenant ${id}] Photo d'identité uploadée vers Storage ✅`);
+                          const fichierStocke: FichierStocke = resStorage.fichier!;
+                          const nouvellesPieces = { ...(form.pieces || {}), photo_identite: fichierStocke };
+                          const updated = { ...form, piece_photo_identite: fichierStocke, pieces: nouvellesPieces };
+                          setForm(updated);
+                          setApprenant(updated);
+                          localStorage.setItem('apprenant_' + id, JSON.stringify(updated));
+                          const res = await modifierApprenti(id, { pieces: nouvellesPieces });
+                          if (!res.success) alert(`⚠️ Erreur Supabase : ${res.error}`);
+                          else console.log(`[Apprenant ${id}] Photo d'identité enregistrée dans Supabase ✅`);
+                        }} />
+                      </label>
+                      {photo?.url && (
+                        <button onClick={async () => {
+                          if (!confirm('Supprimer la photo d\'identité ?')) return;
+                          if (photo.cheminStorage) {
+                            const resDel = await supprimerFichier(photo.cheminStorage);
+                            if (!resDel.success) console.warn(`[Apprenant ${id}] Erreur suppression Storage : ${resDel.error}`);
+                          }
+                          const nouvellesPieces = { ...(form.pieces || {}) };
+                          delete nouvellesPieces.photo_identite;
+                          const updated = { ...form, piece_photo_identite: undefined, pieces: nouvellesPieces };
+                          setForm(updated);
+                          setApprenant(updated);
+                          localStorage.setItem('apprenant_' + id, JSON.stringify(updated));
+                          const res = await modifierApprenti(id, { pieces: nouvellesPieces });
+                          if (!res.success) alert(`⚠️ Erreur Supabase : ${res.error}`);
+                        }} style={{ backgroundColor: 'white', color: '#c53030', border: '1.5px solid #c53030', borderRadius: '8px', padding: '6px 10px', fontSize: '12px', fontWeight: '600', cursor: 'pointer' }}>
+                          🗑️
+                        </button>
+                      )}
+                    </div>
+                  ) : (
+                    !photo?.url && <div style={{ fontSize: '11px', color: '#bbb', fontStyle: 'italic' }}>Aucune photo</div>
+                  )}
+                </div>
+              </div>
+            );
+          })()}
+
           {modeEdition ? (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
               <Champ label="Nom" champ="nom" form={form} setForm={setForm} />
