@@ -78,6 +78,7 @@ export interface Apprenti {
   ruptureSignee?: any;
   dfmf?: any;
   droitImage?: any;
+  carteEtudiant?: any;
   sortiesAnticipees?: any[];
 
   // SIFA
@@ -223,7 +224,7 @@ export interface DocumentApprenant {
  */
 export async function marquerDocApprenantEnAttente(
   apprenantId: string,
-  type: 'dmf' | 'rupture' | 'droitImage' | 'dfmf',
+  type: 'dmf' | 'rupture' | 'droitImage' | 'dfmf' | 'carteEtudiant',
   fichierUrl: string,
   fichierNom: string,
   cheminStorage: string
@@ -256,7 +257,7 @@ export async function marquerDocApprenantEnAttente(
  */
 export async function marquerDocApprenantSignee(
   apprenantId: string,
-  type: 'dmf' | 'rupture' | 'droitImage' | 'dfmf',
+  type: 'dmf' | 'rupture' | 'droitImage' | 'dfmf' | 'carteEtudiant',
   fichierUrl: string,
   fichierNom: string,
   cheminStorage: string
@@ -288,7 +289,7 @@ export async function marquerDocApprenantSignee(
  */
 export async function supprimerDocApprenant(
   apprenantId: string,
-  type: 'dmf' | 'rupture' | 'droitImage' | 'dfmf'
+  type: 'dmf' | 'rupture' | 'droitImage' | 'dfmf' | 'carteEtudiant'
 ): Promise<{ success: boolean; error?: string }> {
   try {
     const { error } = await supabase
@@ -386,7 +387,7 @@ const CHAMPS_VALIDES = new Set<string>([
   'pieces',
   'dmf', 'rupture', 'ruptureSignee', 'dfmf',
   'motifRupture',
-  'droitImage', 'sortiesAnticipees',
+  'droitImage', 'sortiesAnticipees', 'carteEtudiant',
 ]);
 
 /**
