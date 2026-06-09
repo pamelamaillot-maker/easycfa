@@ -79,11 +79,20 @@ function genererFeuilleDepuisSessions(sessionsSelectionnees: any[], date: string
 
   // Agréger TOUS les apprenants de TOUTES les sessions cochées (sans doublon)
   // Source : apprenants Supabase, rattachement via session.apprenantIds (fiable)
+  // Exclut les fiches qui ne doivent plus émarger : Terminé, archivées, ou rupture SANS maintien (FMEF).
+  // Les ruptures AVEC maintien (MEF) continuent d'émarger (obligation Qualiopi).
+  const neDoitPlusEmarger = (a: any): boolean => {
+    if (a.archive === true) return true;
+    if (a.statut === 'Terminé') return true;
+    if (a.statut === 'Rupture' && a.maintienFormation !== 'OUI') return true;
+    return false;
+  };
   const idsDejaAjoutes = new Set<string>();
   const apprenantsInscrits: any[] = [];
   sessionsSelectionnees.forEach(session => {
     apprenants.forEach((a: any) => {
       if (idsDejaAjoutes.has(a.id)) return;
+      if (neDoitPlusEmarger(a)) return;
       const dansSession = session.apprenantIds?.includes(a.id);
       if (dansSession) {
         apprenantsInscrits.push(a);

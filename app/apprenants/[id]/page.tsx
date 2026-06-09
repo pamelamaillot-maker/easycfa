@@ -872,10 +872,12 @@ export default function FicheApprenant({ params }: { params: Promise<{ id: strin
     (async () => {
       try {
         const ents = await chargerEntreprisesSupabase();
-        // Trouve l'entreprise par nom (raisonSociale) ou par entrepriseId
+        // Normalise un nom d'entreprise (ignore casse, accents, espaces multiples)
+        const normEnt = (s: string) => (s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/\s+/g, ' ').trim();
+        // Trouve l'entreprise par entrepriseId ou par nom normalisé
         const ent = ents.find(e =>
           (apprenant.entrepriseId && e.id === apprenant.entrepriseId) ||
-          (apprenant.entreprise && (e.raisonSociale || '').toLowerCase().trim() === apprenant.entreprise.toLowerCase().trim())
+          (apprenant.entreprise && normEnt(e.raisonSociale || '') === normEnt(apprenant.entreprise))
         );
         if (!ent) {
           setConventionEntreprise(null);
@@ -1237,7 +1239,7 @@ export default function FicheApprenant({ params }: { params: Promise<{ id: strin
           {form.maintienFormation === 'OUI' && (
             <div style={{ marginTop: '10px', display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
               <BoutonGenerationDMF
-                donnees={assemblerDonneesDMF(form)}
+                donnees={assemblerDonneesDMF(form, entrepriseObj)}
                 nomFichier={`DMF_Maintien_${form.nom}_${form.prenom}_${(form.dateRupture || '').replace(/\//g, '-')}.pdf`}
               />
               <button
@@ -2225,7 +2227,7 @@ export default function FicheApprenant({ params }: { params: Promise<{ id: strin
                   {peutModifier && (
                     <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                       <BoutonGenerationDMF
-                        donnees={assemblerDonneesDMF(form)}
+                        donnees={assemblerDonneesDMF(form, entrepriseObj)}
                         nomFichier={`DMF_${form.nom}_${form.prenom}_${(form.dateRupture || '').replace(/\//g, '-')}.pdf`}
                       />
                       {dStatut === 'a_generer' && (
