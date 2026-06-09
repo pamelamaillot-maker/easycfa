@@ -40,6 +40,7 @@ const BoutonGenerationDMF = dynamic(() => import('../../../components/BoutonGene
 const BoutonRemplirLivret = dynamic(() => import('../../../components/BoutonRemplirLivret'), { ssr: false });
 const BoutonPdfDroitImage = dynamic(() => import('../../../components/BoutonPdfDroitImage'), { ssr: false });
 const SortiesAnticipeesManager = dynamic(() => import('../../../components/SortiesAnticipeesManager'), { ssr: false });
+const BoutonCarteEtudiante = dynamic(() => import('../../../components/BoutonCarteEtudiante'), { ssr: false });
 
 const btnPrimary: React.CSSProperties = { backgroundColor: COLORS.primary, color: 'white', border: 'none', borderRadius: '8px', padding: '9px 16px', fontSize: '13px', fontWeight: '600', cursor: 'pointer' };
 const btnSecondary: React.CSSProperties = { backgroundColor: 'white', color: COLORS.primary, border: `1.5px solid ${COLORS.primary}`, borderRadius: '8px', padding: '9px 16px', fontSize: '13px', fontWeight: '600', cursor: 'pointer' };
@@ -1789,6 +1790,107 @@ export default function FicheApprenant({ params }: { params: Promise<{ id: strin
                         const res = await supprimerDocApprenant(id, 'droitImage');
                         if (!res.success) { alert(`⚠️ Erreur : ${res.error}`); return; }
                         const updated = { ...form, droitImage: null };
+                        setForm(updated); setApprenant(updated);
+                      }}
+                      style={{ backgroundColor: 'white', color: '#c00', border: '1px solid #c00', borderRadius: 8, padding: '8px 12px', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}
+                    >
+                      ✕ Annuler
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+          );
+        })()}
+      </Card>
+
+      {/* 🎓 Carte d'étudiant des métiers */}
+      <Card style={{ marginBottom: '24px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+          <h2 style={{ fontSize: '15px', fontWeight: '700', color: COLORS.primary }}>🎓 Carte d'étudiant des métiers</h2>
+          <span style={{ fontSize: '12px', color: '#888' }}>Nominative — à imprimer recto/verso</span>
+        </div>
+        {(() => {
+          const photo = form.piece_photo_identite || form.pieces?.photo_identite;
+          const aPhoto = !!photo?.url;
+          const c = form.carteEtudiant || {};
+          const cStatut = c.statut || 'a_generer';
+          const bg = cStatut === 'signee' ? '#e6f4f1' : cStatut === 'en_attente' ? '#fff8e1' : '#fffbf0';
+          const border = cStatut === 'signee' ? '#006B68' : cStatut === 'en_attente' ? '#ffe082' : '#C8A23A';
+          const icon = cStatut === 'signee' ? '✅' : cStatut === 'en_attente' ? '⏳' : '🎓';
+          const label = cStatut === 'signee' ? 'Signée' : cStatut === 'en_attente' ? 'En attente de signature' : 'À générer puis faire signer';
+          const nomFichier = 'Carte_Etudiant_' + (form.nom || '') + '_' + (form.prenom || '') + '.pdf';
+          return (
+            <div style={{ padding: 14, backgroundColor: bg, borderRadius: 8, border: `1.5px solid ${border}` }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 10 }}>
+                <div style={{ fontSize: 26 }}>{icon}</div>
+                <div style={{ flex: 1, minWidth: 220 }}>
+                  <div style={{ fontSize: 14, fontWeight: 700, color: cStatut === 'signee' ? '#006B68' : '#7a5c00' }}>
+                    Carte d'étudiant — {label}
+                  </div>
+                  {cStatut === 'en_attente' && c.dateEnvoiEmail && (
+                    <div style={{ fontSize: 11, color: '#C8A23A', marginTop: 4 }}>
+                      📧 Marquée envoyée pour signature le {new Date(c.dateEnvoiEmail).toLocaleDateString('fr-FR')}
+                    </div>
+                  )}
+                  {cStatut === 'signee' && c.dateSignature && (
+                    <div style={{ fontSize: 11, color: '#006B68', marginTop: 4, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                      <span>📄 {c.fichierSigneNom}</span>
+                      <a href={c.fichierSigneUrl} target="_blank" rel="noreferrer" style={{ color: '#006B68', textDecoration: 'underline', fontSize: 11 }}>⬇ Télécharger</a>
+                      <span style={{ color: '#888', fontStyle: 'italic' }}>— Importée le {new Date(c.dateSignature).toLocaleDateString('fr-FR')}</span>
+                    </div>
+                  )}
+                  {cStatut === 'a_generer' && (
+                    <div style={{ fontSize: 11, color: '#666', marginTop: 4, lineHeight: 1.5 }}>
+                      Recto : photo, {form.prenom} {form.nom}, né(e) le {form.dateNaissance || '—'}, validité {form.dateFinContrat || '—'}.
+                      {!aPhoto && <><br />Ajoutez une photo dans la carte « Identité » pour une carte complète.</>}
+                    </div>
+                  )}
+                </div>
+              </div>
+              {peutModifier && (
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                  <BoutonCarteEtudiante apprenant={form} nomFichier={nomFichier} />
+
+                  {cStatut === 'a_generer' && (
+                    <button
+                      onClick={async () => {
+                        if (!confirm('Marquer la carte comme envoyée pour signature ?\n\nAssurez-vous d\'avoir généré et transmis le PDF à l\'apprenti(e) avant.')) return;
+                        const res = await marquerDocApprenantEnAttente(id, 'carteEtudiant', '', nomFichier, '');
+                        if (!res.success) { alert(`⚠️ Erreur : ${res.error}`); return; }
+                        const updated = { ...form, carteEtudiant: { statut: 'en_attente', dateEnvoiEmail: new Date().toISOString(), fichierNonSigneNom: nomFichier } };
+                        setForm(updated); setApprenant(updated);
+                      }}
+                      style={{ backgroundColor: '#C8A23A', color: 'white', border: 'none', borderRadius: 8, padding: '8px 14px', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}
+                    >
+                      ✉️ Marquer comme envoyée
+                    </button>
+                  )}
+
+                  {(cStatut === 'en_attente' || cStatut === 'signee') && (
+                    <label style={{ backgroundColor: cStatut === 'signee' ? 'white' : '#006B68', color: cStatut === 'signee' ? '#006B68' : 'white', border: cStatut === 'signee' ? '1.5px solid #006B68' : 'none', borderRadius: 8, padding: '8px 14px', fontSize: 13, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                      {cStatut === 'signee' ? '🔄 Remplacer la signée' : '📤 Importer la carte signée'}
+                      <input type="file" accept=".pdf,.jpg,.jpeg,.png" style={{ display: 'none' }} onChange={async (ev) => {
+                        const f = ev.target.files?.[0];
+                        if (!f) return;
+                        const chemin = cheminStorage('apprenants', id, 'carte_etudiant_signee', f.name);
+                        const resUp = await uploaderFichier(chemin, f);
+                        if (!resUp.success || !resUp.fichier) { alert(`⚠️ Erreur upload : ${resUp.error}`); return; }
+                        const res = await marquerDocApprenantSignee(id, 'carteEtudiant', resUp.fichier.url, f.name, chemin);
+                        if (!res.success) { alert(`⚠️ Erreur : ${res.error}`); return; }
+                        const apprenantMaj = await chargerApprenti(id);
+                        if (apprenantMaj) { setForm(apprenantMaj); setApprenant(apprenantMaj); }
+                      }} />
+                    </label>
+                  )}
+
+                  {cStatut !== 'a_generer' && (
+                    <button
+                      onClick={async () => {
+                        if (!confirm('Annuler/supprimer le suivi de la carte signée ?')) return;
+                        const res = await supprimerDocApprenant(id, 'carteEtudiant');
+                        if (!res.success) { alert(`⚠️ Erreur : ${res.error}`); return; }
+                        const updated = { ...form, carteEtudiant: null };
                         setForm(updated); setApprenant(updated);
                       }}
                       style={{ backgroundColor: 'white', color: '#c00', border: '1px solid #c00', borderRadius: 8, padding: '8px 12px', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}
