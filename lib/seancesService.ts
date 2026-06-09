@@ -166,7 +166,7 @@ export async function chargerIdsFeuillesAccessibles(formateurId: string): Promis
 
 export type FiltreTemps = 'aujourd_hui' | 'a_venir' | 'passees' | 'toutes';
 
-export function filtrerParTemps(seances: MaSeance[], filtre: FiltreTemps): MaSeance[] {
+export function filtrerParTemps<T extends { date: string }>(seances: T[], filtre: FiltreTemps): T[] {
   const maintenant = new Date();
   const aujourdhui = new Date(maintenant.getFullYear(), maintenant.getMonth(), maintenant.getDate());
 
@@ -185,5 +185,74 @@ export function filtrerParTemps(seances: MaSeance[], filtre: FiltreTemps): MaSea
       default:
         return true;
     }
+  });
+}
+// ────────────────────────────────────────────────────────────────
+// CHARGEMENT — Feuilles du formateur (1 feuille = 1 carte)
+// Regroupe les séances partageant la même feuille. Les séances sans
+// feuille générée ne sont pas affichées (le formateur ne voit que ce
+// que l'administration a généré).
+// ────────────────────────────────────────────────────────────────
+
+export type MaFeuille = {
+  feuilleId?: string;
+  date: string;
+  jour: string;
+  type: 'cours' | 'revision' | 'examen';
+  formation: string;
+  salle: string;
+  semaine?: number;
+  module?: string;
+  sessionNumeros: string[]; // toutes les sessions couvertes par la feuille
+};
+
+export async function chargerMesFeuilles(formateurId: string): Promise<MaFeuille[]> {
+  const seances = await chargerMesSeances(formateurId);
+  const cartes: MaFeuille[] = [];
+  const parFeuille = new Map<string, MaFeuille>();
+
+  for (const s of seances) {
+    if (s.feuilleEmargementId) {
+      // Séance couverte par une feuille → on regroupe (1 feuille = 1 carte)
+      const existante = parFeuille.get(s.feuilleEmargementId);
+      if (existante) {
+        if (!existante.sessionNumeros.includes(s.sessionNumero)) {
+          existante.sessionNumeros.push(s.sessionNumero);
+        }
+      } else {
+        const carte: MaFeuille = {
+          feuilleId: s.feuilleEmargementId,
+          date: s.date,
+          jour: s.jour,
+          type: s.type,
+          formation: s.formation,
+          salle: s.salle,
+          semaine: s.semaine,
+          module: s.module,
+          sessionNumeros: [s.sessionNumero],
+        };
+        parFeuille.set(s.feuilleEmargementId, carte);
+        cartes.push(carte);
+      }
+    } else {
+      // Séance planifiée sans feuille encore générée → aperçu (pas d'émargement)
+      cartes.push({
+        feuilleId: undefined,
+        date: s.date,
+        jour: s.jour,
+        type: s.type,
+        formation: s.formation,
+        salle: s.salle,
+        semaine: s.semaine,
+        module: s.module,
+        sessionNumeros: [s.sessionNumero],
+      });
+    }
+  }
+
+  return cartes.sort((a, b) => {
+    const dA = parseFr(a.date)?.getTime() ?? 0;
+    const dB = parseFr(b.date)?.getTime() ?? 0;
+    return dA - dB;
   });
 }

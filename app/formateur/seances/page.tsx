@@ -5,9 +5,9 @@ import Link from 'next/link';
 import { useUser } from '../../../lib/UserContext';
 import { COLORS } from '../../../lib/constants';
 import {
-  chargerMesSeances,
+  chargerMesFeuilles,
   filtrerParTemps,
-  MaSeance,
+  MaFeuille,
   FiltreTemps,
 } from '../../../lib/seancesService';
 
@@ -26,12 +26,12 @@ const TYPE_STYLE: Record<string, { bg: string; color: string; icon: string; labe
 
 export default function MesSeancesPage() {
   const { utilisateur } = useUser();
-  const [seances, setSeances] = useState<MaSeance[]>([]);
+  const [feuilles, setFeuilles] = useState<MaFeuille[]>([]);
   const [filtre, setFiltre] = useState<FiltreTemps>('aujourd_hui');
   const [chargement, setChargement] = useState(true);
   const [erreur, setErreur] = useState<string>('');
 
-  // Chargement des séances
+  // Chargement des feuilles (1 feuille = 1 carte)
   useEffect(() => {
     if (!utilisateur?.formateurId) {
       setErreur(
@@ -43,8 +43,8 @@ export default function MesSeancesPage() {
     }
     (async () => {
       try {
-        const data = await chargerMesSeances(utilisateur.formateurId!);
-        setSeances(data);
+        const data = await chargerMesFeuilles(utilisateur.formateurId!);
+        setFeuilles(data);
       } catch (e) {
         console.error('[MesSeances] Erreur :', e);
         setErreur("Erreur lors du chargement de vos séances.");
@@ -53,25 +53,23 @@ export default function MesSeancesPage() {
     })();
   }, [utilisateur?.formateurId]);
 
-  // Compteurs par filtre (pour les badges sur les boutons de filtre)
+  // Compteurs par filtre
   const compteurs: Record<FiltreTemps, number> = {
-    aujourd_hui: filtrerParTemps(seances, 'aujourd_hui').length,
-    a_venir:     filtrerParTemps(seances, 'a_venir').length,
-    passees:     filtrerParTemps(seances, 'passees').length,
-    toutes:      seances.length,
+    aujourd_hui: filtrerParTemps(feuilles, 'aujourd_hui').length,
+    a_venir:     filtrerParTemps(feuilles, 'a_venir').length,
+    passees:     filtrerParTemps(feuilles, 'passees').length,
+    toutes:      feuilles.length,
   };
 
-  const seancesAffichees = filtrerParTemps(seances, filtre);
+  const feuillesAffichees = filtrerParTemps(feuilles, filtre);
 
   // Tri spécifique par filtre
-  const seancesTriees = [...seancesAffichees].sort((a, b) => {
+  const feuillesTriees = [...feuillesAffichees].sort((a, b) => {
     const [jA, mA, aA] = a.date.split('/').map(Number);
     const [jB, mB, aB] = b.date.split('/').map(Number);
     const dateA = new Date(aA, mA - 1, jA).getTime();
     const dateB = new Date(aB, mB - 1, jB).getTime();
-    // Passées : ordre décroissant (plus récente d'abord)
     if (filtre === 'passees') return dateB - dateA;
-    // À venir / Aujourd'hui / Toutes : ordre croissant
     return dateA - dateB;
   });
 
@@ -147,8 +145,8 @@ export default function MesSeancesPage() {
         ))}
       </div>
 
-      {/* Liste des séances */}
-      {seancesTriees.length === 0 ? (
+      {/* Liste des feuilles */}
+      {feuillesTriees.length === 0 ? (
         <div style={{ backgroundColor: 'white', borderRadius: 12, padding: 40, textAlign: 'center', boxShadow: '0 1px 4px rgba(0,0,0,0.05)' }}>
           <div style={{ fontSize: 40, marginBottom: 12 }}>📅</div>
           <div style={{ fontSize: 14, color: '#555', fontWeight: 600 }}>
@@ -159,17 +157,16 @@ export default function MesSeancesPage() {
           </div>
           <div style={{ fontSize: 12, color: '#888', marginTop: 6 }}>
             {filtre === 'aujourd_hui' && 'Vérifiez "À venir" pour vos prochaines interventions.'}
-            {filtre === 'a_venir' && 'Vos séances futures apparaîtront ici dès que PAMA aura mis à jour le planning.'}
+            {filtre === 'a_venir' && 'Vos séances apparaîtront ici dès que l\'administration aura généré la feuille d\'émargement.'}
           </div>
         </div>
       ) : (
-        seancesTriees.map((seance, idx) => {
-          const styleType = TYPE_STYLE[seance.type] || TYPE_STYLE.cours;
-          const aFeuille = !!seance.feuilleEmargementId;
+        feuillesTriees.map((feuille, idx) => {
+          const styleType = TYPE_STYLE[feuille.type] || TYPE_STYLE.cours;
 
           return (
             <div
-              key={`${seance.sessionId}-${seance.date}-${idx}`}
+              key={`${feuille.feuilleId ?? feuille.sessionNumeros.join('-')}-${feuille.date}-${idx}`}
               style={{
                 backgroundColor: 'white',
                 borderRadius: 12,
@@ -183,18 +180,18 @@ export default function MesSeancesPage() {
               <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 12, gap: 12 }}>
                 <div>
                   <div style={{ fontSize: 16, fontWeight: 800, color: COLORS.primary }}>
-                    📅 {seance.jour} {seance.date}
+                    📅 {feuille.jour} {feuille.date}
                   </div>
                   <div style={{ fontSize: 13, color: '#555', marginTop: 4 }}>
-                    📚 <strong>{seance.formation}</strong> — {seance.sessionNumero}
+                    📚 <strong>{feuille.formation}</strong> — {feuille.sessionNumeros.join(' + ')}
                   </div>
                   <div style={{ fontSize: 12, color: '#888', marginTop: 2 }}>
-                    📍 {seance.salle}
-                    {seance.module && (
-                      <> · 🎯 Module : <strong>{seance.module}</strong></>
+                    📍 {feuille.salle}
+                    {feuille.module && (
+                      <> · 🎯 Module : <strong>{feuille.module}</strong></>
                     )}
-                    {seance.semaine !== undefined && (
-                      <> · Semaine {seance.semaine}</>
+                    {feuille.semaine !== undefined && (
+                      <> · Semaine {feuille.semaine}</>
                     )}
                   </div>
                 </div>
@@ -213,7 +210,7 @@ export default function MesSeancesPage() {
 
               {/* Statut feuille d'émargement */}
               <div style={{
-                backgroundColor: aFeuille ? '#fef6e4' : '#f5f5f5',
+                backgroundColor: feuille.feuilleId ? '#fef6e4' : '#f5f5f5',
                 borderRadius: 8,
                 padding: '10px 14px',
                 fontSize: 13,
@@ -222,7 +219,7 @@ export default function MesSeancesPage() {
                 alignItems: 'center',
                 gap: 8,
               }}>
-                {aFeuille ? (
+                {feuille.feuilleId ? (
                   <>
                     <span style={{ fontSize: 16 }}>📝</span>
                     <span style={{ color: '#7a5c00', fontWeight: 600 }}>Feuille d'émargement disponible</span>
@@ -235,10 +232,10 @@ export default function MesSeancesPage() {
                 )}
               </div>
 
-              {/* Bouton d'action */}
-              {aFeuille ? (
+              {/* Bouton d'action — seulement si une feuille existe */}
+              {feuille.feuilleId ? (
                 <Link
-                  href={`/emargement?feuille=${seance.feuilleEmargementId}`}
+                  href={`/emargement?feuille=${feuille.feuilleId}`}
                   style={{
                     display: 'inline-block',
                     backgroundColor: COLORS.primary,
@@ -274,7 +271,7 @@ export default function MesSeancesPage() {
         color: '#666',
         fontStyle: 'italic',
       }}>
-        💡 Vous voyez ici toutes les séances où vous êtes affecté(e) dans le planning des sessions.
+        💡 Vous voyez ici les feuilles d'émargement générées par l'administration pour vos séances.
         Pour toute modification de votre planning, contactez l'administration.
       </div>
     </div>
