@@ -145,7 +145,7 @@ function genererFeuilleDepuisSessions(sessionsSelectionnees: any[], date: string
 
 export default function Emargement() {
   const { utilisateur } = useUser();
-  const { estAdmin } = useAcces();
+  const { estAdmin, peutModifier } = useAcces();
   const searchParams = useSearchParams();
 
   // Phase 4.b-bis : détecter si l'utilisateur est un formateur (mode partagé)
@@ -1274,7 +1274,7 @@ export default function Emargement() {
                       <span style={{ backgroundColor: '#e6f4f1', color: '#006B68', padding: '6px 14px', borderRadius: '20px', fontSize: '13px', fontWeight: '700' }}>
                         ✅ Validé à {dj.heureValidation}
                       </span>
-                      {estAdmin && !estFormateur && (() => {
+                      {peutModifier && !estFormateur && (() => {
                         const aEnvoyer = dj.presences.filter(p => (p.statut === 'Absent' || p.statut === 'Retard' || p.statut === 'Absent justifié') && !p.emailEnvoye).length;
                         if (aEnvoyer === 0) return null;
                         return (
@@ -1287,7 +1287,7 @@ export default function Emargement() {
                           </button>
                         );
                       })()}
-                      {estAdmin && !estFormateur && (
+                      {peutModifier && !estFormateur && (
                         (dj as any).pdfSigneUrl ? (
                           <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
                             <span style={{ backgroundColor: '#dcfce7', color: '#15803d', padding: '5px 10px', borderRadius: '8px', fontSize: '12px', fontWeight: '600' }}>📄 Émargement signé</span>
