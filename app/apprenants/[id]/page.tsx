@@ -1497,9 +1497,19 @@ export default function FicheApprenant({ params }: { params: Promise<{ id: strin
         {modeEdition ? (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '16px' }}>
             <div>
-              <label style={{ fontSize: '12px', color: '#888', display: 'block', marginBottom: '4px' }}>Formation</label>
-              <div style={{ padding: '8px 12px', backgroundColor: '#EAF4F3', borderRadius: '8px', fontSize: '13px', fontWeight: '600', color: '#006B68' }}>
-                {({'SC':'TP Secrétaire Comptable','GCF':'TP Gestionnaire Comptable et Fiscal','ARH':'TP Assistant(e) en Ressources Humaines','AD':'TP Assistant(e) de Direction','CATL':'TP Chargé(e) d\'Accueil Touristique et de Loisirs','EC':'TP Employé(e) Commercial(e)','CV':'TP Conseiller(ère) de Vente','FPA':'TP Formateur(trice) Professionnel(le) d\'Adultes'} as Record<string,string>)[form.formation] || form.formation || '—'}
+              <label style={{ fontSize: '11px', color: '#888', textTransform: 'uppercase', fontWeight: '600', display: 'block', marginBottom: '4px' }}>Formation</label>
+              <select
+                style={inputStyle}
+                value={form.formation ?? ''}
+                onChange={e => setForm((p: any) => ({ ...p, formation: e.target.value, sessionId: undefined }))}
+              >
+                <option value="">— Choisir une formation —</option>
+                {Object.entries({'SC':'TP Secrétaire Comptable','GCF':'TP Gestionnaire Comptable et Fiscal','ARH':'TP Assistant(e) en Ressources Humaines','AD':'TP Assistant(e) de Direction','CATL':'TP Chargé(e) d\'Accueil Touristique et de Loisirs','EC':'TP Employé(e) Commercial(e)','CV':'TP Conseiller(ère) de Vente','FPA':'TP Formateur(trice) Professionnel(le) d\'Adultes'}).map(([code, libelle]) => (
+                  <option key={code} value={code}>{code} — {libelle}</option>
+                ))}
+              </select>
+              <div style={{ fontSize: '10px', color: '#C8A23A', marginTop: '4px' }}>
+                ⚠️ Changer la formation réinitialise la session (à réassigner ci-dessous).
               </div>
             </div>
 
