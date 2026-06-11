@@ -268,10 +268,6 @@ export default function FicheSession({ params }: { params: Promise<{ id: string 
 
       {/* Apprenants */}
       <Card style={{ marginBottom: '24px' }}>
-      </Card>
-
-      {/* Apprenants */}
-      <Card style={{ marginBottom: '24px' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
           <h2 style={{ fontSize: '16px', fontWeight: '700', color: COLORS.primary }}>
             Apprenants inscrits ({apprenants.length})
