@@ -10,6 +10,7 @@ import {
   modifierSession,
   supprimerSession as supprimerSessionSupabase,
 } from '../../data/sessionsSupabase';
+import { chargerFormateurs } from '../../data/formateursSupabase';
 import Card from '../../components/Card';
 import CardEvaluationsChaud from '../../components/CardEvaluationsChaud';
 import CardEvaluationsFroid from '../../components/CardEvaluationsFroid';
@@ -208,11 +209,14 @@ export default function Sessions() {
         const saved = localStorage.getItem('easycfa_sessions_v2');
         if (saved) setSessions(JSON.parse(saved));
       }
-      // Formateurs (pour les sélecteurs) : localStorage en attendant que la page soit elle aussi async
+      // Formateurs (pour les sélecteurs) : Supabase (table 'formateurs')
       try {
-        const fSaved = localStorage.getItem('easycfa_formateurs');
-        if (fSaved) setFormateurs(JSON.parse(fSaved));
-      } catch {}
+        const fSupabase = await chargerFormateurs();
+        console.log(`[Sessions] ${fSupabase.length} formateurs chargés depuis Supabase ✅`);
+        setFormateurs(fSupabase as any[]);
+      } catch (e) {
+        console.error('[Sessions] Erreur chargement formateurs Supabase', e);
+      }
       // Apprenants (pour l'affectation aux sessions) : Supabase, table 'apprenants'
       try {
         const apprenantsSupabase = await chargerApprentis();
@@ -417,6 +421,45 @@ export default function Sessions() {
 
   function modifierEntreePlanning(index: number, champ: string, valeur: any) {
     setPlanningBrouillon(prev => prev.map((p, i) => i === index ? { ...p, [champ]: valeur } : p));
+  }
+
+  // Propage automatiquement le formateur d'une date à TOUTES les sessions de la même
+  // formation ayant une séance à cette date (écriture immédiate en base pour les autres sessions).
+  async function propagerFormateurSurDate(date: string, formateurId: string, formateurNom: string) {
+    if (!selectionne || !date) return;
+
+    const formation = selectionne.formation;
+    const ciblees = sessions.filter(s =>
+      s.formation === formation &&
+      s.id !== selectionne.id &&
+      Array.isArray(s.planning) &&
+      s.planning.some((p: any) => p.date === date)
+    );
+
+    if (ciblees.length === 0) return;
+
+    let okCount = 0;
+    const sessionsMaj = [...sessions];
+    for (const s of ciblees) {
+      const planningMaj = s.planning.map((p: any) =>
+        p.date === date ? { ...p, formateurId, formateurNom } : p
+      );
+      const res = await modifierSession(s.id, { planning: planningMaj } as any);
+      if (!res.success) {
+        console.error(`[Sessions ${s.id}] Erreur propagation formateur :`, res.error);
+      } else {
+        okCount++;
+        const idx = sessionsMaj.findIndex(x => x.id === s.id);
+        if (idx >= 0) sessionsMaj[idx] = { ...sessionsMaj[idx], planning: planningMaj };
+      }
+    }
+    setSessions(sessionsMaj);
+    localStorage.setItem('easycfa_sessions_v2', JSON.stringify(sessionsMaj));
+
+    if (okCount > 0) {
+      setSauvegardePlanning(true);
+      setTimeout(() => setSauvegardePlanning(false), 2500);
+    }
   }
 
   function ajouterEntreePlanning() {
@@ -625,8 +668,10 @@ export default function Sessions() {
                                 </select>
                                 <select value={p.formateurId || ''} onChange={ev => {
                                   const f = formateurs.find(fo => fo.id === ev.target.value);
+                                  const nom = f ? `${f.prenom} ${f.nom}` : '';
                                   modifierEntreePlanning(i, 'formateurId', ev.target.value);
-                                  modifierEntreePlanning(i, 'formateurNom', f ? `${f.prenom} ${f.nom}` : '');
+                                  modifierEntreePlanning(i, 'formateurNom', nom);
+                                  propagerFormateurSurDate(p.date, ev.target.value, nom);
                                 }} style={{ fontSize: '11px', color: '#555', width: '160px', flexShrink: 0, border: `1px solid ${typeColor}40`, borderRadius: '4px', padding: '3px 6px', backgroundColor: 'white' }}>
                                   <option value="">— Formateur —</option>
                                   {formateurs.map(f => <option key={f.id} value={f.id}>{f.prenom} {f.nom}</option>)}
