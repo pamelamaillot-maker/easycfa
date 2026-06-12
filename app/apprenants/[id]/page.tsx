@@ -735,6 +735,10 @@ export default function FicheApprenant({ params }: { params: Promise<{ id: strin
   const [sauvegarde, setSauvegarde] = useState(false);
   const [modaleRupture, setModaleRupture] = useState(false);
   const [rupture, setRupture] = useState({ date: '', motif: '', maintien: 'NON' });
+  const [modaleConversion, setModaleConversion] = useState(false);
+  const [conversion, setConversion] = useState({ entreprise: '', dateDebutContrat: '', dateFinContrat: '', dateDebutFormation: '' });
+  const [modaleClotureP2s, setModaleClotureP2s] = useState(false);
+  const [motifCloture, setMotifCloture] = useState('');
   const [sessions, setSessions] = useState<any[]>([]);
   const [entreprises, setEntreprises] = useState<string[]>([]);
   const [modeEntrepriseManuelle, setModeEntrepriseManuelle] = useState(false);
@@ -1046,6 +1050,80 @@ export default function FicheApprenant({ params }: { params: Promise<{ id: strin
     setSauvegarde(true);
     setTimeout(() => setSauvegarde(false), 3000);
   }
+  async function convertirP2sEnCa() {
+    const updated = {
+      ...form,
+      statut: 'En cours',
+      entreprise: conversion.entreprise,
+      dateDebutContrat: conversion.dateDebutContrat,
+      dateFinContrat: conversion.dateFinContrat,
+      dateDebutFormation: conversion.dateDebutFormation || form.dateDebutFormation,
+    };
+    // 1. Supabase d'abord
+    try {
+      const res = await modifierApprenti(id, {
+        statut: 'En cours',
+        entreprise: conversion.entreprise,
+        dateDebutContrat: conversion.dateDebutContrat,
+        dateFinContrat: conversion.dateFinContrat,
+        dateDebutFormation: conversion.dateDebutFormation || form.dateDebutFormation,
+      });
+      if (!res.success) {
+        alert(`⚠️ Erreur Supabase : ${res.error}\nConversion enregistrée localement uniquement.`);
+      } else {
+        console.log(`[FicheApprenant ${id}] P2S converti en CA dans Supabase ✅`);
+      }
+    } catch (e) {
+      console.error('[FicheApprenant] Erreur Supabase conversion, fallback local', e);
+    }
+    // 2. UI + localStorage en miroir
+    setForm(updated);
+    setApprenant(updated);
+    localStorage.setItem('apprenant_' + id, JSON.stringify(updated));
+    try {
+      const liste = JSON.parse(localStorage.getItem('easycfa_apprenants_v2') || '[]');
+      const idx = liste.findIndex((a: any) => a.id === id);
+      if (idx >= 0) liste[idx] = { ...liste[idx], ...updated };
+      else liste.push(updated);
+      localStorage.setItem('easycfa_apprenants_v2', JSON.stringify(liste));
+    } catch {}
+    setModaleConversion(false);
+    setSauvegarde(true);
+    setTimeout(() => setSauvegarde(false), 3000);
+  }
+  async function cloturerP2s() {
+    const updated = {
+      ...form,
+      statut: 'Terminé',
+      motifFinP2s: motifCloture || '',
+      archive: true,
+    };
+    // 1. Supabase d'abord
+    try {
+      const res = await modifierApprenti(id, { statut: 'Terminé', archive: true });
+      if (!res.success) {
+        alert(`⚠️ Erreur Supabase : ${res.error}\nClôture enregistrée localement uniquement.`);
+      } else {
+        console.log(`[FicheApprenant ${id}] P2S clôturé (Terminé sans rupture) dans Supabase ✅`);
+      }
+    } catch (e) {
+      console.error('[FicheApprenant] Erreur Supabase clôture P2S, fallback local', e);
+    }
+    // 2. UI + localStorage en miroir
+    setForm(updated);
+    setApprenant(updated);
+    localStorage.setItem('apprenant_' + id, JSON.stringify(updated));
+    try {
+      const liste = JSON.parse(localStorage.getItem('easycfa_apprenants_v2') || '[]');
+      const idx = liste.findIndex((a: any) => a.id === id);
+      if (idx >= 0) liste[idx] = { ...liste[idx], ...updated };
+      else liste.push(updated);
+      localStorage.setItem('easycfa_apprenants_v2', JSON.stringify(liste));
+    } catch {}
+    setModaleClotureP2s(false);
+    setSauvegarde(true);
+    setTimeout(() => setSauvegarde(false), 3000);
+  }
 
   async function supprimerApprenant() {
     // 1. Supabase d'abord (source de vérité)
@@ -1213,8 +1291,32 @@ export default function FicheApprenant({ params }: { params: Promise<{ id: strin
 
       {p2s && (
         <div style={{ backgroundColor: '#fef6e4', borderRadius: '10px', padding: '14px 16px', marginBottom: '16px', border: '1.5px solid #C8A23A' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
             <span style={{ color: '#7a5c00', fontWeight: '600', fontSize: '14px' }}>⚠️ Stagiaire P2S — Entreprise à trouver avant le {form.dateFinFormation}</span>
+            {peutModifier && (
+              <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                <button
+                  onClick={() => {
+                    setConversion({
+                      entreprise: form.entreprise || '',
+                      dateDebutContrat: '',
+                      dateFinContrat: '',
+                      dateDebutFormation: form.dateDebutFormation || '',
+                    });
+                    setModaleConversion(true);
+                  }}
+                  style={{ backgroundColor: '#16a34a', color: 'white', border: 'none', borderRadius: '8px', padding: '8px 14px', fontSize: '13px', fontWeight: '600', cursor: 'pointer', whiteSpace: 'nowrap' }}
+                >
+                  🔄 Convertir en contrat (CA)
+                </button>
+                <button
+                  onClick={() => setModaleClotureP2s(true)}
+                  style={{ backgroundColor: 'white', color: '#7a5c00', border: '1.5px solid #C8A23A', borderRadius: '8px', padding: '8px 14px', fontSize: '13px', fontWeight: '600', cursor: 'pointer', whiteSpace: 'nowrap' }}
+                >
+                  📋 Clôturer le P2S (sans suite)
+                </button>
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -2658,6 +2760,77 @@ export default function FicheApprenant({ params }: { params: Promise<{ id: strin
                 style={{ ...btnDanger, backgroundColor: rupture.date ? '#e53e3e' : '#f0f0f0', color: rupture.date ? 'white' : '#aaa', border: 'none' }}
               >
                 ❌ Confirmer la rupture
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* Modale conversion P2S → CA */}
+      {modaleConversion && (
+        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
+          <div style={{ backgroundColor: 'white', borderRadius: '12px', padding: '28px', width: '520px', maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 8px 32px rgba(0,0,0,0.2)' }}>
+            <h2 style={{ fontSize: '18px', fontWeight: '700', color: '#16a34a', marginBottom: '8px' }}>🔄 Convertir le P2S en contrat d'apprentissage</h2>
+            <p style={{ fontSize: '13px', color: '#888', marginBottom: '8px' }}>{form.prenom} {form.nom}</p>
+            <div style={{ padding: '10px 14px', backgroundColor: '#f0fdf4', borderRadius: '8px', marginBottom: '20px', fontSize: '12px', color: '#15803d', borderLeft: '4px solid #16a34a' }}>
+              ✅ La même fiche est conservée. La date de début de formation est reprise du P2S (modifiable) — c'est elle que l'OPCO prend en compte.
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+              <div>
+                <label style={{ fontSize: '11px', color: '#888', textTransform: 'uppercase', fontWeight: '600', display: 'block', marginBottom: '4px' }}>Entreprise *</label>
+                <input style={inputStyle} value={conversion.entreprise} placeholder="Nom de l'entreprise" onChange={e => setConversion(p => ({ ...p, entreprise: e.target.value }))} />
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                <div>
+                  <label style={{ fontSize: '11px', color: '#888', textTransform: 'uppercase', fontWeight: '600', display: 'block', marginBottom: '4px' }}>Début contrat *</label>
+                  <input style={inputStyle} value={conversion.dateDebutContrat} placeholder="JJ/MM/AAAA" onChange={e => setConversion(p => ({ ...p, dateDebutContrat: e.target.value }))} />
+                </div>
+                <div>
+                  <label style={{ fontSize: '11px', color: '#888', textTransform: 'uppercase', fontWeight: '600', display: 'block', marginBottom: '4px' }}>Fin contrat *</label>
+                  <input style={inputStyle} value={conversion.dateFinContrat} placeholder="JJ/MM/AAAA" onChange={e => setConversion(p => ({ ...p, dateFinContrat: e.target.value }))} />
+                </div>
+              </div>
+              <div>
+                <label style={{ fontSize: '11px', color: '#888', textTransform: 'uppercase', fontWeight: '600', display: 'block', marginBottom: '4px' }}>Début formation (repris du P2S, modifiable)</label>
+                <input style={{ ...inputStyle, backgroundColor: '#f0fdf4' }} value={conversion.dateDebutFormation} placeholder="JJ/MM/AAAA" onChange={e => setConversion(p => ({ ...p, dateDebutFormation: e.target.value }))} />
+                <div style={{ fontSize: '10px', color: '#16a34a', marginTop: '4px' }}>💡 Date prise en compte par l'OPCO — conservée depuis le P2S.</div>
+              </div>
+            </div>
+            <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end', marginTop: '20px' }}>
+              <button onClick={() => setModaleConversion(false)} style={btnSecondary}>Annuler</button>
+              <button
+                onClick={convertirP2sEnCa}
+                disabled={!conversion.entreprise || !conversion.dateDebutContrat || !conversion.dateFinContrat}
+                style={{ ...btnPrimary, backgroundColor: (conversion.entreprise && conversion.dateDebutContrat && conversion.dateFinContrat) ? '#16a34a' : '#ccc', cursor: (conversion.entreprise && conversion.dateDebutContrat && conversion.dateFinContrat) ? 'pointer' : 'not-allowed' }}
+              >
+                🔄 Convertir en CA
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* Modale clôture P2S sans suite */}
+      {modaleClotureP2s && (
+        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
+          <div style={{ backgroundColor: 'white', borderRadius: '12px', padding: '28px', width: '480px', boxShadow: '0 8px 32px rgba(0,0,0,0.2)' }}>
+            <h2 style={{ fontSize: '18px', fontWeight: '700', color: '#7a5c00', marginBottom: '8px' }}>📋 Clôturer le P2S (sans suite)</h2>
+            <p style={{ fontSize: '13px', color: '#888', marginBottom: '8px' }}>{form.prenom} {form.nom}</p>
+            <div style={{ padding: '10px 14px', backgroundColor: '#fffbf0', borderRadius: '8px', marginBottom: '20px', fontSize: '12px', color: '#7a5c00', borderLeft: '4px solid #C8A23A' }}>
+              ℹ️ Le P2S se termine sans contrat trouvé (changement d'avis ou fin des 3 mois). La fiche passe en « Terminé » — <strong>sans rupture</strong>, puisqu'il n'y a jamais eu de contrat.
+            </div>
+            <div>
+              <label style={{ fontSize: '11px', color: '#888', textTransform: 'uppercase', fontWeight: '600', display: 'block', marginBottom: '4px' }}>Motif (optionnel)</label>
+              <select style={inputStyle} value={motifCloture} onChange={e => setMotifCloture(e.target.value)}>
+                <option value="">— Aucun motif —</option>
+                <option value="Fin des 3 mois sans entreprise">Fin des 3 mois sans entreprise</option>
+                <option value="Changement d'avis du stagiaire">Changement d'avis du stagiaire</option>
+                <option value="Abandon">Abandon</option>
+                <option value="Autre">Autre</option>
+              </select>
+            </div>
+            <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end', marginTop: '20px' }}>
+              <button onClick={() => setModaleClotureP2s(false)} style={btnSecondary}>Annuler</button>
+              <button onClick={cloturerP2s} style={{ ...btnPrimary, backgroundColor: '#7a5c00' }}>
+                📋 Clôturer le P2S
               </button>
             </div>
           </div>
