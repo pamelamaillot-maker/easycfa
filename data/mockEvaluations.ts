@@ -62,9 +62,14 @@ export interface EvaluationFormateur {
   noteMoyenne: number;
 
   /** Synthèse libre */
+  appreciationGlobale?: string;
   pointsForts: string;
   axesAmelioration: string;
+  planAmelioration?: string;
   suggestions: string;
+
+  /** Date d'entretien prévue avec le formateur (YYYY-MM-DD) */
+  dateEntretien?: string;
 
   /** Workflow de l'appréciation */
   statut: StatutEvaluation;

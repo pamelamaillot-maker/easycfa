@@ -7,6 +7,9 @@ export interface PlanningEntry {
   date: string;
   type: string;
   semaine: number;
+  formateurId?: string;
+  formateurNom?: string;
+  module?: string;
 }
 
 export interface Session {

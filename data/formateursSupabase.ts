@@ -40,6 +40,8 @@ export interface Formateur {
   prenom: string;
   telephone?: string;
   email?: string;
+  adresse?: string;
+  assurancercp?: string;
   siret?: string;
   nda?: string;
   statut?: 'Actif' | 'Inactif' | string;
@@ -145,7 +147,7 @@ export async function supprimerFormateur(id: string): Promise<{ success: boolean
  * Champs valides selon la table Supabase
  */
 const CHAMPS_VALIDES_FORMATEUR = new Set<string>([
-  'id', 'nom', 'prenom', 'telephone', 'email', 'siret', 'nda', 'statut', 'notes',
+  'id', 'nom', 'prenom', 'telephone', 'email', 'adresse', 'assurancercp', 'siret', 'nda', 'statut', 'notes',
   'specialites', 'pieces', 'suiviMensuel', 'interventions',
   'dateCreation', 'dateModification',
 ]);

@@ -11,6 +11,8 @@ import {
   supprimerFormateur as supprimerFormateurSupabase,
 } from '../../data/formateursSupabase';
 import { chargerInterventionsFormateur } from '../../data/interventionsSupabase';
+import { chargerSessions } from '../../data/sessionsSupabase';
+import BoutonContratPrestation from '../../components/BoutonContratPrestation';
 import { chargerEmargements as chargerEmargementsSupabase } from '../../data/emargementsSupabase';
 import Card from '../../components/Card';
 import { useAcces } from '../../lib/useAcces';
@@ -69,6 +71,8 @@ type Formateur = {
   prenom: string;
   telephone: string;
   email: string;
+  adresse: string;
+  assurancercp: string;
   siret: string;
   nda: string;
   specialites: string[];
@@ -436,6 +440,10 @@ export default function Formateurs() {
   const [evaluationEnEdition, setEvaluationEnEdition] = useState<EvaluationFormateur | null>(null);
   const [fichesIntervention, setFichesIntervention] = useState<any[]>([]);
   const [emargements, setEmargements] = useState<any[]>([]);
+  const [sessionsContrat, setSessionsContrat] = useState<any[]>([]);
+  const [contratFormations, setContratFormations] = useState<string[]>([]);
+  const [contratDebut, setContratDebut] = useState('');
+  const [contratFin, setContratFin] = useState('');
   
   useEffect(() => {
     if (selectionne) {
@@ -489,6 +497,19 @@ export default function Formateurs() {
       }
     })();
   }, []);
+
+  // Charger les sessions (pour le calcul du tableau du contrat de prestation)
+  useEffect(() => {
+    (async () => {
+      try {
+        const s = await chargerSessions();
+        console.log(`[Formateurs] ${s.length} sessions chargées (contrat) ✅`);
+        setSessionsContrat(s as any[]);
+      } catch (e) {
+        console.error('[Formateurs] Erreur chargement sessions (contrat)', e);
+      }
+    })();
+  }, []);
       // Compteur des propositions en attente (Phase 4.b)
   const [nbPropositions, setNbPropositions] = useState(0);
 
@@ -524,6 +545,8 @@ export default function Formateurs() {
       prenom: form.prenom ?? '',
       telephone: form.telephone ?? '',
       email: form.email ?? '',
+      adresse: form.adresse ?? '',
+      assurancercp: form.assurancercp ?? '',
       siret: form.siret ?? '',
       nda: form.nda ?? '',
       specialites: form.specialites ?? [],
@@ -903,6 +926,8 @@ export default function Formateurs() {
                   { label: 'Prénom', champ: 'prenom' },
                   { label: 'Téléphone', champ: 'telephone' },
                   { label: 'Email', champ: 'email' },
+                  { label: 'Adresse (siège social)', champ: 'adresse' },
+                  { label: 'Assurance RCP (compagnie)', champ: 'assuranceRcp' },
                   { label: 'N° SIRET', champ: 'siret' },
                   { label: 'N° NDA', champ: 'nda' },
                 ].map(f => (
@@ -942,6 +967,54 @@ export default function Formateurs() {
                   <textarea style={{ ...inputStyle, minHeight: '60px', resize: 'vertical' }} value={selectionne.notes ?? ''} onChange={e => mettreAJour('notes', e.target.value)} />
                 ) : (
                   <div style={{ fontSize: '12px', color: '#555', padding: '6px 0' }}>{selectionne.notes || '—'}</div>
+                )}
+              </div>
+
+              {/* ── Contrat de prestation ─────────────────────────────────── */}
+              <div style={{ marginTop: '16px', paddingTop: '16px', borderTop: '1.5px dashed #C8A23A' }}>
+                <label style={{ fontSize: '11px', color: '#006B68', textTransform: 'uppercase', fontWeight: '700', display: 'block', marginBottom: '8px' }}>
+                  📄 Contrat de prestation (sous-traitance)
+                </label>
+                <div style={{ marginBottom: '10px' }}>
+                  <label style={{ fontSize: '9px', color: '#888', textTransform: 'uppercase', fontWeight: '600', display: 'block', marginBottom: '4px' }}>Formations (cochez une ou plusieurs)</label>
+                  <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                    {(selectionne.specialites || []).map(code => {
+                      const coche = contratFormations.includes(code);
+                      return (
+                        <button
+                          key={code}
+                          type="button"
+                          onClick={() => setContratFormations(prev => coche ? prev.filter(c => c !== code) : [...prev, code])}
+                          style={{ backgroundColor: coche ? '#006B68' : '#f0f0f0', color: coche ? 'white' : '#555', border: 'none', borderRadius: '6px', padding: '4px 12px', fontSize: '12px', fontWeight: '600', cursor: 'pointer' }}
+                        >
+                          {coche ? '☑' : '☐'} {code}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '10px' }}>
+                  <div>
+                    <label style={{ fontSize: '9px', color: '#888', textTransform: 'uppercase', fontWeight: '600', display: 'block', marginBottom: '2px' }}>Début (JJ/MM/AAAA)</label>
+                    <input style={{ ...inputStyle, fontSize: '12px' }} value={contratDebut} placeholder="01/09/2025" onChange={e => setContratDebut(e.target.value)} />
+                  </div>
+                  <div>
+                    <label style={{ fontSize: '9px', color: '#888', textTransform: 'uppercase', fontWeight: '600', display: 'block', marginBottom: '2px' }}>Fin (JJ/MM/AAAA)</label>
+                    <input style={{ ...inputStyle, fontSize: '12px' }} value={contratFin} placeholder="31/08/2026" onChange={e => setContratFin(e.target.value)} />
+                  </div>
+                </div>
+                <BoutonContratPrestation
+                  formateur={selectionne}
+                  sessions={sessionsContrat}
+                  formations={contratFormations}
+                  dateDebut={contratDebut}
+                  dateFin={contratFin}
+                  disabled={contratFormations.length === 0}
+                />
+                {contratFormations.length === 0 && (
+                  <div style={{ fontSize: '10px', color: '#C8A23A', marginTop: '6px' }}>
+                    ⚠️ Cochez au moins une formation pour activer la génération. La période filtre les séances des tableaux (Art. 4).
+                  </div>
                 )}
               </div>
             </Card>
