@@ -43,8 +43,7 @@ export default function BoutonRemplirLivret({ apprenant, entreprise, npec }: Pro
       const data = await res.json();
 
       if (data.authRequired) {
-        alert('Authentification Google requise. Redirection...');
-        window.location.href = '/api/auth/google';
+        setErreur('__AUTH__'); // marqueur spécial : on affiche l'encadré "reconnexion Google"
         return;
       }
 
@@ -52,7 +51,8 @@ export default function BoutonRemplirLivret({ apprenant, entreprise, npec }: Pro
         console.log(`[Livret] Document rempli : ${data.message}`);
         setLienGenere(data.lienDoc);
       } else {
-        setErreur(data.error || 'Erreur inconnue');
+        // Erreur renvoyée par l'API (template, permission Drive, quota...)
+        setErreur(data.error || `Erreur API (statut ${res.status})`);
       }
     } catch (e: any) {
       setErreur(`Erreur réseau : ${e.message}`);
@@ -107,13 +107,45 @@ export default function BoutonRemplirLivret({ apprenant, entreprise, npec }: Pro
         </div>
       )}
 
-      {/* Encadré erreur */}
-      {erreur && (
+      {/* Encadré erreur — distingue "Google déconnecté" d'une erreur technique */}
+      {erreur === '__AUTH__' && (
         <div style={{
           position: 'absolute',
           top: 'calc(100% + 8px)',
           right: 0,
-          minWidth: 320,
+          minWidth: 340,
+          padding: '14px 16px',
+          backgroundColor: '#fff8e1',
+          border: '2px solid #C8A23A',
+          borderRadius: 10,
+          boxShadow: '0 4px 16px rgba(200,162,58,0.25)',
+          zIndex: 10,
+        }}>
+          <div style={{ fontSize: 13, color: '#7a5c00', fontWeight: 700, marginBottom: 6 }}>
+            🔑 Connexion Google expirée
+          </div>
+          <div style={{ fontSize: 12, color: '#7a5c00', marginBottom: 10, lineHeight: 1.5 }}>
+            La connexion à Google Docs a expiré. Reconnectez-vous, puis relancez la génération du livret.
+          </div>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            
+              <a href="/api/auth/google" style={{ backgroundColor: '#006B68', color: 'white', borderRadius: 8, padding: '8px 14px', fontSize: 13, fontWeight: 600, textDecoration: 'none' }}>Reconnecter Google</a>
+            <button
+              onClick={() => setErreur(null)}
+              style={{ backgroundColor: 'white', color: '#7a5c00', border: '1.5px solid #C8A23A', borderRadius: 8, padding: '8px 12px', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}
+            >
+              Fermer
+            </button>
+          </div>
+        </div>
+      )}
+
+      {erreur && erreur !== '__AUTH__' && (
+        <div style={{
+          position: 'absolute',
+          top: 'calc(100% + 8px)',
+          right: 0,
+          minWidth: 340,
           padding: '12px 14px',
           backgroundColor: '#fde8e8',
           border: '2px solid #e53e3e',
@@ -121,15 +153,28 @@ export default function BoutonRemplirLivret({ apprenant, entreprise, npec }: Pro
           zIndex: 10,
         }}>
           <div style={{ fontSize: 13, color: '#e53e3e', fontWeight: 700, marginBottom: 4 }}>
-            ⚠️ Erreur
+            ⚠️ Le livret n'a pas pu être généré
           </div>
-          <div style={{ fontSize: 12, color: '#7a1a1a' }}>{erreur}</div>
-          <button
-            onClick={() => setErreur(null)}
-            style={{ marginTop: 8, backgroundColor: 'white', color: '#e53e3e', border: '1.5px solid #e53e3e', borderRadius: 8, padding: '6px 12px', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}
-          >
-            Fermer
-          </button>
+          <div style={{ fontSize: 12, color: '#7a1a1a', marginBottom: 8, lineHeight: 1.5 }}>
+            {erreur}
+          </div>
+          <div style={{ fontSize: 11, color: '#999', marginBottom: 8, fontStyle: 'italic' }}>
+            Si le problème persiste alors que Google est connecté, réessayez dans quelques secondes (l'API Google Docs peut être momentanément lente).
+          </div>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <button
+              onClick={generer}
+              style={{ backgroundColor: '#006B68', color: 'white', border: 'none', borderRadius: 8, padding: '6px 12px', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}
+            >
+              🔄 Réessayer
+            </button>
+            <button
+              onClick={() => setErreur(null)}
+              style={{ backgroundColor: 'white', color: '#e53e3e', border: '1.5px solid #e53e3e', borderRadius: 8, padding: '6px 12px', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}
+            >
+              Fermer
+            </button>
+          </div>
         </div>
       )}
     </div>
