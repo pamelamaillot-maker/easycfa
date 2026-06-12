@@ -1743,6 +1743,61 @@ export default function FicheApprenant({ params }: { params: Promise<{ id: strin
         )}
       </Card>
 
+      {/* Contact d'urgence */}
+      <Card style={{ marginBottom: '24px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+          <h2 style={{ fontSize: '15px', fontWeight: '700', color: COLORS.primary }}>🚨 Personne à contacter en cas d'urgence</h2>
+          <span style={{ fontSize: '12px', color: '#888' }}>Contact prévenu en cas de besoin</span>
+        </div>
+        {modeEdition ? (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '16px' }}>
+            <div>
+              <label style={{ fontSize: '11px', color: '#888', textTransform: 'uppercase', fontWeight: '600', display: 'block', marginBottom: '4px' }}>Nom complet</label>
+              <input style={inputStyle} value={form.contactUrgence?.nom ?? ''} placeholder="Ex: Marie LIBEL" onChange={e => setForm((p: any) => ({ ...p, contactUrgence: { ...(p.contactUrgence || {}), nom: e.target.value } }))} />
+            </div>
+            <div>
+              <label style={{ fontSize: '11px', color: '#888', textTransform: 'uppercase', fontWeight: '600', display: 'block', marginBottom: '4px' }}>Lien de parenté</label>
+              <input style={inputStyle} value={form.contactUrgence?.parente ?? ''} placeholder="Ex: Mère, Père, Conjoint…" onChange={e => setForm((p: any) => ({ ...p, contactUrgence: { ...(p.contactUrgence || {}), parente: e.target.value } }))} />
+            </div>
+            <div>
+              <label style={{ fontSize: '11px', color: '#888', textTransform: 'uppercase', fontWeight: '600', display: 'block', marginBottom: '4px' }}>Téléphone</label>
+              <input style={inputStyle} value={form.contactUrgence?.telephone ?? ''} placeholder="06 XX XX XX XX" onChange={e => setForm((p: any) => ({ ...p, contactUrgence: { ...(p.contactUrgence || {}), telephone: e.target.value } }))} />
+            </div>
+            <div>
+              <label style={{ fontSize: '11px', color: '#888', textTransform: 'uppercase', fontWeight: '600', display: 'block', marginBottom: '4px' }}>Email</label>
+              <input type="email" style={inputStyle} value={form.contactUrgence?.email ?? ''} placeholder="contact@email.com" onChange={e => setForm((p: any) => ({ ...p, contactUrgence: { ...(p.contactUrgence || {}), email: e.target.value } }))} />
+            </div>
+          </div>
+        ) : (
+          (() => {
+            const c = form.contactUrgence || {};
+            const vide = !c.nom && !c.parente && !c.telephone && !c.email;
+            if (vide) {
+              return (
+                <div style={{ padding: '16px', textAlign: 'center', color: COLORS.textMuted, fontSize: '13px', fontStyle: 'italic', backgroundColor: '#fffbf0', borderRadius: '8px', border: '1px solid #C8A23A' }}>
+                  ⚠️ Aucun contact d'urgence renseigné — cliquez sur « ✏️ Modifier » pour l'ajouter.
+                </div>
+              );
+            }
+            return (
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '16px' }}>
+                {[
+                  { label: 'Nom complet', value: c.nom },
+                  { label: 'Lien de parenté', value: c.parente },
+                  { label: 'Téléphone', value: c.telephone },
+                  { label: 'Email', value: c.email },
+                ].map(info => (
+                  <div key={info.label} style={{ backgroundColor: COLORS.background, borderRadius: '8px', padding: '12px' }}>
+                    <div style={{ fontSize: '11px', color: '#888', textTransform: 'uppercase', fontWeight: '600', marginBottom: '4px' }}>{info.label}</div>
+                    <div style={{ fontSize: '13px', fontWeight: '600', color: info.value ? COLORS.text : '#ccc' }}>{info.value || '—'}</div>
+                  </div>
+                ))}
+              </div>
+            );
+          })()
+        )}
+      </Card>
+
       {/* SIFA */}
       <Card style={{ marginBottom: '24px' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>

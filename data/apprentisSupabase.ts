@@ -73,6 +73,7 @@ export interface Apprenti {
   archive?: boolean;
   motifRupture?: string;
   pieces?: Record<string, any>;
+  contactUrgence?: { nom?: string; parente?: string; telephone?: string; email?: string };
   dmf?: any;
   rupture?: any;
   ruptureSignee?: any;
@@ -384,7 +385,7 @@ const CHAMPS_VALIDES = new Set<string>([
   'situationAvant', 'derniereSituationCode', 'dernierDiplome', 'intituleDernierDiplome',
   'derniereClasse', 'dernierEtablissement', 'dernierOrganismeUai', 'anneeObtention',
   'dateCreation', 'dateModification',
-  'pieces',
+  'pieces', 'contactUrgence',
   'dmf', 'rupture', 'ruptureSignee', 'dfmf',
   'motifRupture',
   'droitImage', 'sortiesAnticipees', 'carteEtudiant',
