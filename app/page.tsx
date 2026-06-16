@@ -201,20 +201,33 @@ export default function Dashboard() {
 
   const caEncaisseAnnee = detailEncaisse.reduce((s, l) => s + l.montant, 0);
 
-  // À facturer : sur l'année courante uniquement (ce mois), sinon sur l'année entière
+  // À facturer : échéance non encore facturée (PDF fichierFacture absent), dont la date prévue
+  // tombe dans l'année sélectionnée. Pour l'année courante : ce mois + tous les retards (dépassés).
+  const finMoisCourant = new Date(new Date().getFullYear(), moisActuel + 1, 0, 23, 59, 59);
   const aFacturer = apcs.flatMap((a: any) =>
     (a.echeances || []).filter((e: any) => {
-      if (e.numeroFacture) return false;
+      if (e.fichierFacture) return false; // PDF importé → facture établie → sort de la liste
       const d = parseDateFr(e.dateEcheance);
       if (!d) return false;
       if (d.getFullYear() !== anneeNum) return false;
-      // Si on regarde l'année courante, on restreint au mois en cours ; sinon toute l'année
-      if (estAnneeCourante && d.getMonth() !== moisActuel) return false;
-      return true;
-    }).map((e: any) => ({ apprenant: `${a.apprenantPrenom} ${a.apprenantNom}`, opco: a.opco, label: e.label, montant: e.montantPrevu || 0, date: e.dateEcheance }))
-  );
+      if (estAnneeCourante) {
+        // Ce mois + tout ce qui est déjà dépassé (retards) : échéance <= fin du mois courant
+        return d <= finMoisCourant;
+      }
+      return true; // autre année : toutes les échéances de l'année
+    }).map((e: any) => {
+      const d = parseDateFr(e.dateEcheance);
+      const enRetard = d ? d < new Date(new Date().getFullYear(), moisActuel, 1) : false;
+      return { apprenant: `${a.apprenantPrenom} ${a.apprenantNom}`, opco: a.opco, label: e.label, montant: e.montantPrevu || 0, date: e.dateEcheance, enRetard };
+    })
+  ).sort((x, y) => {
+    const px = (x.date || '').split('/'), py = (y.date || '').split('/');
+    if (px.length !== 3 || py.length !== 3) return 0;
+    return new Date(parseInt(px[2]), parseInt(px[1]) - 1, parseInt(px[0])).getTime() - new Date(parseInt(py[2]), parseInt(py[1]) - 1, parseInt(py[0])).getTime();
+  });
   const montantAFacturer = aFacturer.reduce((s: number, e: any) => s + e.montant, 0);
-  const labelAFacturer = estAnneeCourante ? 'À facturer ce mois' : `À facturer ${annee}`;
+  const nbRetard = aFacturer.filter((e: any) => e.enRetard).length;
+  const labelAFacturer = estAnneeCourante ? 'À facturer (ce mois + retards)' : `À facturer ${annee}`;
 
   const dateAujourdhui = new Date().toLocaleDateString('fr-FR', {
     weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
@@ -326,6 +339,48 @@ export default function Dashboard() {
             </BarChart>
           </ResponsiveContainer>
         </div>
+      </div>
+
+      {/* SECTION À FACTURER */}
+      <div style={{ backgroundColor: 'white', borderRadius: '14px', padding: '18px', borderLeft: '4px solid #0891b2', boxShadow: '0 2px 8px rgba(0,0,0,0.06)', marginBottom: '16px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
+          <h3 style={{ fontSize: '14px', fontWeight: '800', color: '#0891b2' }}>
+            💶 Factures à établir — {estAnneeCourante ? 'ce mois + retards' : annee}
+            {nbRetard > 0 && <span style={{ marginLeft: '10px', backgroundColor: '#fde8e8', color: '#c53030', padding: '2px 10px', borderRadius: '20px', fontSize: '11px', fontWeight: '700' }}>🔴 {nbRetard} en retard</span>}
+          </h3>
+          <Link href="/precomptabilite" style={{ fontSize: '11px', color: '#0891b2', fontWeight: '600', textDecoration: 'none' }}>Aller à la précompta →</Link>
+        </div>
+        {aFacturer.length === 0 ? (
+          <div style={{ padding: '20px', textAlign: 'center', color: '#16a34a', fontWeight: '600', fontSize: '13px' }}>✅ Aucune facture en attente d'établissement.</div>
+        ) : (
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
+              <thead>
+                <tr style={{ borderBottom: '2px solid #EAF4F3' }}>
+                  {['Apprenant', 'OPCO', 'Échéance', 'Date prévue', 'Montant (€)', 'Statut'].map(c => (
+                    <th key={c} style={{ textAlign: c.includes('Montant') ? 'right' : 'left', padding: '8px 10px', fontSize: '10px', color: '#999', fontWeight: '700', textTransform: 'uppercase' }}>{c}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {aFacturer.map((e: any, i: number) => (
+                  <tr key={i} style={{ borderBottom: '1px solid #f0f0f0', backgroundColor: e.enRetard ? '#fff5f5' : (i % 2 === 0 ? 'white' : '#fafafa') }}>
+                    <td style={{ padding: '8px 10px', fontWeight: '700', color: '#333' }}>{e.apprenant}</td>
+                    <td style={{ padding: '8px 10px', color: '#666' }}>{e.opco}</td>
+                    <td style={{ padding: '8px 10px', color: '#666' }}>{e.label}</td>
+                    <td style={{ padding: '8px 10px', color: e.enRetard ? '#c53030' : '#666', fontWeight: e.enRetard ? '700' : '400' }}>{e.date || '—'}</td>
+                    <td style={{ padding: '8px 10px', textAlign: 'right', fontWeight: '700', color: '#0891b2' }}>{e.montant.toLocaleString('fr-FR', { minimumFractionDigits: 2 })}</td>
+                    <td style={{ padding: '8px 10px' }}>
+                      {e.enRetard
+                        ? <span style={{ backgroundColor: '#fde8e8', color: '#c53030', padding: '2px 8px', borderRadius: '20px', fontSize: '10px', fontWeight: '700' }}>🔴 En retard</span>
+                        : <span style={{ backgroundColor: '#e6f4f1', color: '#0891b2', padding: '2px 8px', borderRadius: '20px', fontSize: '10px', fontWeight: '700' }}>📅 Ce mois</span>}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
 
       {/* SECTIONS ALERTES */}
