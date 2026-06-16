@@ -48,6 +48,17 @@ const btnSecondary: React.CSSProperties = { backgroundColor: 'white', color: COL
 const btnDanger: React.CSSProperties = { backgroundColor: 'white', color: '#e53e3e', border: '1.5px solid #e53e3e', borderRadius: '8px', padding: '9px 16px', fontSize: '13px', fontWeight: '600', cursor: 'pointer' };
 const inputStyle: React.CSSProperties = { border: '1.5px solid #e0e0e0', borderRadius: '8px', padding: '8px 12px', fontSize: '13px', width: '100%', boxSizing: 'border-box', backgroundColor: 'white' };
 
+const CODES_FORMATION: Record<string, { rncp: string; diplome: string }> = {
+  'SC': { rncp: 'RNCP37123', diplome: '46T32403' },
+  'ARH': { rncp: 'RNCP41366', diplome: '36T31502' },
+  'AD': { rncp: 'RNCP38667', diplome: '36T32401' },
+  'GCF': { rncp: 'RNCP37949', diplome: '36T31401' },
+  'CATL': { rncp: 'RNCP37396', diplome: '46T33407' },
+  'EC': { rncp: 'RNCP37099', diplome: '56T31201' },
+  'CV': { rncp: 'RNCP37098', diplome: '46T31203' },
+  'FPA': { rncp: 'RNCP37275', diplome: '36T33301' },
+};
+
 const LIBELLES_FORMATION: Record<string, string> = {
   'SC': 'Titre professionnel Secrétaire Comptable',
   'ARH': 'Titre professionnel Assistant(e) en Ressources Humaines',
@@ -77,6 +88,8 @@ function donneesAEF(a: any): Record<string, string> {
     APPRENANT_CIVILITE: a.sexe === 'F' ? 'Mme' : 'M.',
     APPRENANT_NOM_COMPLET: `${a.prenom || ''} ${a.nom || ''}`.trim(),
     FORMATION_LIBELLE: LIBELLES_FORMATION[a.formation] || a.formation || '',
+    FORMATION_RNCP: CODES_FORMATION[a.formation]?.rncp || '',
+    FORMATION_CODE_DIPLOME: CODES_FORMATION[a.formation]?.diplome || '',
     MENTION_STATUT: estP2S ? 'en tant que stagiaire de la formation' : "en tant qu'apprenti(e) en contrat d'apprentissage",
     DATE_DEBUT_FORMATION: dateDebut,
     DATE_FIN: dateFin,
@@ -2013,7 +2026,8 @@ export default function FicheApprenant({ params }: { params: Promise<{ id: strin
         })()}
       </Card>
 
-      {/* 🎓 Carte d'étudiant des métiers */}
+      {/* 🎓 Carte d'étudiant des métiers — réservée aux apprentis en contrat (pas P2S) */}
+      {!p2s && (
       <Card style={{ marginBottom: '24px' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
           <h2 style={{ fontSize: '15px', fontWeight: '700', color: COLORS.primary }}>🎓 Carte d'étudiant des métiers</h2>
@@ -2113,6 +2127,7 @@ export default function FicheApprenant({ params }: { params: Promise<{ id: strin
           );
         })()}
       </Card>
+      )}
 
       {/* Pièces justificatives */}
       <Card style={{ marginBottom: '24px' }}>

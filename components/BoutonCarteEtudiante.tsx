@@ -41,7 +41,7 @@ function CarteDoc({ apprenant, photoUrl }: { apprenant: any; photoUrl?: string }
           <Text style={{ ...txt, left: px(POS.nom.left),      top: py(POS.nom.top) }}>{champ(apprenant.nom)}</Text>
           <Text style={{ ...txt, left: px(POS.prenom.left),   top: py(POS.prenom.top) }}>{champ(apprenant.prenom)}</Text>
           <Text style={{ ...txt, left: px(POS.nele.left),     top: py(POS.nele.top) }}>{champ(apprenant.dateNaissance)}</Text>
-          <Text style={{ ...txt, left: px(POS.validite.left), top: py(POS.validite.top) }}>{champ(apprenant.dateFinContrat)}</Text>
+          <Text style={{ ...txt, left: px(POS.validite.left), top: py(POS.validite.top) }}>{champ(apprenant.dateDebutContrat) ? `${champ(apprenant.dateDebutContrat)} au ${champ(apprenant.dateFinContrat)}` : champ(apprenant.dateFinContrat)}</Text>
         </View>
       </Page>
 
