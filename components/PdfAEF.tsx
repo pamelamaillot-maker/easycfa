@@ -137,10 +137,14 @@ export default function PdfAEF({ donnees }: Props) {
             Je soussignée Mme {donnees.CFA_DIRECTRICE}, directrice du centre de formation {donnees.CFA_RAISON_SOCIALE}, {donnees.CFA_SIRET} atteste que :
           </Text>
           <Text style={styles.paragraph}>
-            {donnees.APPRENANT_CIVILITE} {donnees.APPRENANT_NOM_COMPLET} est bien inscrit(e) dans notre établissement depuis le {donnees.DATE_DEBUT_FORMATION} et prépare une formation en apprentissage de {donnees.FORMATION_LIBELLE}, dont le certificateur est le Ministère du Travail du Plein Emploi et de l'Insertion.
+            {donnees.APPRENANT_CIVILITE} {donnees.APPRENANT_NOM_COMPLET} est bien inscrit(e) dans notre établissement {donnees.MENTION_STATUT} et prépare la formation {donnees.FORMATION_LIBELLE}, dont le certificateur est le Ministère du Travail, du Plein Emploi et de l'Insertion.
           </Text>
           <Text style={styles.paragraph}>
-            Cette attestation a été délivrée à l'intéressé pour servir et faire valoir ce que de droit.
+            Date d'entrée en formation : {donnees.DATE_DEBUT_FORMATION}{'\n'}
+            {donnees.LABEL_FIN} : {donnees.DATE_FIN}
+          </Text>
+          <Text style={styles.paragraph}>
+            Cette attestation a été délivrée à l'intéressé(e) pour servir et faire valoir ce que de droit.
           </Text>
         </View>
 

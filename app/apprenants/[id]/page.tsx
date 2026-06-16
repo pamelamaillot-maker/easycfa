@@ -39,6 +39,7 @@ const BoutonPdfRupture = dynamic(() => import('../../../components/BoutonPdfRupt
 const BoutonGenerationDMF = dynamic(() => import('../../../components/BoutonGenerationDMF'), { ssr: false });
 const BoutonRemplirLivret = dynamic(() => import('../../../components/BoutonRemplirLivret'), { ssr: false });
 const BoutonPdfDroitImage = dynamic(() => import('../../../components/BoutonPdfDroitImage'), { ssr: false });
+const BoutonPdfAEF = dynamic(() => import('../../../components/BoutonPdfAEF'), { ssr: false });
 const SortiesAnticipeesManager = dynamic(() => import('../../../components/SortiesAnticipeesManager'), { ssr: false });
 const BoutonCarteEtudiante = dynamic(() => import('../../../components/BoutonCarteEtudiante'), { ssr: false });
 
@@ -46,6 +47,43 @@ const btnPrimary: React.CSSProperties = { backgroundColor: COLORS.primary, color
 const btnSecondary: React.CSSProperties = { backgroundColor: 'white', color: COLORS.primary, border: `1.5px solid ${COLORS.primary}`, borderRadius: '8px', padding: '9px 16px', fontSize: '13px', fontWeight: '600', cursor: 'pointer' };
 const btnDanger: React.CSSProperties = { backgroundColor: 'white', color: '#e53e3e', border: '1.5px solid #e53e3e', borderRadius: '8px', padding: '9px 16px', fontSize: '13px', fontWeight: '600', cursor: 'pointer' };
 const inputStyle: React.CSSProperties = { border: '1.5px solid #e0e0e0', borderRadius: '8px', padding: '8px 12px', fontSize: '13px', width: '100%', boxSizing: 'border-box', backgroundColor: 'white' };
+
+const LIBELLES_FORMATION: Record<string, string> = {
+  'SC': 'Titre professionnel Secrétaire Comptable',
+  'ARH': 'Titre professionnel Assistant(e) en Ressources Humaines',
+  'AD': 'Titre professionnel Assistant(e) de Direction',
+  'GCF': 'Titre professionnel Gestionnaire Comptable et Fiscal',
+  'CATL': "Titre professionnel Chargé(e) d'Accueil Touristique et de Loisirs",
+  'EC': 'Titre professionnel Employé(e) Commercial(e)',
+  'CV': 'Titre professionnel Conseiller(ère) de Vente',
+  'FPA': "Titre professionnel Formateur(trice) Professionnel(le) d'Adultes",
+};
+
+function ajouterMois(dateFr: string, mois: number): string {
+  const p = (dateFr || '').split('/');
+  if (p.length !== 3) return '';
+  const d = new Date(parseInt(p[2]), parseInt(p[1]) - 1 + mois, parseInt(p[0]));
+  return d.toLocaleDateString('fr-FR');
+}
+
+function donneesAEF(a: any): Record<string, string> {
+  const estP2S = a.statut === 'P2S';
+  const dateDebut = a.dateDebutFormation || '';
+  const dateFin = estP2S ? ajouterMois(dateDebut, 3) : (a.dateFinContrat || '');
+  return {
+    CFA_DIRECTRICE: 'MAILLOT Gaëlle',
+    CFA_RAISON_SOCIALE: 'PAM OI Formation',
+    CFA_SIRET: 'SIRET : 881 279 392 00016',
+    APPRENANT_CIVILITE: a.sexe === 'F' ? 'Mme' : 'M.',
+    APPRENANT_NOM_COMPLET: `${a.prenom || ''} ${a.nom || ''}`.trim(),
+    FORMATION_LIBELLE: LIBELLES_FORMATION[a.formation] || a.formation || '',
+    MENTION_STATUT: estP2S ? 'en tant que stagiaire de la formation' : "en tant qu'apprenti(e) en contrat d'apprentissage",
+    DATE_DEBUT_FORMATION: dateDebut,
+    DATE_FIN: dateFin,
+    LABEL_FIN: estP2S ? 'Date de fin de P2S (3 mois)' : 'Date de fin de contrat',
+    DATE_SIGNATURE_DOC: new Date().toLocaleDateString('fr-FR'),
+  };
+}
 
 function trouverApprenant(id: string): any | null {
   if (typeof window === 'undefined') {
@@ -1223,6 +1261,10 @@ export default function FicheApprenant({ params }: { params: Promise<{ id: strin
               <BoutonPdfDroitImage
                 donnees={assemblerDonneesDroitImage(form, entrepriseObj)}
                 nomFichier={'Droit_Image_' + form.nom + '_' + form.prenom + '.pdf'}
+              />
+              <BoutonPdfAEF
+                donnees={donneesAEF(form)}
+                nomFichier={'AEF_' + form.nom + '_' + form.prenom + '.pdf'}
               />
               <BoutonRemplirLivret
                 apprenant={form}

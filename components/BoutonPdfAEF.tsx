@@ -26,7 +26,7 @@ export default function BoutonPdfAEF({ donnees, nomFichier }: Props) {
         display: 'inline-block',
       }}
     >
-      {({ loading }) => loading ? '⏳ Génération...' : '⬇ Télécharger PDF'}
+      {({ loading }) => loading ? '⏳ Génération...' : '📄 Générer AEF'}
     </PDFDownloadLink>
   );
 }
