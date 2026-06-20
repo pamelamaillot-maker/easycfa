@@ -74,6 +74,13 @@ export interface Apprenti {
   motifRupture?: string;
   pieces?: Record<string, any>;
   contactUrgence?: { nom?: string; parente?: string; telephone?: string; email?: string };
+  amenagementRqth?: {
+    accompagnementHumain?: string;
+    aidesHumaines?: string[];
+    amenagementsFormation?: string[];
+    adaptationSupports?: string;
+    adaptationSupportsDetail?: string;
+  };
   dmf?: any;
   rupture?: any;
   ruptureSignee?: any;
@@ -385,7 +392,7 @@ const CHAMPS_VALIDES = new Set<string>([
   'situationAvant', 'derniereSituationCode', 'dernierDiplome', 'intituleDernierDiplome',
   'derniereClasse', 'dernierEtablissement', 'dernierOrganismeUai', 'anneeObtention',
   'dateCreation', 'dateModification',
-  'pieces', 'contactUrgence',
+  'pieces', 'contactUrgence', 'amenagementRqth',
   'dmf', 'rupture', 'ruptureSignee', 'dfmf',
   'motifRupture',
   'droitImage', 'sortiesAnticipees', 'carteEtudiant',

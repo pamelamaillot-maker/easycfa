@@ -1913,6 +1913,92 @@ export default function FicheApprenant({ params }: { params: Promise<{ id: strin
         )}
       </Card>
 
+      {/* ♿ Situation de handicap (RQTH) — visible si RQTH = OUI */}
+      {form.rqth === 'OUI' && (() => {
+        const am = form.amenagementRqth || {};
+        const toggleListe = (cle: string, valeur: string) => {
+          const actuel: string[] = Array.isArray(am[cle]) ? am[cle] : [];
+          const nouveau = actuel.includes(valeur) ? actuel.filter(v => v !== valeur) : [...actuel, valeur];
+          const updated = { ...form, amenagementRqth: { ...am, [cle]: nouveau } };
+          setForm(updated);
+          if (!modeEdition) { setApprenant(updated); modifierApprenti(id, { amenagementRqth: updated.amenagementRqth }); }
+        };
+        const setChamp = (cle: string, valeur: any) => {
+          const updated = { ...form, amenagementRqth: { ...am, [cle]: valeur } };
+          setForm(updated);
+          if (!modeEdition) { setApprenant(updated); modifierApprenti(id, { amenagementRqth: updated.amenagementRqth }); }
+        };
+        const caseCochee = (cle: string, valeur: string) => Array.isArray(am[cle]) && am[cle].includes(valeur);
+        const labelCase: React.CSSProperties = { display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '13px', padding: '8px 10px', backgroundColor: 'white', borderRadius: '6px', border: '1.5px solid #e0e0e0' };
+        return (
+          <Card style={{ marginBottom: '24px', borderTop: `4px solid ${COLORS.secondary}` }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+              <h2 style={{ fontSize: '15px', fontWeight: '700', color: COLORS.primary }}>♿ Situation de handicap (RQTH)</h2>
+              <span style={{ fontSize: '12px', color: '#888' }}>Évaluation des besoins particuliers — Référent Handicap</span>
+            </div>
+            <p style={{ fontSize: 12, color: '#666', marginBottom: 16, marginTop: 0, fontStyle: 'italic' }}>
+              Renseigné à partir du questionnaire d'accueil d'une personne en situation de handicap. L'attestation RQTH s'importe dans la section « Pièces justificatives ».
+            </p>
+
+            {/* Accompagnement humain */}
+            <div style={{ marginBottom: '16px' }}>
+              <label style={{ fontSize: '12px', color: '#555', fontWeight: '700', display: 'block', marginBottom: '8px' }}>Besoin d'un accompagnement humain ?</label>
+              <div style={{ display: 'flex', gap: '8px' }}>
+                {['Oui', 'Non'].map(v => (
+                  <button key={v} type="button" onClick={() => setChamp('accompagnementHumain', v)} style={{ padding: '7px 18px', borderRadius: '8px', fontSize: '13px', fontWeight: '600', cursor: 'pointer', border: `1.5px solid ${am.accompagnementHumain === v ? COLORS.primary : '#e0e0e0'}`, backgroundColor: am.accompagnementHumain === v ? COLORS.primary : 'white', color: am.accompagnementHumain === v ? 'white' : '#555' }}>{v}</button>
+                ))}
+              </div>
+            </div>
+
+            {/* Aides humaines — si accompagnement = Oui */}
+            {am.accompagnementHumain === 'Oui' && (
+              <div style={{ marginBottom: '16px' }}>
+                <label style={{ fontSize: '12px', color: '#555', fontWeight: '700', display: 'block', marginBottom: '8px' }}>Si oui, quelle aide est nécessaire ?</label>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px' }}>
+                  {['Interprète en langue des signes', 'Interface de communication', 'Auxiliaire de vie', 'Tierce personne'].map(v => (
+                    <label key={v} style={{ ...labelCase, borderColor: caseCochee('aidesHumaines', v) ? COLORS.primary : '#e0e0e0' }}>
+                      <input type="checkbox" checked={caseCochee('aidesHumaines', v)} onChange={() => toggleListe('aidesHumaines', v)} />
+                      {v}
+                    </label>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Aménagement de la formation */}
+            <div style={{ marginBottom: '16px' }}>
+              <label style={{ fontSize: '12px', color: '#555', fontWeight: '700', display: 'block', marginBottom: '8px' }}>Besoin d'un aménagement de la formation ?</label>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px' }}>
+                {['Fractionnement', 'Pauses', 'Horaires aménagés', 'Autre'].map(v => (
+                  <label key={v} style={{ ...labelCase, borderColor: caseCochee('amenagementsFormation', v) ? COLORS.primary : '#e0e0e0' }}>
+                    <input type="checkbox" checked={caseCochee('amenagementsFormation', v)} onChange={() => toggleListe('amenagementsFormation', v)} />
+                    {v}
+                  </label>
+                ))}
+              </div>
+            </div>
+
+            {/* Adaptation des supports */}
+            <div style={{ marginBottom: '12px' }}>
+              <label style={{ fontSize: '12px', color: '#555', fontWeight: '700', display: 'block', marginBottom: '8px' }}>Besoin d'adaptation des supports de cours ?</label>
+              <div style={{ display: 'flex', gap: '8px', marginBottom: '10px' }}>
+                {['Oui', 'Non'].map(v => (
+                  <button key={v} type="button" onClick={() => setChamp('adaptationSupports', v)} style={{ padding: '7px 18px', borderRadius: '8px', fontSize: '13px', fontWeight: '600', cursor: 'pointer', border: `1.5px solid ${am.adaptationSupports === v ? COLORS.primary : '#e0e0e0'}`, backgroundColor: am.adaptationSupports === v ? COLORS.primary : 'white', color: am.adaptationSupports === v ? 'white' : '#555' }}>{v}</button>
+                ))}
+              </div>
+              {am.adaptationSupports === 'Oui' && (
+                <textarea
+                  style={{ border: '1.5px solid #e0e0e0', borderRadius: '8px', padding: '8px 12px', fontSize: '13px', width: '100%', boxSizing: 'border-box', minHeight: '60px', resize: 'vertical' }}
+                  value={am.adaptationSupportsDetail ?? ''}
+                  placeholder="Si oui, lesquels ? (ex : documents agrandis, format numérique, contraste renforcé…)"
+                  onChange={e => setChamp('adaptationSupportsDetail', e.target.value)}
+                />
+              )}
+            </div>
+          </Card>
+        );
+      })()}
+
       {/* Sorties anticipées — historique multi-PDF */}
       <Card style={{ marginBottom: '24px' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
