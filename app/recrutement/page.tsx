@@ -11,6 +11,7 @@ import {
   supprimerMandat as supprimerMandatSupabase,
 } from '../../data/mandatsSupabase';
 import Card from '../../components/Card';
+import BoutonMandatRecrutement from '../../components/BoutonMandatRecrutement';
 import { uploaderFichier, cheminStorage } from '../../lib/storage';
 
 const FORMATIONS = ['SC', 'GCF', 'AD', 'ARH', 'CATL', 'EC', 'CV', 'FPA'];
@@ -122,11 +123,7 @@ export default function Recrutement() {
     setModale(false);
     setForm({ statut: 'En attente', nbPostes: 1 });
 
-    // Télécharger le PDF
-    const a = document.createElement('a');
-    a.href = '/modeles/Mandat_Recrutement.pdf';
-    a.download = 'Mandat_' + (form.entrepriseNom ?? '').replace(/\s/g, '_') + '.pdf';
-    a.click();
+    // Le mandat pré-rempli se télécharge depuis la fiche du mandat (bouton « Télécharger mandat »)
 
     // Ouvrir Gmail
     setTimeout(() => {
@@ -394,9 +391,11 @@ export default function Recrutement() {
 
               {/* Actions */}
               <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                <button onClick={() => { const a = document.createElement('a'); a.href = '/modeles/Mandat_Recrutement.pdf'; a.download = 'Mandat_' + ficheOuverte.entrepriseNom + '.pdf'; a.click(); }} style={btnPrimary}>
-                  📄 Télécharger mandat
-                </button>
+                <BoutonMandatRecrutement
+                  donnees={{ entrepriseNom: ficheOuverte.entrepriseNom, entrepriseAdresse: ficheOuverte.entrepriseAdresse, entrepriseSiret: ficheOuverte.entrepriseSiret }}
+                  nomFichier={'Mandat_' + (ficheOuverte.entrepriseNom || '').replace(/\s/g, '_') + '.pdf'}
+                  style={btnPrimary}
+                />
                 <button onClick={() => envoyerMandat(ficheOuverte)} style={btnSecondary}>
                   ✉️ Envoyer par email
                 </button>

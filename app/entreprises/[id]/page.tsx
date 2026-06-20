@@ -9,6 +9,7 @@ import { chargerApprentis } from '../../../data/apprentisSupabase';
 import Card from '../../../components/Card';
 import StatCard from '../../../components/StatCard';
 import BoutonSupprimer from '../../../components/BoutonSupprimer';
+import BoutonMandatRecrutement from '../../../components/BoutonMandatRecrutement';
 import { uploaderFichier, cheminStorage } from '../../../lib/storage';
 
 const DOC_STATUT: Record<string, { bg: string; color: string }> = {
@@ -291,7 +292,15 @@ export default function FicheEntreprise({ params }: { params: Promise<{ id: stri
           ) : (
             <>
               <button onClick={() => setModeEdition(true)} style={btnSecondary}>✏️ Modifier</button>
-              <button onClick={genererMandat} style={btnPrimary}>📄 Générer mandat</button>
+              <BoutonMandatRecrutement
+                donnees={{
+                  entrepriseNom: form.raisonSociale,
+                  entrepriseAdresse: [form.adresse, form.codePostal, form.ville].filter(Boolean).join(' '),
+                  entrepriseSiret: form.siret,
+                }}
+                nomFichier={'Mandat_' + (form.raisonSociale || '').replace(/\s/g, '_') + '.pdf'}
+                style={btnPrimary}
+              />
 
               {/* ✅ Bouton Supprimer — visible PAMA uniquement */}
               <BoutonSupprimer

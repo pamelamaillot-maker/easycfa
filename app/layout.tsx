@@ -16,6 +16,7 @@ function AppContent({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
   const estPageLogin = pathname === '/login';
+  const estParcours = pathname.startsWith('/parcours/');
   // Toutes les routes /formateur/* sont gérées par app/formateur/layout.tsx
   // ET /emargement quand l'utilisateur est un formateur (Phase 4.b-bis : sidebar formateur visible)
   const estRouteFormateurPure = pathname === '/formateur' || pathname.startsWith('/formateur/');
@@ -24,6 +25,7 @@ function AppContent({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (chargement) return;
+    if (estParcours) return; // page publique apprenti : pas de redirection
     if (estRouteFormateur) return; // déléguer à FormateurLayout
 
     if (!utilisateur && !estPageLogin) {
@@ -55,6 +57,7 @@ function AppContent({ children }: { children: React.ReactNode }) {
   // Routes formateur : on laisse FormateurLayout gérer
   if (estRouteFormateur) return <>{children}</>;
 
+  if (estParcours) return <>{children}</>; // pas de sidebar, pas d'auth
   if (estPageLogin) return <>{children}</>;
 
   // Attendre que la session Supabase soit chargée

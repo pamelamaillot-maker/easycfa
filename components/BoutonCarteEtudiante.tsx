@@ -8,7 +8,7 @@ import { Document, Page, Image as PdfImage, View, Text, pdf } from '@react-pdf/r
 // Ajuste ces valeurs si besoin après le 1er essai (DIRECT, un nombre à la fois).
 // ───────────────────────────────────────────────────────────────
 const POS = {
-  photo:    { left: 68.5, top: 1.5, width: 31, height: 58 }, // recouvre le paysage
+  photo:    { left: 67, top: 0, width: 33, height: 64 }, // recouvre le paysage
   nom:      { left: 11, top: 31 },
   prenom:   { left: 16, top: 41 },
   nele:     { left: 45, top: 41 },
