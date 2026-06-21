@@ -76,8 +76,10 @@ export interface Apprenti {
   contactUrgence?: { nom?: string; parente?: string; telephone?: string; email?: string };
   amenagementRqth?: {
     accompagnementHumain?: string;
+    accompagnementHumainDetail?: string;
     aidesHumaines?: string[];
     amenagementsFormation?: string[];
+    amenagementsFormationDetail?: string;
     adaptationSupports?: string;
     adaptationSupportsDetail?: string;
   };

@@ -7,7 +7,9 @@ import { creerApprenti } from '../../../data/apprentisSupabase';
 
 const SECTIONS = [
   { id: 'identite', label: '👤 Identité', description: 'Informations personnelles' },
+  { id: 'handicap', label: '♿ Handicap', description: 'Si RQTH ou en cours' },
   { id: 'cerfa', label: '📋 CERFA', description: 'Situation avant contrat' },
+
   { id: 'representant', label: '👨‍👩‍👧 Représentant légal', description: 'Si mineur' },
   { id: 'entreprise', label: '🏢 Entreprise', description: 'Rattachement' },
   { id: 'pieces', label: '📎 Pièces jointes', description: 'Documents obligatoires' },
@@ -124,8 +126,17 @@ export default function NouvelApprenant() {
     ville: '',
     telephone: '',
     email: '',
-    rqth: 'non',
+    rqth: 'NON',
     sportifHautNiveau: 'non',
+    amenagementRqth: {
+      accompagnementHumain: '',
+      accompagnementHumainDetail: '',
+      aidesHumaines: [] as string[],
+      amenagementsFormation: [] as string[],
+      amenagementsFormationDetail: '',
+      adaptationSupports: '',
+      adaptationSupportsDetail: '',
+    },
     // CERFA
     situationAvantContrat: '',
     dernierDiplome: '',
@@ -171,8 +182,11 @@ export default function NouvelApprenant() {
   const age = calculerAge();
   const estMineur = age !== null && age < 18;
 
+  const rqthActif = form.rqth === 'OUI' || form.rqth === 'EN_COURS';
+
   const sectionsCompletees: Record<string, boolean> = {
     identite: !!(form.civilite && form.nom && form.prenom && form.dateNaissance && form.adresse && form.telephone && form.email),
+    handicap: !rqthActif || !!(form.amenagementRqth && form.amenagementRqth.accompagnementHumain),
     cerfa: !!(form.situationAvantContrat && form.dernierDiplome && form.formation),
     representant: estMineur ? !!(form.representantNom && form.representantPrenom && form.representantTelephone) : true,
     entreprise: !!(form.entreprise && form.tuteurNom && form.dateDebutContrat),
@@ -375,6 +389,9 @@ export default function NouvelApprenant() {
                 {s.id === 'representant' && !estMineur && (
                   <div style={{ fontSize: '10px', color: '#aaa', marginTop: '2px', fontStyle: 'italic' }}>Non requis si majeur</div>
                 )}
+                {s.id === 'handicap' && form.rqth === 'NON' && (
+                  <div style={{ fontSize: '10px', color: '#aaa', marginTop: '2px', fontStyle: 'italic' }}>Non requis si pas de RQTH</div>
+                )}
               </button>
             );
           })}
@@ -494,9 +511,9 @@ export default function NouvelApprenant() {
                 <Grille>
                   <Champ label="Reconnaissance Qualité Travailleur Handicapé (RQTH)">
                     <select style={inputStyle} value={form.rqth} onChange={e => update('rqth', e.target.value)}>
-                      <option value="non">Non</option>
-                      <option value="oui">Oui</option>
-                      <option value="en-cours">En cours de démarche</option>
+                      <option value="NON">Non</option>
+                      <option value="OUI">Oui</option>
+                      <option value="EN_COURS">En cours de démarche</option>
                     </select>
                   </Champ>
                   <Champ label="Sportif de haut niveau">
@@ -509,12 +526,126 @@ export default function NouvelApprenant() {
               </div>
 
               <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '8px' }}>
-                <button onClick={() => setSection('cerfa')} style={{ backgroundColor: COLORS.primary, color: 'white', border: 'none', borderRadius: '8px', padding: '10px 20px', fontSize: '13px', fontWeight: '600', cursor: 'pointer' }}>
+                <button onClick={() => setSection(rqthActif ? 'handicap' : 'cerfa')} style={{ backgroundColor: COLORS.primary, color: 'white', border: 'none', borderRadius: '8px', padding: '10px 20px', fontSize: '13px', fontWeight: '600', cursor: 'pointer' }}>
                   Section suivante →
                 </button>
               </div>
             </div>
           )}
+
+          {/* ===== SECTION HANDICAP ===== */}
+          {section === 'handicap' && (() => {
+            const am = form.amenagementRqth;
+            const setAm = (cle: string, valeur: any) => setForm(prev => ({ ...prev, amenagementRqth: { ...prev.amenagementRqth, [cle]: valeur } }));
+            const toggle = (cle: 'aidesHumaines' | 'amenagementsFormation', valeur: string) => {
+              const actuel: string[] = (am as any)[cle] || [];
+              setAm(cle, actuel.includes(valeur) ? actuel.filter(v => v !== valeur) : [...actuel, valeur]);
+            };
+            const coche = (cle: 'aidesHumaines' | 'amenagementsFormation', valeur: string) => ((am as any)[cle] || []).includes(valeur);
+            const labelCase: React.CSSProperties = { display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '13px', padding: '10px 12px', backgroundColor: 'white', borderRadius: '8px', border: '1.5px solid #e0e0e0' };
+            return (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                <h2 style={{ fontSize: '17px', fontWeight: '700', color: COLORS.primary, marginBottom: '4px' }}>
+                  ♿ Situation de handicap (RQTH)
+                </h2>
+
+                {!rqthActif ? (
+                  <div style={{ padding: '20px', backgroundColor: '#e6f4f1', borderRadius: '10px', textAlign: 'center' }}>
+                    <div style={{ fontSize: '32px', marginBottom: '8px' }}>✅</div>
+                    <div style={{ fontSize: '15px', fontWeight: '700', color: COLORS.primary }}>Aucune RQTH déclarée</div>
+                    <div style={{ fontSize: '13px', color: '#555', marginTop: '4px' }}>
+                      Cette section ne s'applique qu'aux personnes ayant une RQTH ou une démarche en cours. Modifiez le champ RQTH dans la section « Identité » si besoin.
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    <div style={{ padding: '12px 16px', backgroundColor: '#fef6e4', borderRadius: '8px', borderLeft: `4px solid ${COLORS.secondary}`, fontSize: '13px', color: '#7a5c00', fontWeight: '600' }}>
+                      ♿ Évaluation des besoins particuliers — Référent Handicap. L'attestation RQTH s'importe dans la section « Pièces jointes ».
+                    </div>
+
+                    {/* Accompagnement humain */}
+                    <div>
+                      <label style={{ fontSize: '12px', color: '#555', fontWeight: '700', display: 'block', marginBottom: '8px' }}>Besoin d'un accompagnement humain ?</label>
+                      <div style={{ display: 'flex', gap: '8px' }}>
+                        {['Oui', 'Non'].map(v => (
+                          <button key={v} type="button" onClick={() => setAm('accompagnementHumain', v)} style={{ padding: '8px 20px', borderRadius: '8px', fontSize: '13px', fontWeight: '600', cursor: 'pointer', border: `1.5px solid ${am.accompagnementHumain === v ? COLORS.primary : '#e0e0e0'}`, backgroundColor: am.accompagnementHumain === v ? COLORS.primary : 'white', color: am.accompagnementHumain === v ? 'white' : '#555' }}>{v}</button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Aides humaines */}
+                    {am.accompagnementHumain === 'Oui' && (
+                      <div>
+                        <label style={{ fontSize: '12px', color: '#555', fontWeight: '700', display: 'block', marginBottom: '8px' }}>Si oui, quelle aide est nécessaire ?</label>
+                        <Grille>
+                          {['Interprète en langue des signes', 'Interface de communication', 'Auxiliaire de vie', 'Tierce personne'].map(v => (
+                            <label key={v} style={{ ...labelCase, borderColor: coche('aidesHumaines', v) ? COLORS.primary : '#e0e0e0' }}>
+                              <input type="checkbox" checked={coche('aidesHumaines', v)} onChange={() => toggle('aidesHumaines', v)} />
+                              {v}
+                            </label>
+                          ))}
+                        </Grille>
+                        <textarea
+                          style={{ ...inputStyle, minHeight: '60px', resize: 'vertical', marginTop: '10px' }}
+                          value={am.accompagnementHumainDetail}
+                          placeholder="Précisez les besoins d'accompagnement humain…"
+                          onChange={e => setAm('accompagnementHumainDetail', e.target.value)}
+                        />
+                      </div>
+                    )}
+
+                    {/* Aménagement formation */}
+                    <div>
+                      <label style={{ fontSize: '12px', color: '#555', fontWeight: '700', display: 'block', marginBottom: '8px' }}>Besoin d'un aménagement de la formation ?</label>
+                      <Grille>
+                        {['Fractionnement', 'Pauses', 'Horaires aménagés', 'Autre'].map(v => (
+                          <label key={v} style={{ ...labelCase, borderColor: coche('amenagementsFormation', v) ? COLORS.primary : '#e0e0e0' }}>
+                            <input type="checkbox" checked={coche('amenagementsFormation', v)} onChange={() => toggle('amenagementsFormation', v)} />
+                            {v}
+                          </label>
+                        ))}
+                      </Grille>
+                      {coche('amenagementsFormation', 'Autre') && (
+                        <textarea
+                          style={{ ...inputStyle, minHeight: '60px', resize: 'vertical', marginTop: '10px' }}
+                          value={am.amenagementsFormationDetail}
+                          placeholder="Précisez le(s) autre(s) aménagement(s)…"
+                          onChange={e => setAm('amenagementsFormationDetail', e.target.value)}
+                        />
+                      )}
+                    </div>
+
+                    {/* Adaptation supports */}
+                    <div>
+                      <label style={{ fontSize: '12px', color: '#555', fontWeight: '700', display: 'block', marginBottom: '8px' }}>Besoin d'adaptation des supports de cours ?</label>
+                      <div style={{ display: 'flex', gap: '8px', marginBottom: '10px' }}>
+                        {['Oui', 'Non'].map(v => (
+                          <button key={v} type="button" onClick={() => setAm('adaptationSupports', v)} style={{ padding: '8px 20px', borderRadius: '8px', fontSize: '13px', fontWeight: '600', cursor: 'pointer', border: `1.5px solid ${am.adaptationSupports === v ? COLORS.primary : '#e0e0e0'}`, backgroundColor: am.adaptationSupports === v ? COLORS.primary : 'white', color: am.adaptationSupports === v ? 'white' : '#555' }}>{v}</button>
+                        ))}
+                      </div>
+                      {am.adaptationSupports === 'Oui' && (
+                        <textarea
+                          style={{ ...inputStyle, minHeight: '70px', resize: 'vertical' }}
+                          value={am.adaptationSupportsDetail}
+                          placeholder="Si oui, lesquels ? (ex : documents agrandis, format numérique, contraste renforcé…)"
+                          onChange={e => setAm('adaptationSupportsDetail', e.target.value)}
+                        />
+                      )}
+                    </div>
+                  </>
+                )}
+
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '8px' }}>
+                  <button onClick={() => setSection('identite')} style={{ backgroundColor: 'white', color: COLORS.primary, border: `1.5px solid ${COLORS.primary}`, borderRadius: '8px', padding: '10px 20px', fontSize: '13px', fontWeight: '600', cursor: 'pointer' }}>
+                    ← Section précédente
+                  </button>
+                  <button onClick={() => setSection('cerfa')} style={{ backgroundColor: COLORS.primary, color: 'white', border: 'none', borderRadius: '8px', padding: '10px 20px', fontSize: '13px', fontWeight: '600', cursor: 'pointer' }}>
+                    Section suivante →
+                  </button>
+                </div>
+              </div>
+            );
+          })()}
 
           {/* ===== SECTION CERFA ===== */}
           {section === 'cerfa' && (

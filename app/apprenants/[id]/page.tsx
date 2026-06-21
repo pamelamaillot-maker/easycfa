@@ -1962,6 +1962,12 @@ export default function FicheApprenant({ params }: { params: Promise<{ id: strin
                     </label>
                   ))}
                 </div>
+                <textarea
+                  style={{ border: '1.5px solid #e0e0e0', borderRadius: '8px', padding: '8px 12px', fontSize: '13px', width: '100%', boxSizing: 'border-box', minHeight: '60px', resize: 'vertical', marginTop: '10px' }}
+                  value={am.accompagnementHumainDetail ?? ''}
+                  placeholder="Précisez les besoins d'accompagnement humain…"
+                  onChange={e => setChamp('accompagnementHumainDetail', e.target.value)}
+                />
               </div>
             )}
 
@@ -1976,6 +1982,14 @@ export default function FicheApprenant({ params }: { params: Promise<{ id: strin
                   </label>
                 ))}
               </div>
+              {caseCochee('amenagementsFormation', 'Autre') && (
+                <textarea
+                  style={{ border: '1.5px solid #e0e0e0', borderRadius: '8px', padding: '8px 12px', fontSize: '13px', width: '100%', boxSizing: 'border-box', minHeight: '60px', resize: 'vertical', marginTop: '10px' }}
+                  value={am.amenagementsFormationDetail ?? ''}
+                  placeholder="Précisez le(s) autre(s) aménagement(s)…"
+                  onChange={e => setChamp('amenagementsFormationDetail', e.target.value)}
+                />
+              )}
             </div>
 
             {/* Adaptation des supports */}
@@ -2231,6 +2245,7 @@ export default function FicheApprenant({ params }: { params: Promise<{ id: strin
           { id: 'contrat', label: 'Contrat signé', detail: 'Importé depuis fiche entreprise', obligatoire: true, readonly: true },
           { id: 'dpae', label: 'DPAE', detail: 'Déclaration Préalable à l\'Embauche', obligatoire: false },
           { id: 'p2s', label: 'P2S', detail: 'Document P2S (stagiaire)', obligatoire: false },
+          { id: 'attestation_rqth', label: 'Attestation RQTH / MDPH', detail: 'Justificatif de reconnaissance (RQTH, notification MDPH)', obligatoire: false },
           { id: 'attestation_hebergement', label: 'Attestation d\'hébergement', detail: 'Si l\'apprenant est hébergé', obligatoire: false },
           { id: 'piece_identite_hebergeur', label: 'Pièce d\'identité de l\'hébergeur', detail: 'CNI ou titre de séjour de l\'hébergeant', obligatoire: false },
           { id: 'autre', label: 'Autre document', detail: 'Tout autre document utile', obligatoire: false },
