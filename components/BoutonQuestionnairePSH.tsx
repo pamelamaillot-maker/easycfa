@@ -135,7 +135,7 @@ export default function BoutonQuestionnairePSH({ apprenant, nomFichier, style }:
 
   return (
     <button onClick={generer} disabled={enCours} style={style ?? { backgroundColor: VERT, color: 'white', border: 'none', borderRadius: 8, padding: '9px 16px', fontSize: 13, fontWeight: 600, cursor: enCours ? 'wait' : 'pointer' }}>
-      {enCours ? '⏳ Génération…' : '📄 Générer le questionnaire PSH'}
+      {enCours ? '⏳ Génération…' : '📄 Questionnaire vierge'}
     </button>
   );
 }

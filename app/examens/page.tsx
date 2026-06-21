@@ -16,7 +16,7 @@ const btnSecondary: React.CSSProperties = { backgroundColor: 'white', color: '#0
 const FORMATIONS_EXAMEN: Record<string, {
   code: string; label: string; numero: string; couleur: string;
   agrement: string; validiteAgrement: string;
-  debutAgrement: string;
+  debutAgrement?: string;
   situations: { id: string; label: string; duree: string; applicable: boolean }[];
 }> = {
   SC: {
@@ -158,6 +158,8 @@ type SessionExamen = {
   // Émargements
   emargementJures: string;
   emargementsCandidats: Record<string, string>;
+  // Résultats par candidat (clé = id candidat)
+  resultats?: Record<string, any>;
 };
 
 function diffJours(dateStr: string): number | null {
@@ -505,7 +507,7 @@ export default function Examens() {
                   const taux = tauxCompletion(s);
                   const isOpen = sessionSel?.id === s.id;
                   return (
-                    <div key={s.id} onClick={() => { setSessionSel(isOpen ? null : s); setOngletFiche('infos'); }} style={{ padding: '12px 14px', borderRadius: '10px', border: '1.5px solid ' + (isOpen ? '#006B68' : '#e0e0e0'), backgroundColor: isOpen ? '#EAF4F3' : 'white', cursor: 'pointer', borderLeft: `4px solid ${cfg2?.couleur ?? '#006B68'}` }}>
+                    <div key={s.id} onClick={() => { setSessionSel(isOpen ? null : s); setOngletFiche('infos'); }} style={{ padding: '12px 14px', borderRadius: '10px', borderTop: '1.5px solid ' + (isOpen ? '#006B68' : '#e0e0e0'), borderRight: '1.5px solid ' + (isOpen ? '#006B68' : '#e0e0e0'), borderBottom: '1.5px solid ' + (isOpen ? '#006B68' : '#e0e0e0'), backgroundColor: isOpen ? '#EAF4F3' : 'white', cursor: 'pointer', borderLeft: `4px solid ${cfg2?.couleur ?? '#006B68'}` }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                         <div>
                           <div style={{ fontSize: '12px', fontWeight: '700', color: cfg2?.couleur ?? '#006B68' }}>{cfg2?.label} — {cfg2?.numero}</div>
