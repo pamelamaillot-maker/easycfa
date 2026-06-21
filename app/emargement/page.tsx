@@ -1800,14 +1800,14 @@ export default function Emargement() {
                   </Card>
 
                   {/* SECTION 4 — Validation et signature */}
-                  {!ficheSignee && !estFormateur && estAdmin && (
+                  {!ficheSignee && !estFormateur && estAdmin && !formateurId && (
                     <Card>
                       <div style={{ padding: '14px 16px', backgroundColor: '#e0f2fe', borderRadius: '8px', fontSize: '13px', color: '#0c5274', borderLeft: '4px solid #0891b2' }}>
                         🔒 En tant qu'administrateur, vous consultez cette fiche en lecture seule. <strong>Seul le formateur peut la signer</strong> depuis son espace ou l'onglet émargement, pour garantir la validité Qualiopi.
                       </div>
                     </Card>
                   )}
-                  {!ficheSignee && estFormateur && (
+                  {!ficheSignee && (estFormateur || formateurId) && (
                     <Card>
                       <h3 style={{ fontSize: '14px', fontWeight: '700', color: COLORS.primary, marginBottom: '14px' }}>
                         ✍️ Validation et signature électronique

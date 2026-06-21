@@ -36,7 +36,7 @@ export default function FormateurLayout({ children }: { children: React.ReactNod
       router.push('/formateur/connexion');
       return;
     }
-    if (utilisateur && !estRoutePublique && utilisateur.role !== 'formateur') {
+    if (utilisateur && !estRoutePublique && utilisateur.role !== 'formateur' && !utilisateur.formateurId) {
       router.push('/');
       return;
     }
@@ -68,7 +68,7 @@ export default function FormateurLayout({ children }: { children: React.ReactNod
     return <>{children}</>;
   }
 
-  if (!utilisateur || utilisateur.role !== 'formateur') {
+  if (!utilisateur || (utilisateur.role !== 'formateur' && !utilisateur.formateurId)) {
     return null;
   }
 
