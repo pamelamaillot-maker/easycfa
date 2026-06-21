@@ -164,6 +164,27 @@ export default function Dashboard() {
     { name: 'Rupture', value: ruptures.length, color: '#e53e3e' },
   ].filter(d => d.value > 0);
 
+  // ── Répartition Hommes / Femmes (apprenants rattachés à l'année) ──────────
+  // On agrège les mêmes apprenants que le camembert ci-dessus (en cours + P2S + ruptures de l'année).
+  const apprenantsAnnee = [...enCours, ...p2s, ...ruptures];
+  function sexeNormalise(s?: string): 'Femme' | 'Homme' | 'Non renseigné' {
+    const v = (s || '').trim().toUpperCase();
+    if (v.startsWith('F')) return 'Femme';   // Féminin / F
+    if (v.startsWith('M')) return 'Homme';   // Masculin / M
+    return 'Non renseigné';
+  }
+  const nbFemmes = apprenantsAnnee.filter(a => sexeNormalise(a.sexe) === 'Femme').length;
+  const nbHommes = apprenantsAnnee.filter(a => sexeNormalise(a.sexe) === 'Homme').length;
+  const nbSexeNR = apprenantsAnnee.filter(a => sexeNormalise(a.sexe) === 'Non renseigné').length;
+  const listeFemmes = apprenantsAnnee.filter(a => sexeNormalise(a.sexe) === 'Femme');
+  const listeHommes = apprenantsAnnee.filter(a => sexeNormalise(a.sexe) === 'Homme');
+  const listeSexeNR = apprenantsAnnee.filter(a => sexeNormalise(a.sexe) === 'Non renseigné');
+  const donneesSexe = [
+    { name: 'Femmes', value: nbFemmes, color: '#C8567A', liste: listeFemmes },
+    { name: 'Hommes', value: nbHommes, color: '#006B68', liste: listeHommes },
+    { name: 'Non renseigné', value: nbSexeNR, color: '#bbbbbb', liste: listeSexeNR },
+  ].filter(d => d.value > 0);
+
   // ── Facturation par année sélectionnée ──────────────────────────────────
   const moisActuel = new Date().getMonth();
   const estAnneeCourante = anneeNum === new Date().getFullYear();
@@ -314,11 +335,20 @@ export default function Dashboard() {
             <div style={{ padding: '40px', textAlign: 'center', color: '#888', fontStyle: 'italic', fontSize: '13px' }}>Aucun apprenant pour cette année.</div>
           ) : (
             <ResponsiveContainer width="100%" height={240}>
-              <PieChart>
-                <Pie data={donneesCamembert} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={80} label={(entry: any) => `${entry.name}: ${entry.value}`} labelLine={false}>
+              <PieChart margin={{ top: 10, right: 10, bottom: 10, left: 10 }}>
+                <Pie
+                  data={donneesCamembert}
+                  dataKey="value"
+                  nameKey="name"
+                  cx="50%"
+                  cy="50%"
+                  outerRadius={75}
+                  labelLine={false}
+                  label={(entry: any) => `${entry.value}`}
+                >
                   {donneesCamembert.map((entry, i) => <Cell key={i} fill={entry.color} />)}
                 </Pie>
-                <Tooltip />
+                <Tooltip formatter={(value: any, name: any) => [value, name]} />
                 <Legend />
               </PieChart>
             </ResponsiveContainer>
@@ -338,6 +368,66 @@ export default function Dashboard() {
               <Bar dataKey="CA" fill="#16a34a" radius={[4, 4, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>
+        </div>
+      </div>
+
+      {/* GRAPHIQUE RÉPARTITION H/F */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.6fr', gap: '16px', marginBottom: '24px' }}>
+        <div style={{ backgroundColor: 'white', borderRadius: '14px', padding: '18px', boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }}>
+          <h3 style={{ fontSize: '14px', fontWeight: '800', color: COLORS.primary, marginBottom: '8px' }}>
+            🚻 Répartition Femmes / Hommes — {annee}
+          </h3>
+          {donneesSexe.length === 0 ? (
+            <div style={{ padding: '40px', textAlign: 'center', color: '#888', fontStyle: 'italic', fontSize: '13px' }}>Aucun apprenant pour cette année.</div>
+          ) : (
+            <ResponsiveContainer width="100%" height={240}>
+              <PieChart margin={{ top: 10, right: 10, bottom: 10, left: 10 }}>
+                <Pie
+                  data={donneesSexe}
+                  dataKey="value"
+                  nameKey="name"
+                  cx="50%"
+                  cy="50%"
+                  outerRadius={75}
+                  labelLine={false}
+                  label={(entry: any) => `${entry.value}`}
+                >
+                  {donneesSexe.map((entry, i) => <Cell key={i} fill={entry.color} />)}
+                </Pie>
+                <Tooltip formatter={(value: any, name: any) => [value, name]} />
+                <Legend />
+              </PieChart>
+            </ResponsiveContainer>
+          )}
+        </div>
+
+        <div style={{ backgroundColor: 'white', borderRadius: '14px', padding: '18px', boxShadow: '0 2px 8px rgba(0,0,0,0.06)', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+          <h3 style={{ fontSize: '14px', fontWeight: '800', color: COLORS.primary, marginBottom: '14px' }}>
+            📊 Détail par sexe — {annee}
+          </h3>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+            {donneesSexe.map(d => {
+              const total = donneesSexe.reduce((s, x) => s + x.value, 0);
+              const pct = total > 0 ? Math.round((d.value / total) * 100) : 0;
+              return (
+                <div
+                  key={d.name}
+                  onClick={() => setListeDetail({ titre: `${d.name} — ${annee}`, couleur: d.color, apprenants: d.liste })}
+                  style={{ cursor: 'pointer', padding: '6px', borderRadius: '8px', transition: 'background-color 0.15s' }}
+                  onMouseEnter={e => (e.currentTarget.style.backgroundColor = '#f7f7f7')}
+                  onMouseLeave={e => (e.currentTarget.style.backgroundColor = 'transparent')}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '13px', marginBottom: '4px' }}>
+                    <span style={{ fontWeight: '700', color: '#333' }}>{d.name} <span style={{ fontSize: '11px', color: '#aaa', fontWeight: '400' }}>(voir la liste →)</span></span>
+                    <span style={{ fontWeight: '700', color: d.color }}>{d.value} ({pct}%)</span>
+                  </div>
+                  <div style={{ backgroundColor: '#f0f0f0', borderRadius: '6px', height: '10px', overflow: 'hidden' }}>
+                    <div style={{ width: `${pct}%`, height: '100%', backgroundColor: d.color, borderRadius: '6px' }} />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
         </div>
       </div>
 
