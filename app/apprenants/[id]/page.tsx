@@ -43,6 +43,7 @@ const BoutonPdfAEF = dynamic(() => import('../../../components/BoutonPdfAEF'), {
 const SortiesAnticipeesManager = dynamic(() => import('../../../components/SortiesAnticipeesManager'), { ssr: false });
 const BoutonCarteEtudiante = dynamic(() => import('../../../components/BoutonCarteEtudiante'), { ssr: false });
 const BoutonQuestionnairePSH = dynamic(() => import('../../../components/BoutonQuestionnairePSH'), { ssr: false });
+const BoutonFicheSyntheseRQTH = dynamic(() => import('../../../components/BoutonFicheSyntheseRQTH'), { ssr: false });
 
 const btnPrimary: React.CSSProperties = { backgroundColor: COLORS.primary, color: 'white', border: 'none', borderRadius: '8px', padding: '9px 16px', fontSize: '13px', fontWeight: '600', cursor: 'pointer' };
 const btnSecondary: React.CSSProperties = { backgroundColor: 'white', color: COLORS.primary, border: `1.5px solid ${COLORS.primary}`, borderRadius: '8px', padding: '9px 16px', fontSize: '13px', fontWeight: '600', cursor: 'pointer' };
@@ -1939,8 +1940,13 @@ export default function FicheApprenant({ params }: { params: Promise<{ id: strin
                 <span style={{ fontSize: '12px', color: '#888' }}>Évaluation des besoins particuliers — Référent Handicap</span>
                 <BoutonQuestionnairePSH
                   apprenant={form}
-                  nomFichier={'Questionnaire_PSH_' + (form.nom || '') + '_' + (form.prenom || '') + '.pdf'}
+                  nomFichier={'Questionnaire_PSH_vierge_' + (form.nom || '') + '_' + (form.prenom || '') + '.pdf'}
                   style={{ backgroundColor: COLORS.primary, color: 'white', border: 'none', borderRadius: 8, padding: '8px 14px', fontSize: 12, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' }}
+                />
+                <BoutonFicheSyntheseRQTH
+                  apprenant={form}
+                  nomFichier={'Fiche_synthese_RQTH_' + (form.nom || '') + '_' + (form.prenom || '') + '.pdf'}
+                  style={{ backgroundColor: COLORS.secondary, color: 'white', border: 'none', borderRadius: 8, padding: '8px 14px', fontSize: 12, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' }}
                 />
               </div>
             </div>

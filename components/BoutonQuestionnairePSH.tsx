@@ -28,7 +28,7 @@ const s = {
   ligneCase: { flexDirection: 'row' as const, alignItems: 'center' as const, marginBottom: 4, marginLeft: 12 },
   caseCarre: { width: 10, height: 10, border: `1.2px solid #333`, marginRight: 7 },
   zoneTexte: { border: `1px solid ${GRIS_BORD}`, minHeight: 50, marginTop: 4, marginLeft: 12 },
-  consentement: { marginTop: 18, padding: 10, border: `1.5px solid ${VERT}`, backgroundColor: '#EAF4F3' },
+  consentement: { marginTop: 14, padding: 9, border: `1.5px solid ${VERT}`, backgroundColor: '#EAF4F3' },
   rgpd: { fontSize: 7.5, color: '#555', fontStyle: 'italic' as const, marginTop: 6, lineHeight: 1.35 },
 };
 
@@ -45,7 +45,7 @@ function PSHDoc({ a }: { a: any }) {
   const champ = (v?: string) => (v && String(v).trim()) ? String(v) : '';
   const nomComplet = `${champ(a.prenom)} ${champ(a.nom)}`.trim();
   const formation = LIBELLES_FORMATION[a.formation] || champ(a.formation);
-  const dates = [champ(a.dateDebutFormation), champ(a.dateFinFormation)].filter(Boolean).join('  →  ');
+  const dates = [champ(a.dateDebutFormation), champ(a.dateFinFormation)].filter(Boolean).join('  au  ');
   const dateEnvoi = new Date().toLocaleDateString('fr-FR');
 
   return (
@@ -75,21 +75,25 @@ function PSHDoc({ a }: { a: any }) {
         <Case>Interface de communication</Case>
         <Case>Auxiliaire de vie</Case>
         <Case>Tierce personne</Case>
+        <Text style={{ marginTop: 6, marginLeft: 12 }}>Précisez si besoin :</Text>
+        <View style={{ ...s.zoneTexte, minHeight: 34 }} />
 
         <Text style={s.question}>Avez-vous besoin d'un aménagement de la formation ?</Text>
         <Case>Fractionnement</Case>
         <Case>Pauses</Case>
         <Case>Horaires aménagés</Case>
         <Case>Autre</Case>
+        <Text style={{ marginTop: 6, marginLeft: 12 }}>Si « Autre », précisez :</Text>
+        <View style={{ ...s.zoneTexte, minHeight: 34 }} />
 
         <Text style={s.question}>Avez-vous besoin d'adaptation des supports de cours ?</Text>
         <Case>Oui</Case>
         <Case>Non</Case>
         <Text style={{ marginTop: 6, marginLeft: 12 }}>Si oui, lesquels ?</Text>
-        <View style={s.zoneTexte} />
+        <View style={{ ...s.zoneTexte, minHeight: 38 }} />
 
-        {/* Consentement + RGPD */}
-        <View style={s.consentement}>
+        {/* Consentement + RGPD — insécable */}
+        <View style={s.consentement} wrap={false}>
           <Text>
             Je soussigné(e) {nomComplet || '……………………………………'} atteste avoir pris connaissance de ce questionnaire et autorise PAM OI Formation à utiliser ces informations pour adapter mon parcours de formation.
           </Text>
