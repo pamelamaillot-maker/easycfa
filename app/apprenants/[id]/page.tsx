@@ -42,6 +42,7 @@ const BoutonPdfDroitImage = dynamic(() => import('../../../components/BoutonPdfD
 const BoutonPdfAEF = dynamic(() => import('../../../components/BoutonPdfAEF'), { ssr: false });
 const SortiesAnticipeesManager = dynamic(() => import('../../../components/SortiesAnticipeesManager'), { ssr: false });
 const BoutonCarteEtudiante = dynamic(() => import('../../../components/BoutonCarteEtudiante'), { ssr: false });
+const BoutonQuestionnairePSH = dynamic(() => import('../../../components/BoutonQuestionnairePSH'), { ssr: false });
 
 const btnPrimary: React.CSSProperties = { backgroundColor: COLORS.primary, color: 'white', border: 'none', borderRadius: '8px', padding: '9px 16px', fontSize: '13px', fontWeight: '600', cursor: 'pointer' };
 const btnSecondary: React.CSSProperties = { backgroundColor: 'white', color: COLORS.primary, border: `1.5px solid ${COLORS.primary}`, borderRadius: '8px', padding: '9px 16px', fontSize: '13px', fontWeight: '600', cursor: 'pointer' };
@@ -1932,9 +1933,16 @@ export default function FicheApprenant({ params }: { params: Promise<{ id: strin
         const labelCase: React.CSSProperties = { display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '13px', padding: '8px 10px', backgroundColor: 'white', borderRadius: '6px', border: '1.5px solid #e0e0e0' };
         return (
           <Card style={{ marginBottom: '24px', borderTop: `4px solid ${COLORS.secondary}` }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', gap: '12px', flexWrap: 'wrap' }}>
               <h2 style={{ fontSize: '15px', fontWeight: '700', color: COLORS.primary }}>♿ Situation de handicap (RQTH)</h2>
-              <span style={{ fontSize: '12px', color: '#888' }}>Évaluation des besoins particuliers — Référent Handicap</span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+                <span style={{ fontSize: '12px', color: '#888' }}>Évaluation des besoins particuliers — Référent Handicap</span>
+                <BoutonQuestionnairePSH
+                  apprenant={form}
+                  nomFichier={'Questionnaire_PSH_' + (form.nom || '') + '_' + (form.prenom || '') + '.pdf'}
+                  style={{ backgroundColor: COLORS.primary, color: 'white', border: 'none', borderRadius: 8, padding: '8px 14px', fontSize: 12, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' }}
+                />
+              </div>
             </div>
             <p style={{ fontSize: 12, color: '#666', marginBottom: 16, marginTop: 0, fontStyle: 'italic' }}>
               Renseigné à partir du questionnaire d'accueil d'une personne en situation de handicap. L'attestation RQTH s'importe dans la section « Pièces justificatives ».
