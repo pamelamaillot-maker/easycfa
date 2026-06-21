@@ -183,6 +183,30 @@ export default function Sidebar() {
           </div>
         ))}
 
+        {/* Espace formateur — visible uniquement pour un compte relié à un profil formateur (ex. Gaëlle admin+formatrice) */}
+        {utilisateur?.formateurId && (
+          <div style={{ marginTop: '14px' }}>
+            <div style={{ padding: '6px 20px 4px 20px', fontSize: '10px', fontWeight: '800', letterSpacing: '1.2px', color: 'var(--secondary)', textTransform: 'uppercase', opacity: 0.85 }}>
+              MON ESPACE FORMATEUR
+            </div>
+            <Link
+              href="/formateur/fiches"
+              style={{
+                display: 'flex', alignItems: 'center', gap: '10px',
+                padding: '9px 20px 9px 32px', fontSize: '13px',
+                borderLeft: estItemActif('/formateur/fiches') ? '3px solid var(--secondary)' : '3px solid transparent',
+                textDecoration: 'none',
+                color: estItemActif('/formateur/fiches') ? 'var(--secondary)' : 'rgba(255,255,255,0.85)',
+                backgroundColor: estItemActif('/formateur/fiches') ? 'rgba(255,255,255,0.08)' : 'transparent',
+                fontWeight: estItemActif('/formateur/fiches') ? '600' : '400',
+              }}
+            >
+              <span style={{ fontSize: '14px', flexShrink: 0 }}>📝</span>
+              <span>Mes fiches d'intervention</span>
+            </Link>
+          </div>
+        )}
+
         <div style={{ marginTop: '20px', borderTop: '1px solid rgba(255,255,255,0.15)', paddingTop: '8px' }}>
           {renderItem({ label: 'Paramètres', href: '/parametres', icon: '⚙️' }, false)}
         </div>

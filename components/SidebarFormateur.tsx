@@ -93,6 +93,24 @@ export default function SidebarFormateur({ activePath }: Props) {
         })}
       </nav>
 
+      {/* Retour administration — visible uniquement pour un admin (ex. Gaëlle admin+formatrice) */}
+      {utilisateur.role === 'admin' && (
+        <div style={{ padding: '0 16px 12px' }}>
+          <Link
+            href="/"
+            style={{
+              display: 'flex', alignItems: 'center', gap: 10,
+              padding: '10px 14px', fontSize: 13, fontWeight: 600,
+              color: COLORS.primary, backgroundColor: COLORS.secondary,
+              borderRadius: 8, textDecoration: 'none',
+            }}
+          >
+            <span style={{ fontSize: 14, flexShrink: 0 }}>⬅️</span>
+            <span>Retour administration</span>
+          </Link>
+        </div>
+      )}
+
       {/* Pied de sidebar : utilisateur + déconnexion */}
       <div style={{ padding: '14px 16px', borderTop: '1px solid rgba(255,255,255,0.15)' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
