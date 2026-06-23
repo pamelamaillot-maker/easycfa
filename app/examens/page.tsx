@@ -7,6 +7,14 @@ import {
   sauvegarderExamen as sauvegarderExamenSupabase,
   supprimerExamen as supprimerExamenSupabase,
 } from '../../data/examensSupabase';
+import {
+  chargerAgrements,
+  creerAgrement,
+  modifierAgrement,
+  supprimerAgrement,
+  uploaderPdfAgrement,
+  type Agrement,
+} from '../../data/agrementsSupabase';
 
 const inputStyle: React.CSSProperties = { border: '1.5px solid #e0e0e0', borderRadius: '8px', padding: '7px 10px', fontSize: '12px', width: '100%', boxSizing: 'border-box', backgroundColor: 'white' };
 const btnPrimary: React.CSSProperties = { backgroundColor: '#006B68', color: 'white', border: 'none', borderRadius: '8px', padding: '8px 14px', fontSize: '12px', fontWeight: '600', cursor: 'pointer' };
@@ -204,6 +212,7 @@ export default function Examens() {
   const [sessionsFo, setSessionsFo] = useState<any[]>([]);
   const [agrementsFichiers, setAgrementsFichiers] = useState<Record<string, string>>({});
   const [agreementsInfos, setAgreementsInfos] = useState<Record<string, { debut: string; fin: string; archive: boolean }>>({});
+  const [agrementsDb, setAgrementsDb] = useState<Agrement[]>([]);
 
   useEffect(() => {
     (async () => {
@@ -234,6 +243,14 @@ export default function Examens() {
         const ai = localStorage.getItem('easycfa_agrements_infos');
         if (ai) setAgreementsInfos(JSON.parse(ai));
       } catch {}
+      // Agréments : nouvelle source Supabase (table agrements)
+      try {
+        const ags = await chargerAgrements();
+        console.log(`[Examens] ${ags.length} agréments chargés depuis Supabase ✅`);
+        setAgrementsDb(ags);
+      } catch (e) {
+        console.error('[Examens] Erreur chargement agréments Supabase', e);
+      }
     })();
   }, []);
 
@@ -375,105 +392,91 @@ export default function Examens() {
         ))}
       </div>
 
-      {/* ── AGRÉMENTS ── */}
+      {/* ── AGRÉMENTS (Supabase) ── */}
       {onglet === 'agrement' && (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '12px' }}>
-          {Object.values(FORMATIONS_EXAMEN).map(f => {
-            const finReelle = agreementsInfos[f.code]?.fin || f.validiteAgrement;
+          {agrementsDb.filter(ag => !ag.archive).map(ag => {
+            const finReelle = ag.dateFin || '';
             const jFin = diffJours(finReelle);
             const couleurV = jFin !== null && jFin <= 90 ? '#e53e3e' : jFin !== null && jFin <= 180 ? '#C8A23A' : '#16a34a';
-            if (agreementsInfos[f.code]?.archive) return null;
+            const couleurAg = ag.couleur || '#006B68';
+            const situations = Array.isArray(ag.situations) ? ag.situations : [];
+
+            async function patchAgrement(patch: Partial<Agrement>) {
+              setAgrementsDb(prev => prev.map(a => a.id === ag.id ? { ...a, ...patch } : a));
+              const res = await modifierAgrement(ag.id, patch);
+              if (!res.success) console.error('[Agrement] Erreur sauvegarde :', res.error);
+            }
+
+            async function importerPdf(file: File) {
+              const res = await uploaderPdfAgrement(ag.id, file);
+              if (!res.success) { alert('Erreur upload PDF : ' + res.error); return; }
+              await patchAgrement({ pdfUrl: res.url, pdfNom: res.nom, pdfCheminStorage: res.chemin });
+            }
+
             return (
-              <Card key={f.code}>
+              <Card key={ag.id}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                   <div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
-                      <div style={{ backgroundColor: f.couleur, color: 'white', padding: '2px 8px', borderRadius: '6px', fontSize: '11px', fontWeight: '700' }}>{f.code}</div>
-                      <span style={{ fontSize: '13px', fontWeight: '700', color: '#333' }}>{f.label}</span>
-                      {agreementsInfos[f.code]?.archive && (
-                        <span style={{ backgroundColor: '#f0f0f0', color: '#888', padding: '1px 6px', borderRadius: '10px', fontSize: '10px', fontWeight: '600' }}>Archivé</span>
-                      )}
+                      <div style={{ backgroundColor: couleurAg, color: 'white', padding: '2px 8px', borderRadius: '6px', fontSize: '11px', fontWeight: '700' }}>{ag.formationCode}</div>
+                      <span style={{ fontSize: '13px', fontWeight: '700', color: '#333' }}>{ag.formationLabel}</span>
                     </div>
-                    <div style={{ fontSize: '11px', color: '#888', marginBottom: '4px' }}>N° : <strong style={{ color: '#006B68' }}>{f.numero}</strong></div>
-                    <div style={{ fontSize: '11px', color: '#888' }}>{f.agrement}</div>
-                    {/* Dates de validité modifiables */}
+                    <div style={{ fontSize: '11px', color: '#888', marginBottom: '4px' }}>N° : <strong style={{ color: '#006B68' }}>{ag.numero}</strong></div>
+                    <div style={{ fontSize: '11px', color: '#888' }}>{ag.intituleAgrement || 'Agrément DEETS Réunion'}</div>
                     <div style={{ display: 'flex', gap: '8px', marginTop: '8px', flexWrap: 'wrap' }}>
                       <div>
                         <label style={{ fontSize: '9px', color: '#888', display: 'block', marginBottom: '2px', textTransform: 'uppercase' }}>Début validité</label>
                         <input style={{ border: '1px solid #e0e0e0', borderRadius: '6px', padding: '4px 8px', fontSize: '11px', width: '110px', backgroundColor: 'white' }}
-                          value={agreementsInfos[f.code]?.debut ?? ''}
-                          placeholder="JJ/MM/AAAA"
-                          onChange={e => {
-                            const updated = { ...agreementsInfos, [f.code]: { ...agreementsInfos[f.code], debut: e.target.value, fin: agreementsInfos[f.code]?.fin ?? '', archive: agreementsInfos[f.code]?.archive ?? false } };
-                            setAgreementsInfos(updated); localStorage.setItem('easycfa_agrements_infos', JSON.stringify(updated));
-                          }} />
+                          value={ag.dateDebut ?? ''} placeholder="JJ/MM/AAAA"
+                          onChange={e => patchAgrement({ dateDebut: e.target.value })} />
                       </div>
                       <div>
                         <label style={{ fontSize: '9px', color: '#888', display: 'block', marginBottom: '2px', textTransform: 'uppercase' }}>Fin validité</label>
                         <input style={{ border: '1px solid #e0e0e0', borderRadius: '6px', padding: '4px 8px', fontSize: '11px', width: '110px', backgroundColor: 'white' }}
-                          value={agreementsInfos[f.code]?.fin ?? ''}
-                          placeholder="JJ/MM/AAAA"
-                          onChange={e => {
-                            const updated = { ...agreementsInfos, [f.code]: { ...agreementsInfos[f.code], fin: e.target.value, debut: agreementsInfos[f.code]?.debut ?? '', archive: agreementsInfos[f.code]?.archive ?? false } };
-                            setAgreementsInfos(updated); localStorage.setItem('easycfa_agrements_infos', JSON.stringify(updated));
-                          }} />
+                          value={ag.dateFin ?? ''} placeholder="JJ/MM/AAAA"
+                          onChange={e => patchAgrement({ dateFin: e.target.value })} />
                       </div>
                     </div>
                   </div>
-                  {(() => {
-                    const finR = agreementsInfos[f.code]?.fin || f.validiteAgrement;
-                    const jj = diffJours(finR);
-                    return (
                   <div style={{ textAlign: 'right', display: 'flex', flexDirection: 'column', gap: '6px', alignItems: 'flex-end' }}>
                     <div>
                       <div style={{ fontSize: '10px', color: '#888', marginBottom: '2px' }}>Validité</div>
-                      <div style={{ fontSize: '13px', fontWeight: '800', color: couleurV }}>{finR}</div>
-                      {jj !== null && <div style={{ fontSize: '10px', color: couleurV, fontWeight: '700' }}>{jj > 0 ? `J-${jj}` : 'EXPIRÉ'}</div>}
-                      {jj !== null && jj <= 90 && jj > 0 && (
+                      <div style={{ fontSize: '13px', fontWeight: '800', color: couleurV }}>{finReelle || '—'}</div>
+                      {jFin !== null && <div style={{ fontSize: '10px', color: couleurV, fontWeight: '700' }}>{jFin > 0 ? 'J-' + jFin : 'EXPIRÉ'}</div>}
+                      {jFin !== null && jFin <= 90 && jFin > 0 && (
                         <div style={{ fontSize: '10px', backgroundColor: '#fde8e8', color: '#e53e3e', padding: '2px 6px', borderRadius: '6px', fontWeight: '700', marginTop: '2px' }}>⚠️ Renouveler !</div>
                       )}
                     </div>
-                    <button onClick={() => {
-                      const archive = !agreementsInfos[f.code]?.archive;
-                      const updated = { ...agreementsInfos, [f.code]: { ...agreementsInfos[f.code], archive, debut: agreementsInfos[f.code]?.debut ?? '', fin: agreementsInfos[f.code]?.fin ?? '' } };
-                      setAgreementsInfos(updated); localStorage.setItem('easycfa_agrements_infos', JSON.stringify(updated));
-                    }} style={{ backgroundColor: agreementsInfos[f.code]?.archive ? '#EAF4F3' : '#f0f0f0', color: agreementsInfos[f.code]?.archive ? '#006B68' : '#888', border: 'none', borderRadius: '6px', padding: '4px 10px', fontSize: '10px', fontWeight: '600', cursor: 'pointer' }}>
-                      {agreementsInfos[f.code]?.archive ? '↩ Désarchiver' : '📦 Archiver'}
+                    <button onClick={() => patchAgrement({ archive: true })}
+                      style={{ backgroundColor: '#f0f0f0', color: '#888', border: 'none', borderRadius: '6px', padding: '4px 10px', fontSize: '10px', fontWeight: '600', cursor: 'pointer' }}>
+                      📦 Archiver
                     </button>
                   </div>
-                    );
-                  })()}
                 </div>
                 <div style={{ marginTop: '10px', borderTop: '1px solid #f0f0f0', paddingTop: '8px' }}>
                   <div style={{ fontSize: '10px', color: '#888', fontWeight: '700', textTransform: 'uppercase', marginBottom: '6px' }}>📋 Situations d'évaluation</div>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
-                    {f.situations.map(sit => (
+                    {situations.map(sit => (
                       <div key={sit.id} style={{ display: 'flex', justifyContent: 'space-between', paddingTop: '4px', paddingBottom: '4px', borderBottomWidth: '1px', borderBottomStyle: 'solid', borderBottomColor: '#d0e8e6', fontSize: '12px' }}>
                         <span style={{ color: '#333' }}>{sit.applicable ? '✅' : '—'} {sit.label}</span>
-                        <span style={{ fontWeight: sit.applicable ? '600' : '400', color: sit.applicable ? f.couleur : '#ccc' }}>{sit.duree}</span>
+                        <span style={{ fontWeight: sit.applicable ? '600' : '400', color: sit.applicable ? couleurAg : '#ccc' }}>{sit.duree}</span>
                       </div>
                     ))}
                   </div>
-                  {/* Import agrément DEETS */}
-                  <div style={{ marginTop: '10px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    {agrementsFichiers[f.code] ? (
+                  <div style={{ marginTop: '10px', display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                    {ag.pdfUrl ? (
                       <>
-                        <span style={{ fontSize: '11px', color: '#006B68', fontWeight: '600' }}>✅ {agrementsFichiers[f.code]}</span>
+                        <a href={ag.pdfUrl} target="_blank" rel="noopener noreferrer" style={{ fontSize: '11px', color: '#006B68', fontWeight: '600', textDecoration: 'underline' }}>✅ {ag.pdfNom || 'Agrément importé'}</a>
                         <label style={{ backgroundColor: 'white', color: '#006B68', border: '1px solid #006B68', borderRadius: '6px', padding: '4px 10px', fontSize: '10px', fontWeight: '600', cursor: 'pointer' }}>
                           🔄 Remplacer
-                          <input type="file" accept=".pdf" style={{ display: 'none' }} onChange={ev => {
-                            const file = ev.target.files?.[0];
-                            if (file) { const updated = { ...agrementsFichiers, [f.code]: file.name }; setAgrementsFichiers(updated); localStorage.setItem('easycfa_agrements_fichiers', JSON.stringify(updated)); }
-                          }} />
+                          <input type="file" accept=".pdf" style={{ display: 'none' }} onChange={ev => { const file = ev.target.files?.[0]; if (file) importerPdf(file); ev.target.value = ''; }} />
                         </label>
                       </>
                     ) : (
                       <label style={{ backgroundColor: '#006B68', color: 'white', border: 'none', borderRadius: '6px', padding: '5px 12px', fontSize: '11px', fontWeight: '600', cursor: 'pointer' }}>
                         📎 Importer agrément DEETS (PDF)
-                        <input type="file" accept=".pdf" style={{ display: 'none' }} onChange={ev => {
-                          const file = ev.target.files?.[0];
-                          if (file) { const updated = { ...agrementsFichiers, [f.code]: file.name }; setAgrementsFichiers(updated); localStorage.setItem('easycfa_agrements_fichiers', JSON.stringify(updated)); }
-                        }} />
+                        <input type="file" accept=".pdf" style={{ display: 'none' }} onChange={ev => { const file = ev.target.files?.[0]; if (file) importerPdf(file); ev.target.value = ''; }} />
                       </label>
                     )}
                   </div>
