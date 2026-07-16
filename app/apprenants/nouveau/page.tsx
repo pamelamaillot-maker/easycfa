@@ -4,6 +4,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { COLORS } from '../../../lib/constants';
 import { creerApprenti } from '../../../data/apprentisSupabase';
+import { chargerEntreprises } from '../../../data/entreprisesSupabase';
 
 const SECTIONS = [
   { id: 'identite', label: '👤 Identité', description: 'Informations personnelles' },
@@ -70,27 +71,6 @@ function genererId(nom: string, prenom: string, idsExistants: string[]): string 
   return id;
 }
 
-/**
- * Extrait les entreprises uniques depuis easycfa_apcs_v2 (les contrats d'apprentissage).
- * Retourne une liste triée alphabétiquement.
- */
-function chargerEntreprisesDepuisAPC(): string[] {
-  if (typeof window === 'undefined') return [];
-  try {
-    const apcs = JSON.parse(localStorage.getItem('easycfa_apcs_v2') || '[]');
-    const set = new Set<string>();
-    apcs.forEach((apc: any) => {
-      const nom = apc.entrepriseNom || apc.entreprise;
-      if (nom && typeof nom === 'string' && nom.trim()) {
-        set.add(nom.trim());
-      }
-    });
-    return Array.from(set).sort((a, b) => a.localeCompare(b, 'fr'));
-  } catch {
-    return [];
-  }
-}
-
 export default function NouvelApprenant() {
   const router = useRouter();
   const searchParams = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
@@ -103,9 +83,21 @@ export default function NouvelApprenant() {
   const [entreprisesDisponibles, setEntreprisesDisponibles] = useState<string[]>([]);
   const [modeEntrepriseManuelle, setModeEntrepriseManuelle] = useState(false);
 
-  // Charge la liste des entreprises depuis les APC au montage
+  // Charge la liste des entreprises depuis Supabase (table entreprises) au montage
   useEffect(() => {
-    setEntreprisesDisponibles(chargerEntreprisesDepuisAPC());
+    chargerEntreprises()
+      .then(ents => {
+        const noms = ents
+          .map(e => (e.raisonSociale || '').trim())
+          .filter(Boolean)
+          .sort((a, b) => a.localeCompare(b, 'fr'));
+        setEntreprisesDisponibles(noms);
+        console.log(`[NouvelApprenant] ${noms.length} entreprises chargées depuis Supabase ✅`);
+      })
+      .catch(err => {
+        console.error('[NouvelApprenant] Erreur chargement entreprises:', err);
+        setEntreprisesDisponibles([]);
+      });
   }, []);
 
   const [form, setForm] = useState({
@@ -823,8 +815,8 @@ export default function NouvelApprenant() {
               </h2>
 
               <div style={{ padding: '12px 16px', backgroundColor: COLORS.background, borderRadius: '8px', fontSize: '13px', color: '#555' }}>
-                💡 {entreprisesDisponibles.length} entreprise{entreprisesDisponibles.length > 1 ? 's' : ''} disponible{entreprisesDisponibles.length > 1 ? 's' : ''} (extraite{entreprisesDisponibles.length > 1 ? 's' : ''} de tes contrats d'apprentissage signés).
-                Si l'apprenant n'a pas encore trouvé d'entreprise, laisse vide et choisis P2S.
+                💡 {entreprisesDisponibles.length} entreprise{entreprisesDisponibles.length > 1 ? 's' : ''} disponible{entreprisesDisponibles.length > 1 ? 's' : ''} (issue{entreprisesDisponibles.length > 1 ? 's' : ''} de votre annuaire Entreprises).
+                Si l'apprenant n'a pas encore trouvé d'entreprise, laissez vide et choisissez P2S.
               </div>
 
               <Champ label="Entreprise d'accueil" required={!isP2S}>
