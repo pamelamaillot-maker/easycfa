@@ -188,8 +188,18 @@ export default function Recrutement() {
 
   function calculerFinPublication(datePublication: string): { joursRestants: number; alerte: boolean; expire: boolean } | null {
     if (!datePublication) return null;
-    const [j, m, a] = datePublication.split('/').map(Number);
-    const debut = new Date(a, m - 1, j);
+    // Parsing robuste : accepte JJ/MM/AAAA (slashs) ET AAAA-MM-JJ (tirets, format ISO)
+    let debut: Date | null = null;
+    const s = datePublication.trim();
+    if (s.includes('/')) {
+      const [j, m, a] = s.split('/').map(Number);
+      if (j && m && a) debut = new Date(a, m - 1, j);
+    } else if (s.includes('-')) {
+      const [a, m, j] = s.split('-').map(Number);
+      if (j && m && a) debut = new Date(a, m - 1, j);
+    }
+    // Si la date est invalide, on ne déclenche aucune alerte (évite le faux "expiré")
+    if (!debut || isNaN(debut.getTime())) return null;
     const fin = new Date(debut);
     fin.setDate(fin.getDate() + 30);
     const aujourd = new Date();
