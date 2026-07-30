@@ -16,6 +16,7 @@ import {
   supprimerCrEcheance,
   type CertificatRealisation,
 } from '../../data/apcsSupabase';
+import { chargerApprentis } from '../../data/apprentisSupabase';
 import Card from '../../components/Card';
 import { uploaderFichier, cheminStorage } from '../../lib/storage';
 import { calculerPeriodeCr, calculerPeriodeCrFinal, nbJoursEntre, nbMoisEntre } from '../../lib/calculerPeriodeCr';
@@ -204,6 +205,7 @@ function donneesCrFinal(apc: APC, apprenant?: any): {
 export default function Facturation() {
   const { estAdmin, utilisateur } = useAcces();
   const [apcs, setApcs] = useState<APC[]>([]);
+  const [apprenantsListe, setApprenantsListe] = useState<any[]>([]);
   const [apcSel, setApcSel] = useState<APC|null>(null);
   const [modale, setModale] = useState(false);
   const [onglet, setOnglet] = useState<'dossiers'|'opco'|'mois'|'annee'>('dossiers');
@@ -218,6 +220,15 @@ export default function Facturation() {
 
   useEffect(()=>{
     (async () => {
+      // Charge les apprenants depuis Supabase (pour la liste déroulante de création de dossier)
+      try {
+        const apps = await chargerApprentis();
+        console.log(`[Précompta] ${apps.length} apprenants chargés depuis Supabase ✅`);
+        setApprenantsListe(apps);
+      } catch (e) {
+        console.error('[Précompta] Erreur chargement apprenants Supabase', e);
+      }
+      // Charge les APCs
       try {
         const fromSupabase = await chargerApcsSupabase();
         if (fromSupabase.length > 0) {
@@ -237,7 +248,7 @@ export default function Facturation() {
 
   async function creerAPC() {
     if (!form.apprenantId||!form.opco) return;
-    const ap=APPRENANTS_REELS.find(a=>a.id===form.apprenantId);
+    const ap=apprenantsListe.find((a:any)=>a.id===form.apprenantId);
     const n:APC={
       id:Date.now().toString(),apprenantId:form.apprenantId??'',
       apprenantNom:ap?.nom??'',apprenantPrenom:ap?.prenom??'',
@@ -1493,10 +1504,10 @@ export default function Facturation() {
                   </tr>
                 </thead>
                 <tbody>
-                  {[
+                  {([
                     {label:'Facturé (€)',key:'fact',color:'#0891b2',mode:'fact' as const},
                     {label:'Encaissé (€)',key:'enc',color:'#16a34a',mode:'enc' as const},
-                    ].map((row,ri)=>{
+                    ] as {label:string;key:string;color:string;mode:'fact'|'enc'}[]).map((row,ri)=>{
                     const total=statsMois.reduce((s,m)=>s+(m as any)[row.key],0);
                     return (
                       <tr key={row.label} style={{borderBottom:'1px solid #f0f0f0',backgroundColor:ri%2===0?'white':'#EAF4F3'}}>
@@ -1652,9 +1663,9 @@ export default function Facturation() {
             <div style={{display:'flex',flexDirection:'column',gap:'12px'}}>
               <div>
                 <label style={{fontSize:'11px',color:'#888',textTransform:'uppercase',fontWeight:'600',display:'block',marginBottom:'3px'}}>Apprenant *</label>
-                <select style={inputStyle} value={form.apprenantId??''} onChange={e=>{const a=APPRENANTS_REELS.find(ap=>ap.id===e.target.value);setForm(p=>({...p,apprenantId:e.target.value,dateDebutContrat:a?.dateDebutContrat??'',dateFinContrat:a?.dateFinContrat??''}));}}>
+                <select style={inputStyle} value={form.apprenantId??''} onChange={e=>{const a=apprenantsListe.find((ap:any)=>ap.id===e.target.value);setForm(p=>({...p,apprenantId:e.target.value,dateDebutContrat:a?.dateDebutContrat??'',dateFinContrat:a?.dateFinContrat??''}));}}>
                   <option value="">Choisir un apprenant...</option>
-                  {APPRENANTS_REELS.filter(a=>a.statut==='En cours'||a.statut==='P2S').sort((a,b)=>a.nom.localeCompare(b.nom)).map(a=>(
+                  {apprenantsListe.filter((a:any)=>a.statut==='En cours'||a.statut==='P2S'||a.statut==='Rupture').sort((a:any,b:any)=>a.nom.localeCompare(b.nom)).map((a:any)=>(
                     <option key={a.id} value={a.id}>{a.nom} {a.prenom} — {a.formation} — {a.entreprise||'P2S'}</option>
                   ))}
                 </select>
