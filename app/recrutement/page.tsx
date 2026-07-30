@@ -44,6 +44,8 @@ type Mandat = {
   dateEnvoiMandat: string;
   dateSignatureMandat: string;
   mandatSigne: string;
+  mandatSigneUrl?: string;
+  mandatSigneCheminStorage?: string;
   datePublication: string;
   dateEntretiens: string;
   profils_proposes: boolean;

@@ -737,6 +737,58 @@ export default function FicheApprenant({ params }: { params: Promise<{ id: strin
   const [crsApprenant, setCrsApprenant] = useState<any[]>([]);
   const [crFinalApprenant, setCrFinalApprenant] = useState<any>(null);
 
+  async function dupliquerFiche() {
+    if (!form) return;
+    const statutChoisi = window.prompt(
+      'Dupliquer cette fiche pour un nouveau contrat.\n\n' +
+      'Tapez le statut de la nouvelle fiche :\n' +
+      '- "P2S" pour un stagiaire en recherche\n' +
+      '- "CA" pour un contrat d\'apprentissage\n\n' +
+      'Les données d\'identité seront recopiées. Entreprise, formation et dates de contrat seront à ressaisir.',
+      'P2S'
+    );
+    if (statutChoisi === null) return;
+    const statut = statutChoisi.trim().toUpperCase() === 'CA' ? 'En cours' : 'P2S';
+    const nouvelId = Date.now().toString();
+    const nouvelle: any = {
+      ...form,
+      id: nouvelId,
+      statut,
+      entreprise: '',
+      formation: '',
+      dateDebutContrat: '',
+      dateFinContrat: '',
+      dateDebutFormation: '',
+      dateFinFormation: '',
+      numeroDeca: '',
+      numeroDossierOpco: '',
+      sessionId: '',
+      dateRupture: '',
+      maintienFormation: '',
+      motifRupture: '',
+      contratPrecedent: '',
+      contratSuivant: '',
+      archive: false,
+      pieces: {},
+      dmf: null,
+      rupture: null,
+      ruptureSignee: null,
+      dfmf: null,
+      droitImage: null,
+      carteEtudiant: null,
+      sortiesAnticipees: [],
+      dateCreation: new Date().toISOString(),
+      dateModification: new Date().toISOString(),
+    };
+    if (!window.confirm(`Créer une nouvelle fiche pour ${form.prenom} ${form.nom} en statut ${statut} ?\n\nVous pourrez ensuite saisir la nouvelle entreprise, formation et dates.`)) return;
+    const res = await creerApprenti(nouvelle);
+    if (!res.success) {
+      alert(`⚠️ Erreur lors de la duplication : ${res.error}`);
+      return;
+    }
+    router.push(`/apprenants/${nouvelId}`);
+  }
+
   // Charge l'historique d'émargement de l'apprenant (absences + retards)
   useEffect(() => {
     (async () => {
@@ -1329,6 +1381,9 @@ export default function FicheApprenant({ params }: { params: Promise<{ id: strin
                   ↩️ Réactiver
                 </button>
               )}
+              <button onClick={dupliquerFiche} style={{ backgroundColor: 'white', color: '#7c3aed', border: '1.5px solid #7c3aed', borderRadius: '8px', padding: '9px 16px', fontSize: '13px', fontWeight: '600', cursor: 'pointer' }}>
+                📄 Dupliquer pour nouveau contrat
+              </button>
               <BoutonSupprimer
                 type="apprenant"
                 id={id}
