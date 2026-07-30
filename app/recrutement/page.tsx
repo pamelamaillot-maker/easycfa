@@ -150,6 +150,17 @@ export default function Recrutement() {
     sauvegarderMandats(mandats.map(m => m.id === updated.id ? updated : m));
   }
 
+  // Met à jour plusieurs champs en un seul appel (évite l'écrasement d'état en cascade)
+  async function mettreAJourFicheMulti(champs: Record<string, any>) {
+    if (!ficheOuverte) return;
+    const updated = { ...ficheOuverte, ...champs };
+    const res = await modifierMandat(ficheOuverte.id, champs as any);
+    if (!res.success) alert(`⚠️ Erreur Supabase : ${res.error}`);
+    else console.log(`[Mandats ${ficheOuverte.id}] ${Object.keys(champs).length} champs mis à jour dans Supabase ✅`);
+    setFicheOuverte(updated);
+    sauvegarderMandats(mandats.map(m => m.id === updated.id ? updated : m));
+  }
+
   function ajouterCandidat() {
     if (!ficheOuverte || !nouveauCandidat.nom) return;
     mettreAJourFiche('candidats', [...(ficheOuverte.candidats ?? []), { ...nouveauCandidat }]);
@@ -421,11 +432,13 @@ export default function Recrutement() {
                       return;
                     }
                     console.log(`[Mandat ${ficheOuverte.id}] Mandat signé uploadé vers Storage ✅`);
-                    mettreAJourFiche('mandatSigne', f.name);
-                    mettreAJourFiche('mandatSigneUrl', resUpload.fichier.url);
-                    mettreAJourFiche('mandatSigneCheminStorage', resUpload.fichier.cheminStorage);
-                    mettreAJourFiche('dateSignatureMandat', new Date().toLocaleDateString('fr-FR'));
-                    mettreAJourFiche('statut', 'Actif');
+                    await mettreAJourFicheMulti({
+                      mandatSigne: f.name,
+                      mandatSigneUrl: resUpload.fichier.url,
+                      mandatSigneCheminStorage: resUpload.fichier.cheminStorage,
+                      dateSignatureMandat: new Date().toLocaleDateString('fr-FR'),
+                      statut: 'Actif',
+                    });
                   }} />
                 </label>
               </div>
