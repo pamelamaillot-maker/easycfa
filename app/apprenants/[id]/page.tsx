@@ -839,7 +839,7 @@ export default function FicheApprenant({ params }: { params: Promise<{ id: strin
   const [modeEdition, setModeEdition] = useState(false);
   const [sauvegarde, setSauvegarde] = useState(false);
   const [modaleRupture, setModaleRupture] = useState(false);
-  const [rupture, setRupture] = useState({ date: '', motif: '', maintien: 'NON' });
+  const [rupture, setRupture] = useState({ date: '', dateEffective: '', motif: '', maintien: 'NON' });
   const [modaleConversion, setModaleConversion] = useState(false);
   const [conversion, setConversion] = useState({ entreprise: '', dateDebutContrat: '', dateFinContrat: '', dateDebutFormation: '' });
   const [modaleClotureP2s, setModaleClotureP2s] = useState(false);
@@ -1127,11 +1127,18 @@ export default function FicheApprenant({ params }: { params: Promise<{ id: strin
     setTimeout(() => setSauvegarde(false), 3000);
   }
 
+  function formaterDateFR(iso?: string) {
+    if (!iso) return '';
+    const p = iso.split('-');
+    if (p.length !== 3) return iso;
+    return `${p[2]}/${p[1]}/${p[0]}`;
+  }
+
   async function declarerRupture() {
-    const updated = { ...form, statut: 'Rupture', dateRupture: rupture.date, maintienFormation: rupture.maintien, motifRupture: rupture.motif };
+    const updated = { ...form, statut: 'Rupture', dateRupture: rupture.date, dateRuptureEffective: rupture.dateEffective || undefined, maintienFormation: rupture.maintien, motifRupture: rupture.motif };
     // 1. Supabase d'abord
     try {
-      const res = await modifierApprenti(id, { statut: 'Rupture', dateRupture: rupture.date, maintienFormation: rupture.maintien, motifRupture: rupture.motif });
+      const res = await modifierApprenti(id, { statut: 'Rupture', dateRupture: rupture.date, dateRuptureEffective: (rupture.dateEffective || null) as any, maintienFormation: rupture.maintien, motifRupture: rupture.motif });
       if (!res.success) {
         alert(`⚠️ Erreur Supabase : ${res.error}\nRupture enregistrée localement uniquement.`);
       } else {
@@ -1436,10 +1443,12 @@ export default function FicheApprenant({ params }: { params: Promise<{ id: strin
       {form.dateRupture && (
         <div style={{ backgroundColor: form.statut === 'Terminé' ? '#f3f4f6' : '#fde8e8', borderRadius: '10px', padding: '14px 16px', marginBottom: '16px', border: form.statut === 'Terminé' ? '1px solid #d1d5db' : 'none' }}>
           <span style={{ color: form.statut === 'Terminé' ? '#6b7280' : '#c53030', fontWeight: '600', fontSize: '14px' }}>{form.statut === 'Terminé' ? '📋' : '❌'} Contrat rompu le {form.dateRupture} — Maintien en formation : {form.maintienFormation || 'Non renseigné'}{form.contratSuivant ? ` — Repris via contrat ${form.contratSuivant}` : ''}</span>
-          {form.maintienFormation === 'OUI' && form.dateRupture && (() => {
-            const parts = form.dateRupture.split('/');
-            if (parts.length !== 3) return null;
-            const dateRup = new Date(`${parts[2]}-${parts[1]}-${parts[0]}`);
+          {form.maintienFormation === 'OUI' && !form.dateRuptureEffective && (
+            <div style={{ marginTop: '8px', padding: '8px 12px', backgroundColor: '#fef6e4', border: '1.5px solid #C8A23A', borderRadius: '6px', fontSize: '13px', color: '#C8A23A', fontWeight: '700' }}>⚠️ Date de fin effective du contrat non renseignée — le délai de maintien en formation ne peut pas être calculé.</div>
+          )}
+          {form.maintienFormation === 'OUI' && form.dateRuptureEffective && (() => {
+            const dateRup = new Date(form.dateRuptureEffective);
+            if (isNaN(dateRup.getTime())) return null;
             const dateLimite = new Date(dateRup); dateLimite.setMonth(dateLimite.getMonth() + 6);
             const aujourdhui = new Date();
             const joursRestants = Math.ceil((dateLimite.getTime() - aujourdhui.getTime()) / (1000 * 60 * 60 * 24));
@@ -2627,10 +2636,14 @@ export default function FicheApprenant({ params }: { params: Promise<{ id: strin
         {estEnRupture ? (
           <div style={{ padding: '16px', backgroundColor: '#fde8e8', borderRadius: '8px' }}>
             <div style={{ fontSize: '14px', color: '#c53030', fontWeight: '700', marginBottom: '12px' }}>❌ Contrat rompu</div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '12px', marginBottom: '16px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '12px', marginBottom: '16px' }}>
               <div style={{ backgroundColor: 'white', borderRadius: '8px', padding: '10px' }}>
-                <div style={{ fontSize: '10px', color: '#888', textTransform: 'uppercase', fontWeight: '600', marginBottom: '4px' }}>Date de rupture</div>
+                <div style={{ fontSize: '10px', color: '#888', textTransform: 'uppercase', fontWeight: '600', marginBottom: '4px' }}>Demande reçue le</div>
                 <div style={{ fontSize: '13px', fontWeight: '700', color: '#c53030' }}>{form.dateRupture || '—'}</div>
+              </div>
+              <div style={{ backgroundColor: 'white', borderRadius: '8px', padding: '10px' }}>
+                <div style={{ fontSize: '10px', color: '#888', textTransform: 'uppercase', fontWeight: '600', marginBottom: '4px' }}>Fin effective du contrat</div>
+                <div style={{ fontSize: '13px', fontWeight: '700', color: form.dateRuptureEffective ? '#c53030' : '#C8A23A' }}>{formaterDateFR(form.dateRuptureEffective) || '⚠️ À renseigner'}</div>
               </div>
               <div style={{ backgroundColor: 'white', borderRadius: '8px', padding: '10px' }}>
                 <div style={{ fontSize: '10px', color: '#888', textTransform: 'uppercase', fontWeight: '600', marginBottom: '4px' }}>Maintien formation</div>
@@ -2656,13 +2669,14 @@ export default function FicheApprenant({ params }: { params: Promise<{ id: strin
                   const res = await modifierApprenti(id, {
                     statut: 'En cours',
                     dateRupture: null as any,
+                    dateRuptureEffective: null as any,
                     maintienFormation: null as any,
                     motifRupture: null as any,
                   });
                   if (!res.success) { alert(`⚠️ Erreur Supabase : ${res.error}`); return; }
                   console.log(`[FicheApprenant ${id}] Rupture annulée dans Supabase ✅`);
                   // UI + localStorage en miroir
-                  const updated = { ...form, statut: 'En cours', dateRupture: '', maintienFormation: '', motifRupture: '' };
+                  const updated = { ...form, statut: 'En cours', dateRupture: '', dateRuptureEffective: '', maintienFormation: '', motifRupture: '' };
                   setForm(updated);
                   setApprenant(updated);
                   localStorage.setItem('apprenant_' + id, JSON.stringify(updated));
@@ -3007,8 +3021,13 @@ export default function FicheApprenant({ params }: { params: Promise<{ id: strin
             <p style={{ fontSize: '13px', color: '#888', marginBottom: '20px' }}>{form.prenom} {form.nom}</p>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
               <div>
-                <label style={{ fontSize: '11px', color: '#888', textTransform: 'uppercase', fontWeight: '600', display: 'block', marginBottom: '4px' }}>Date de rupture *</label>
+                <label style={{ fontSize: '11px', color: '#888', textTransform: 'uppercase', fontWeight: '600', display: 'block', marginBottom: '4px' }}>Date de réception de la demande *</label>
                 <input style={inputStyle} value={rupture.date} placeholder="JJ/MM/AAAA" onChange={e => setRupture(p => ({ ...p, date: e.target.value }))} />
+              </div>
+              <div>
+                <label style={{ fontSize: '11px', color: '#888', textTransform: 'uppercase', fontWeight: '600', display: 'block', marginBottom: '4px' }}>Date de fin effective du contrat</label>
+                <input type="date" style={inputStyle} value={rupture.dateEffective} onChange={e => setRupture(p => ({ ...p, dateEffective: e.target.value }))} />
+                <div style={{ fontSize: '11px', color: '#888', marginTop: '4px', fontStyle: 'italic' }}>Décidée par l'employeur, après solde des congés payés. C'est cette date qui déclenche les 6 mois de maintien en formation.</div>
               </div>
               <div>
                 <label style={{ fontSize: '11px', color: '#888', textTransform: 'uppercase', fontWeight: '600', display: 'block', marginBottom: '4px' }}>Motif</label>

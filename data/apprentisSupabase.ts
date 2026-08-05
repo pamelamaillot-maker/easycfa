@@ -66,7 +66,8 @@ export interface Apprenti {
 
   // Statut et rupture
   statut?: 'En cours' | 'P2S' | 'Rupture' | 'Terminé';
-  dateRupture?: string;
+  dateRupture?: string
+  dateRuptureEffective?: string;
   maintienFormation?: string;
   contratPrecedent?: string;
   contratSuivant?: string;
