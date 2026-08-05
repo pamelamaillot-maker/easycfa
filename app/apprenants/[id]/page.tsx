@@ -938,7 +938,7 @@ export default function FicheApprenant({ params }: { params: Promise<{ id: strin
               ech as any,
               apc.dateDebutContrat,
               apc.dateFinContrat,
-              apprenant.dateRupture
+              formaterDateFR(apprenant.dateRuptureEffective) || apprenant.dateRupture
             );
             const cr = ech.pieces?.certificatRealisation;
             lignesCr.push({
@@ -955,7 +955,7 @@ export default function FicheApprenant({ params }: { params: Promise<{ id: strin
           const finalPeriode = calculerPeriodeCrFinal(
             apc.dateDebutContrat,
             apc.dateFinContrat,
-            apprenant.dateRupture
+            formaterDateFR(formaterDateFR(apprenant.dateRuptureEffective) || apprenant.dateRuptureEffective) || apprenant.dateRupture
           );
           if (finalPeriode) {
             const nbMois = nbMoisEntre(finalPeriode.debut, finalPeriode.fin);
