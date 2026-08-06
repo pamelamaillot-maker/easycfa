@@ -844,6 +844,7 @@ export default function FicheApprenant({ params }: { params: Promise<{ id: strin
   const [conversion, setConversion] = useState({ entreprise: '', dateDebutContrat: '', dateFinContrat: '', dateDebutFormation: '' });
   const [modaleClotureP2s, setModaleClotureP2s] = useState(false);
   const [motifCloture, setMotifCloture] = useState('');
+  const [dateSortieCloture, setDateSortieCloture] = useState('');
   const [sessions, setSessions] = useState<any[]>([]);
   const [entreprises, setEntreprises] = useState<string[]>([]);
   const [modeEntrepriseManuelle, setModeEntrepriseManuelle] = useState(false);
@@ -955,7 +956,7 @@ export default function FicheApprenant({ params }: { params: Promise<{ id: strin
           const finalPeriode = calculerPeriodeCrFinal(
             apc.dateDebutContrat,
             apc.dateFinContrat,
-            formaterDateFR(formaterDateFR(apprenant.dateRuptureEffective) || apprenant.dateRuptureEffective) || apprenant.dateRupture
+            formaterDateFR(apprenant.dateRuptureEffective) || apprenant.dateRupture
           );
           if (finalPeriode) {
             const nbMois = nbMoisEntre(finalPeriode.debut, finalPeriode.fin);
@@ -1127,6 +1128,14 @@ export default function FicheApprenant({ params }: { params: Promise<{ id: strin
     setTimeout(() => setSauvegarde(false), 3000);
   }
 
+  function isoDepuisFR(fr?: string): string | null {
+    if (!fr) return null;
+    if (fr.includes('-')) return fr.slice(0, 10);
+    const p = fr.split('/');
+    if (p.length !== 3) return null;
+    return `${p[2]}-${p[1].padStart(2, '0')}-${p[0].padStart(2, '0')}`;
+  }
+
   function formaterDateFR(iso?: string) {
     if (!iso) return '';
     const p = iso.split('-');
@@ -1208,11 +1217,12 @@ export default function FicheApprenant({ params }: { params: Promise<{ id: strin
       ...form,
       statut: 'Terminé',
       motifFinP2s: motifCloture || '',
+      dateSortieEffective: dateSortieCloture || undefined,
       archive: true,
     };
     // 1. Supabase d'abord
     try {
-      const res = await modifierApprenti(id, { statut: 'Terminé', archive: true });
+      const res = await modifierApprenti(id, { statut: 'Terminé', archive: true, dateSortieEffective: (dateSortieCloture || null) as any });
       if (!res.success) {
         alert(`⚠️ Erreur Supabase : ${res.error}\nClôture enregistrée localement uniquement.`);
       } else {
@@ -1358,9 +1368,10 @@ export default function FicheApprenant({ params }: { params: Promise<{ id: strin
               {!estEnRupture && <button onClick={() => setModaleRupture(true)} style={btnDanger}>Déclarer rupture</button>}
               {!estEnRupture && form.statut !== 'Terminé' && (
                 <button onClick={async () => {
-                  const updated = { ...form, statut: 'Terminé' };
+                  const sortie = isoDepuisFR(form.dateFinContrat) || isoDepuisFR(form.dateFinFormation);
+                  const updated = { ...form, statut: 'Terminé', dateSortieEffective: sortie || undefined };
                   // Supabase d'abord
-                  const res = await modifierApprenti(id, { statut: 'Terminé' });
+                  const res = await modifierApprenti(id, { statut: 'Terminé', dateSortieEffective: (sortie || null) as any });
                   if (!res.success) alert(`⚠️ Erreur Supabase : ${res.error}`);
                   else console.log(`[FicheApprenant ${id}] Marqué Terminé dans Supabase ✅`);
                   // localStorage en miroir
@@ -1439,7 +1450,7 @@ export default function FicheApprenant({ params }: { params: Promise<{ id: strin
                   🔄 Convertir en contrat (CA)
                 </button>
                 <button
-                  onClick={() => setModaleClotureP2s(true)}
+                  onClick={() => { setDateSortieCloture(isoDepuisFR(form.dateFinFormation) || ''); setModaleClotureP2s(true); }}
                   style={{ backgroundColor: 'white', color: '#7a5c00', border: '1.5px solid #C8A23A', borderRadius: '8px', padding: '8px 14px', fontSize: '13px', fontWeight: '600', cursor: 'pointer', whiteSpace: 'nowrap' }}
                 >
                   📋 Clôturer le P2S (sans suite)
@@ -1531,9 +1542,19 @@ export default function FicheApprenant({ params }: { params: Promise<{ id: strin
               <button
                 onClick={async () => {
                   if (!confirm(`Fin de maintien en formation pour ${form.prenom} ${form.nom} ?\n\nCela va :\n- Passer la fiche en "Rupture FMEF"\n- Le dossier sera archivé`)) return;
-                  const updated = { ...form, maintienFormation: 'NON', archive: true };
+                  let echeance = '';
+                  if (form.dateRuptureEffective) {
+                    const d = new Date(form.dateRuptureEffective);
+                    d.setMonth(d.getMonth() + 6);
+                    echeance = d.toLocaleDateString('fr-FR');
+                  }
+                  const saisie = window.prompt("Date réelle d'arrêt de la formation (JJ/MM/AAAA) :\n\nCorrigez si l'apprenant est parti avant l'échéance des 6 mois.", echeance);
+                  if (saisie === null) return;
+                  const sortieFmef = isoDepuisFR(saisie.trim());
+                  if (!sortieFmef) { alert('⚠️ Date invalide. Format attendu : JJ/MM/AAAA'); return; }
+                  const updated = { ...form, maintienFormation: 'NON', archive: true, dateSortieEffective: sortieFmef };
                   // Supabase d'abord
-                  const res = await modifierApprenti(id, { maintienFormation: 'NON', archive: true });
+                  const res = await modifierApprenti(id, { maintienFormation: 'NON', archive: true, dateSortieEffective: sortieFmef as any });
                   if (!res.success) alert(`⚠️ Erreur Supabase : ${res.error}`);
                   else console.log(`[FicheApprenant ${id}] Fin de maintien dans Supabase ✅`);
                   // localStorage en miroir
@@ -3130,6 +3151,11 @@ export default function FicheApprenant({ params }: { params: Promise<{ id: strin
             <div style={{ padding: '10px 14px', backgroundColor: '#fffbf0', borderRadius: '8px', marginBottom: '20px', fontSize: '12px', color: '#7a5c00', borderLeft: '4px solid #C8A23A' }}>
               ℹ️ Le P2S se termine sans contrat trouvé (changement d'avis ou fin des 3 mois). La fiche passe en « Terminé » — <strong>sans rupture</strong>, puisqu'il n'y a jamais eu de contrat.
             </div>
+            <div style={{ marginBottom: '14px' }}>
+              <label style={{ fontSize: '11px', color: '#888', textTransform: 'uppercase', fontWeight: '600', display: 'block', marginBottom: '4px' }}>Date de sortie effective *</label>
+              <input type="date" style={inputStyle} value={dateSortieCloture} onChange={e => setDateSortieCloture(e.target.value)} />
+              <div style={{ fontSize: '11px', color: '#888', marginTop: '4px', fontStyle: 'italic' }}>Dernier jour de présence réel du stagiaire.</div>
+            </div>
             <div>
               <label style={{ fontSize: '11px', color: '#888', textTransform: 'uppercase', fontWeight: '600', display: 'block', marginBottom: '4px' }}>Motif (optionnel)</label>
               <select style={inputStyle} value={motifCloture} onChange={e => setMotifCloture(e.target.value)}>
@@ -3142,7 +3168,7 @@ export default function FicheApprenant({ params }: { params: Promise<{ id: strin
             </div>
             <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end', marginTop: '20px' }}>
               <button onClick={() => setModaleClotureP2s(false)} style={btnSecondary}>Annuler</button>
-              <button onClick={cloturerP2s} style={{ ...btnPrimary, backgroundColor: '#7a5c00' }}>
+              <button onClick={cloturerP2s} disabled={!dateSortieCloture} style={{ ...btnPrimary, backgroundColor: dateSortieCloture ? '#7a5c00' : '#ccc', cursor: dateSortieCloture ? 'pointer' : 'not-allowed' }}>
                 📋 Clôturer le P2S
               </button>
             </div>

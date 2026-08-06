@@ -20,6 +20,26 @@ function anneeScolaireDe(date: Date): string {
   return m >= 7 ? `${y}-${y + 1}` : `${y - 1}-${y}`;
 }
 
+// SIFA : date d'observation au 31 décembre de l'année N.
+// Est déclaré tout apprenti INSCRIT à cette date (contrat en cours ou rupture avec maintien).
+function estInscritAu31Decembre(apprenant: any, annee: number): boolean {
+  if (apprenant.statut === 'P2S') return false; // nomenclature SIFA : statut APP uniquement
+  const obs = new Date(annee, 11, 31);
+  const parseDate = (s?: string): Date | null => {
+    if (!s) return null;
+    if (s.includes('-')) { const d = new Date(s); return isNaN(d.getTime()) ? null : d; }
+    const p = s.split('/');
+    if (p.length !== 3) return null;
+    const d = new Date(+p[2], +p[1] - 1, +p[0]);
+    return isNaN(d.getTime()) ? null : d;
+  };
+  const debut = parseDate(apprenant.dateDebutFormation);
+  if (!debut || debut > obs) return false;
+  const fin = parseDate(apprenant.dateFinFormation);
+  if (!fin) return true; // pas de date de fin connue : toujours inscrit
+  return fin >= obs;
+}
+
 function estDansAnneeScolaire(apprenant: any, anneeScol: string): boolean {
   if (!apprenant.dateDebutFormation || !apprenant.dateFinFormation) return false;
   const [an1, an2] = anneeScol.split('-').map(Number);
@@ -37,9 +57,21 @@ function estDansAnneeScolaire(apprenant: any, anneeScol: string): boolean {
 
 export default function SIFA() {
   const { utilisateur } = useUser();
-  const [anneeScolaire, setAnneeScolaire] = useState<string>(() => anneeScolaireDe(new Date()));
+  const [anneeScolaire, setAnneeScolaire] = useState<string>(() => String(new Date().getFullYear()));
   const [filtreStatut, setFiltreStatut] = useState<string>('tous');
   const [filtreConformite, setFiltreConformite] = useState<string>('tous');
+  const [apprenantsSupabase, setApprenantsSupabase] = useState<any[]>([]);
+  const [chargementSifa, setChargementSifa] = useState(true);
+
+  useEffect(() => {
+    (async () => {
+      const { chargerApprentis } = await import('../../data/apprentisSupabase');
+      const liste = await chargerApprentis();
+      setApprenantsSupabase(liste);
+      setChargementSifa(false);
+      console.log(`[SIFA] ${liste.length} apprenant(s) chargé(s) depuis Supabase ✅`);
+    })();
+  }, []);
 
   // === Lecture dynamique du CFA + référent handicap ===
   const [cfa, setCfa] = useState<CfaIdentite>(() => getCfaIdentite());
@@ -58,16 +90,16 @@ export default function SIFA() {
   const anneesScolaires = useMemo(() => {
     const yearNow = new Date().getFullYear();
     const list = [];
-    for (let y = yearNow - 3; y <= yearNow + 1; y++) {
-      list.push(`${y}-${y + 1}`);
+    for (let y = yearNow - 3; y <= yearNow; y++) {
+      list.push(String(y));
     }
-    return list;
+    return list.reverse();
   }, []);
 
   const apprenantsFiltres = useMemo(() => {
-    return APPRENANTS_REELS
+    return apprenantsSupabase
       .filter(a => !((a as any).archive))
-      .filter(a => estDansAnneeScolaire(a, anneeScolaire))
+      .filter(a => estInscritAu31Decembre(a, parseInt(anneeScolaire)))
       .map(a => ({
         ...a,
         _conformite: verifierConformiteSifa(a),
@@ -86,7 +118,7 @@ export default function SIFA() {
         if (filtreConformite === 'non_conformes') return a._conformite.length > 0;
         return true;
       });
-  }, [anneeScolaire, filtreStatut, filtreConformite]);
+  }, [apprenantsSupabase, anneeScolaire, filtreStatut, filtreConformite]);
 
   const totalApprenants = apprenantsFiltres.length;
   const conformes = apprenantsFiltres.filter(a => a._conformite.length === 0).length;
