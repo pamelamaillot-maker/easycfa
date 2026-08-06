@@ -2336,8 +2336,10 @@ export default function FicheApprenant({ params }: { params: Promise<{ id: strin
           { id: 'attestation_rqth', label: 'Attestation RQTH / MDPH', detail: 'Justificatif de reconnaissance (RQTH, notification MDPH)', obligatoire: false },
           { id: 'attestation_hebergement', label: 'Attestation d\'hébergement', detail: 'Si l\'apprenant est hébergé', obligatoire: false },
           { id: 'piece_identite_hebergeur', label: 'Pièce d\'identité de l\'hébergeur', detail: 'CNI ou titre de séjour de l\'hébergeant', obligatoire: false },
+          { id: 'aef_p2s', label: 'AEF P2S signée', detail: "Attestation d'entrée en formation — stagiaire P2S, signée", obligatoire: true, masquee: !(form.statut === 'P2S' || form.passeParP2S) },
+          { id: 'aef_ca', label: 'AEF CA signée', detail: "Attestation d'entrée en formation — apprenti(e), signée", obligatoire: true, masquee: form.statut === 'P2S' },
           { id: 'autre', label: 'Autre document', detail: 'Tout autre document utile', obligatoire: false },
-        ].map((piece) => {
+        ].filter((p: any) => !p.masquee).map((piece) => {
           // Cas spécial : contrat → lit depuis l'entreprise (lecture seule)
           let fichier: any;
           if (piece.id === 'contrat' && contratEntreprise) {
