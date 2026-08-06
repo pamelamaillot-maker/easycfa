@@ -6,9 +6,10 @@ import PdfAEF from './PdfAEF';
 type Props = {
   donnees: Record<string, string>;
   nomFichier: string;
+  libelle?: string;
 };
 
-export default function BoutonPdfAEF({ donnees, nomFichier }: Props) {
+export default function BoutonPdfAEF({ donnees, nomFichier, libelle }: Props) {
   return (
     <PDFDownloadLink
       document={<PdfAEF donnees={donnees} />}
@@ -26,7 +27,7 @@ export default function BoutonPdfAEF({ donnees, nomFichier }: Props) {
         display: 'inline-block',
       }}
     >
-      {({ loading }) => loading ? '⏳ Génération...' : '📄 Générer AEF'}
+      {({ loading }) => loading ? '⏳ Génération...' : (libelle || '📄 Générer AEF')}
     </PDFDownloadLink>
   );
 }

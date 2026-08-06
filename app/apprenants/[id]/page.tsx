@@ -79,8 +79,8 @@ function ajouterMois(dateFr: string, mois: number): string {
   return d.toLocaleDateString('fr-FR');
 }
 
-function donneesAEF(a: any): Record<string, string> {
-  const estP2S = a.statut === 'P2S';
+function donneesAEF(a: any, type?: 'P2S' | 'CA'): Record<string, string> {
+  const estP2S = type ? type === 'P2S' : a.statut === 'P2S';
   const dateDebut = a.dateDebutFormation || '';
   const dateFin = estP2S ? ajouterMois(dateDebut, 3) : (a.dateFinContrat || '');
   return {
@@ -1336,10 +1336,20 @@ export default function FicheApprenant({ params }: { params: Promise<{ id: strin
                 donnees={assemblerDonneesDroitImage(form, entrepriseObj)}
                 nomFichier={'Droit_Image_' + form.nom + '_' + form.prenom + '.pdf'}
               />
-              <BoutonPdfAEF
-                donnees={donneesAEF(form)}
-                nomFichier={'AEF_' + form.nom + '_' + form.prenom + '.pdf'}
-              />
+              {(form.statut === 'P2S' || form.passeParP2S) && (
+                <BoutonPdfAEF
+                  donnees={donneesAEF(form, 'P2S')}
+                  nomFichier={'AEF_P2S_' + form.nom + '_' + form.prenom + '.pdf'}
+                  libelle="📄 AEF P2S"
+                />
+              )}
+              {form.statut !== 'P2S' && (
+                <BoutonPdfAEF
+                  donnees={donneesAEF(form, 'CA')}
+                  nomFichier={'AEF_CA_' + form.nom + '_' + form.prenom + '.pdf'}
+                  libelle="📄 AEF CA"
+                />
+              )}
               <BoutonRemplirLivret
                 apprenant={form}
                 entreprise={entrepriseObj}
