@@ -89,7 +89,12 @@ export interface Entretien {
 
 function parseDateFr(dateStr: string | undefined): Date | null {
   if (!dateStr) return null;
-  const parts = dateStr.split('/');
+  const v = String(dateStr).trim();
+  if (v.includes('-')) {
+    const d = new Date(v.slice(0, 10));
+    return isNaN(d.getTime()) ? null : d;
+  }
+  const parts = v.split('/');
   if (parts.length !== 3) return null;
   const [jj, mm, aaaa] = parts;
   const d = new Date(`${aaaa}-${mm.padStart(2, '0')}-${jj.padStart(2, '0')}`);
