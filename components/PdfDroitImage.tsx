@@ -27,7 +27,7 @@ const S = StyleSheet.create({
   blocMineur: { backgroundColor: '#fff8e1', borderWidth: 1.5, borderColor: '#C8A23A', borderRadius: 4, padding: 10, marginBottom: 10 },
   blocMineurTitle: { fontSize: 9.5, fontFamily: 'Helvetica-Bold', color: '#7a5c00', marginBottom: 5 },
   // Texte objet
-  texteObjet: { fontSize: 10, lineHeight: 1.6, textAlign: 'center', marginVertical: 10, paddingHorizontal: 30 },
+  texteObjet: { fontSize: 10, lineHeight: 1.5, textAlign: 'center', marginVertical: 8, paddingHorizontal: 30 },
   // Supports
   supportsTitre: { fontSize: 10, fontFamily: 'Helvetica-Bold', color: '#006B68', marginTop: 8, marginBottom: 6 },
   checkRow: { marginBottom: 4, paddingLeft: 4 },
@@ -38,11 +38,12 @@ const S = StyleSheet.create({
   // RGPD
   rgpdBox: { backgroundColor: '#fde8e8', borderWidth: 1, borderColor: '#e53e3e', borderRadius: 4, padding: 8, marginTop: 6 },
   rgpdText: { fontSize: 8.5, color: '#7a1a1a', lineHeight: 1.4, fontFamily: 'Helvetica-Bold' },
-  // Signature (à droite, compacte)
-  signatureBlock: { alignSelf: 'flex-end', width: '55%', marginTop: 10 },
-  signatureTitre: { fontSize: 9.5, fontFamily: 'Helvetica-Bold', color: '#006B68', marginBottom: 1 },
-  signatureSubtitle: { fontSize: 8, color: '#666', fontStyle: 'italic', marginBottom: 4 },
-  signatureBox: { borderWidth: 1.5, borderColor: '#006B68', borderRadius: 4, height: 60, marginTop: 2 },
+  // Signatures — deux zones côte à côte
+  signaturesRow: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 8 },
+  signatureCol: { width: '48%' },
+  signatureTitre: { fontSize: 9, fontFamily: 'Helvetica-Bold', color: '#006B68', marginBottom: 1 },
+  signatureSubtitle: { fontSize: 7.5, color: '#666', fontStyle: 'italic', marginBottom: 3 },
+  signatureBox: { borderWidth: 1.5, borderColor: '#006B68', borderRadius: 4, height: 44, marginTop: 2 },
   // Mention
   mention: { marginTop: 12, fontSize: 7.5, color: '#888', textAlign: 'center', fontStyle: 'italic' },
   // Footer
@@ -139,14 +140,21 @@ export default function PdfDroitImage({ donnees: d }: Props) {
           <Text style={{ fontFamily: 'Helvetica-Bold' }}>     Le : </Text>{d.DATE_SIGNATURE || ''}
         </Text>
 
-        <View style={S.signatureBlock}>
-          <Text style={S.signatureTitre}>Signature du signataire (apprenant(e) ou représentant légal si mineur(e)) :</Text>
-          <Text style={S.signatureSubtitle}>Précédée de la mention 'Lu et approuvé'</Text>
-          <View style={S.signatureBox} />
+        <View style={S.signaturesRow}>
+          <View style={S.signatureCol}>
+            <Text style={S.signatureTitre}>Signature de l'apprenant(e)</Text>
+            <Text style={S.signatureSubtitle}>Précédée de "Lu et approuvé"</Text>
+            <View style={S.signatureBox} />
+          </View>
+          <View style={S.signatureCol}>
+            <Text style={S.signatureTitre}>Représentant légal / tuteur</Text>
+            <Text style={S.signatureSubtitle}>{estMineur ? 'Obligatoire — apprenant(e) mineur(e)' : 'Si applicable (protection juridique)'}</Text>
+            <View style={S.signatureBox} />
+          </View>
         </View>
 
         <View style={S.footer} fixed>
-          <Text style={S.footerLine1}>Document à conserver dans le dossier de l'apprenant(e) — Généré avec EasyCFA — PAM GROUPE</Text>
+          <Text>Document à conserver dans le dossier de l'apprenant(e) — Généré avec EasyCFA — PAM GROUPE</Text>
           <Text>PAM OI Formation – 1 Chemin Dubuisson – 97436 Saint-Leu – NDA : 04973425197 – SIRET : 881 279 392 00016</Text>
         </View>
       </Page>

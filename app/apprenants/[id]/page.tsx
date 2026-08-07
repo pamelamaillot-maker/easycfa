@@ -14,6 +14,7 @@ import { assemblerDonneesDMF } from '../../../lib/donneesDMF';
 import { assemblerDonneesDroitImage } from '../../../lib/donneesDroitImage';
 import { chercherNpecParRncp } from '../../../data/npecSupabase';
 import { uploaderFichier, supprimerFichier, cheminStorage, type FichierStocke } from '../../../lib/storage';
+import { formaterDateFR, isoDepuisFR } from '../../../lib/dates';
 import Card from '../../../components/Card';
 import { useAcces } from '../../../lib/useAcces';
 import dynamic from 'next/dynamic';
@@ -1128,21 +1129,6 @@ export default function FicheApprenant({ params }: { params: Promise<{ id: strin
     setTimeout(() => setSauvegarde(false), 3000);
   }
 
-  function isoDepuisFR(fr?: string): string | null {
-    if (!fr) return null;
-    if (fr.includes('-')) return fr.slice(0, 10);
-    const p = fr.split('/');
-    if (p.length !== 3) return null;
-    return `${p[2]}-${p[1].padStart(2, '0')}-${p[0].padStart(2, '0')}`;
-  }
-
-  function formaterDateFR(iso?: string) {
-    if (!iso) return '';
-    const p = iso.split('-');
-    if (p.length !== 3) return iso;
-    return `${p[2]}/${p[1]}/${p[0]}`;
-  }
-
   async function declarerRupture() {
     const updated = { ...form, statut: 'Rupture', dateRupture: rupture.date, dateRuptureEffective: rupture.dateEffective || undefined, maintienFormation: rupture.maintien, motifRupture: rupture.motif };
     // 1. Supabase d'abord
@@ -1693,14 +1679,14 @@ export default function FicheApprenant({ params }: { params: Promise<{ id: strin
             <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
               <Champ label="Nom" champ="nom" form={form} setForm={setForm} />
               <Champ label="Prénom" champ="prenom" form={form} setForm={setForm} />
-              <Champ label="Date de naissance (JJ/MM/AAAA)" champ="dateNaissance" form={form} setForm={setForm} placeholder="JJ/MM/AAAA" />
+              <Champ label="Date de naissance" champ="dateNaissance" form={form} setForm={setForm} type="date" />
               <Champ label="Lieu de naissance" champ="lieuNaissance" form={form} setForm={setForm} />
             </div>
           ) : (
             <>
               <InfoRow label="Nom" value={form.nom} />
               <InfoRow label="Prénom" value={form.prenom} />
-              <InfoRow label="Date de naissance" value={form.dateNaissance} />
+              <InfoRow label="Date de naissance" value={form.dateNaissance ? formaterDateFR(form.dateNaissance) : ''} />
               <InfoRow label="Lieu de naissance" value={form.lieuNaissance} />
             </>
           )}
@@ -2274,7 +2260,7 @@ export default function FicheApprenant({ params }: { params: Promise<{ id: strin
                   )}
                   {cStatut === 'a_generer' && (
                     <div style={{ fontSize: 11, color: '#666', marginTop: 4, lineHeight: 1.5 }}>
-                      Recto : photo, {form.prenom} {form.nom}, né(e) le {form.dateNaissance || '—'}, validité {form.dateFinContrat || '—'}.
+                      Recto : photo, {form.prenom} {form.nom}, né(e) le {formaterDateFR(form.dateNaissance) || '—'}, validité {form.dateFinContrat || '—'}.
                       {!aPhoto && <><br />Ajoutez une photo dans la carte « Identité » pour une carte complète.</>}
                     </div>
                   )}

@@ -2,6 +2,8 @@
  * Helper d'assemblage des données du Droit à l'image (autorisation RGPD)
  */
 
+import { formaterDateFR, lireDate } from './dates';
+
 const FORMATION_LIBELLES: Record<string, string> = {
   'SC': 'TP Secrétaire Comptable',
   'GCF': 'TP Gestionnaire Comptable et Fiscal',
@@ -34,10 +36,8 @@ export function assemblerDonneesDroitImage(
   const formationLib = FORMATION_LIBELLES[apprenant.formation] || apprenant.formation || '';
   const annee = anneeFormation(apprenant.dateDebutFormation, apprenant.dateFinFormation);
   const estMineur = (() => {
-    if (!apprenant.dateNaissance) return false;
-    const p = apprenant.dateNaissance.split('/');
-    if (p.length !== 3) return false;
-    const ddn = new Date(parseInt(p[2]), parseInt(p[1]) - 1, parseInt(p[0]));
+    const ddn = lireDate(apprenant.dateNaissance);
+    if (!ddn) return false;
     const age = (new Date().getTime() - ddn.getTime()) / (1000 * 60 * 60 * 24 * 365.25);
     return age < 18;
   })();
@@ -45,7 +45,7 @@ export function assemblerDonneesDroitImage(
   return {
     // Identité
     APPRENANT_NOM_COMPLET: `${apprenant.prenom || ''} ${apprenant.nom || ''}`.trim(),
-    APPRENANT_DATE_NAISSANCE: apprenant.dateNaissance || '',
+    APPRENANT_DATE_NAISSANCE: formaterDateFR(apprenant.dateNaissance),
     FORMATION_LIBELLE: formationLib,
     ENTREPRISE_RAISON_SOCIALE: entreprise?.raisonSociale || apprenant.entreprise || '',
     ANNEE_FORMATION: annee,

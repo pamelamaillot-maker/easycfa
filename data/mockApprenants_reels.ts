@@ -2060,11 +2060,20 @@ export function calculerAnneeScolaire(dateDebut: string): string {
  */
 export function estMineur(apprenant: Apprenant): boolean {
   if (!apprenant.dateNaissance || !apprenant.dateDebutContrat) return false;
-  const dateN = apprenant.dateNaissance.split('/');
-  const dateC = apprenant.dateDebutContrat.split('/');
-  if (dateN.length !== 3 || dateC.length !== 3) return false;
-  const n = new Date(parseInt(dateN[2]), parseInt(dateN[1]) - 1, parseInt(dateN[0]));
-  const c = new Date(parseInt(dateC[2]), parseInt(dateC[1]) - 1, parseInt(dateC[0]));
+  const lireDate = (s: string): Date | null => {
+    const v = String(s).trim();
+    if (v.includes('-')) {
+      const p = v.slice(0, 10).split('-');
+      if (p.length !== 3) return null;
+      return new Date(parseInt(p[0]), parseInt(p[1]) - 1, parseInt(p[2]));
+    }
+    const p = v.split('/');
+    if (p.length !== 3) return null;
+    return new Date(parseInt(p[2]), parseInt(p[1]) - 1, parseInt(p[0]));
+  };
+  const n = lireDate(apprenant.dateNaissance);
+  const c = lireDate(apprenant.dateDebutContrat);
+  if (!n || !c || isNaN(n.getTime()) || isNaN(c.getTime())) return false;
   const age = c.getFullYear() - n.getFullYear() - (c < new Date(c.getFullYear(), n.getMonth(), n.getDate()) ? 1 : 0);
   return age < 18;
 }

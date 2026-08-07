@@ -166,8 +166,11 @@ export default function NouvelApprenant() {
   function calculerAge() {
     if (!form.dateNaissance) return null;
     const naissance = new Date(form.dateNaissance);
+    if (isNaN(naissance.getTime())) return null;
     const aujourdhui = new Date();
-    const age = aujourdhui.getFullYear() - naissance.getFullYear();
+    let age = aujourdhui.getFullYear() - naissance.getFullYear();
+    const m = aujourdhui.getMonth() - naissance.getMonth();
+    if (m < 0 || (m === 0 && aujourdhui.getDate() < naissance.getDate())) age--;
     return age;
   }
 
