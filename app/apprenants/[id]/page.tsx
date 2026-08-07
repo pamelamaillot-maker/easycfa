@@ -74,10 +74,19 @@ const LIBELLES_FORMATION: Record<string, string> = {
 };
 
 function ajouterMois(dateFr: string, mois: number): string {
-  const p = (dateFr || '').split('/');
-  if (p.length !== 3) return '';
-  const d = new Date(parseInt(p[2]), parseInt(p[1]) - 1 + mois, parseInt(p[0]));
-  return d.toLocaleDateString('fr-FR');
+  const v = (dateFr || '').trim();
+  if (!v) return '';
+  let d: Date;
+  if (v.includes('-')) {
+    const p = v.slice(0, 10).split('-');
+    if (p.length !== 3) return '';
+    d = new Date(parseInt(p[0]), parseInt(p[1]) - 1 + mois, parseInt(p[2]));
+  } else {
+    const p = v.split('/');
+    if (p.length !== 3) return '';
+    d = new Date(parseInt(p[2]), parseInt(p[1]) - 1 + mois, parseInt(p[0]));
+  }
+  return isNaN(d.getTime()) ? '' : d.toLocaleDateString('fr-FR');
 }
 
 function donneesAEF(a: any, type?: 'P2S' | 'CA'): Record<string, string> {

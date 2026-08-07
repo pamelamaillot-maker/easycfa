@@ -20,13 +20,13 @@ function anneeFormation(dateDebut: string | undefined, dateFin: string | undefin
     const annee = new Date().getFullYear();
     return `${annee}-${annee + 1}`;
   }
-  const pD = dateDebut.split('/');
-  const pF = dateFin.split('/');
-  if (pD.length !== 3 || pF.length !== 3) {
+  const d1 = lireDate(dateDebut);
+  const d2 = lireDate(dateFin);
+  if (!d1 || !d2) {
     const annee = new Date().getFullYear();
     return `${annee}-${annee + 1}`;
   }
-  return `${pD[2]}-${pF[2]}`;
+  return `${d1.getFullYear()}-${d2.getFullYear()}`;
 }
 
 export function assemblerDonneesDroitImage(

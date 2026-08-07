@@ -45,14 +45,23 @@ export function calculerPeriodeCr(
   const fin: string = veille(echeanceCible.dateEcheance || '');
 
   if (!debut || !fin) return null;
-  return { debut, fin };
+  const t = parseDate(debut);
+  return { debut: t ? toFr(new Date(t)) : debut, fin };
 }
 
 function parseDate(s?: string): number {
   if (!s) return 0;
-  const p = s.split('/');
+  const v = String(s).trim();
+  if (v.includes('-')) {
+    const p = v.slice(0, 10).split('-');
+    if (p.length !== 3) return 0;
+    const d = new Date(parseInt(p[0]), parseInt(p[1]) - 1, parseInt(p[2]));
+    return isNaN(d.getTime()) ? 0 : d.getTime();
+  }
+  const p = v.split('/');
   if (p.length !== 3) return 0;
-  return new Date(parseInt(p[2]), parseInt(p[1]) - 1, parseInt(p[0])).getTime();
+  const d = new Date(parseInt(p[2]), parseInt(p[1]) - 1, parseInt(p[0]));
+  return isNaN(d.getTime()) ? 0 : d.getTime();
 }
 
 function toFr(d: Date): string {
@@ -60,17 +69,17 @@ function toFr(d: Date): string {
 }
 
 export function lendemain(s: string): string {
-  const p = s.split('/');
-  if (p.length !== 3) return '';
-  const d = new Date(parseInt(p[2]), parseInt(p[1]) - 1, parseInt(p[0]));
+  const t = parseDate(s);
+  if (!t) return '';
+  const d = new Date(t);
   d.setDate(d.getDate() + 1);
   return toFr(d);
 }
 
 export function veille(s: string): string {
-  const p = s.split('/');
-  if (p.length !== 3) return '';
-  const d = new Date(parseInt(p[2]), parseInt(p[1]) - 1, parseInt(p[0]));
+  const t = parseDate(s);
+  if (!t) return '';
+  const d = new Date(t);
   d.setDate(d.getDate() - 1);
   return toFr(d);
 }
@@ -99,7 +108,10 @@ export function calculerPeriodeCrFinal(
   if (!dateDebutContrat) return null;
   const fin = dateRupture || dateFinContrat;
   if (!fin) return null;
-  return { debut: dateDebutContrat, fin };
+  const tD = parseDate(dateDebutContrat);
+  const tF = parseDate(fin);
+  if (!tD || !tF) return null;
+  return { debut: toFr(new Date(tD)), fin: toFr(new Date(tF)) };
 }
 
 /**
