@@ -1427,7 +1427,7 @@ export default function FicheApprenant({ params }: { params: Promise<{ id: strin
       {p2s && (
         <div style={{ backgroundColor: '#fef6e4', borderRadius: '10px', padding: '14px 16px', marginBottom: '16px', border: '1.5px solid #C8A23A' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
-            <span style={{ color: '#7a5c00', fontWeight: '600', fontSize: '14px' }}>⚠️ Stagiaire P2S — Entreprise à trouver avant le {form.dateFinFormation}</span>
+            <span style={{ color: '#7a5c00', fontWeight: '600', fontSize: '14px' }}>⚠️ Stagiaire P2S — Entreprise à trouver avant le {formaterDateFR(form.dateFinFormation)}</span>
             {peutModifier && (
               <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
                 <button
@@ -1805,10 +1805,10 @@ export default function FicheApprenant({ params }: { params: Promise<{ id: strin
             </div>
 
             <Champ label="Statut" champ="statut" form={form} setForm={setForm} />
-            <Champ label="Début contrat (JJ/MM/AAAA)" champ="dateDebutContrat" form={form} setForm={setForm} placeholder="JJ/MM/AAAA" />
-            <Champ label="Fin contrat (JJ/MM/AAAA)" champ="dateFinContrat" form={form} setForm={setForm} placeholder="JJ/MM/AAAA" />
-            <Champ label="Début formation (JJ/MM/AAAA)" champ="dateDebutFormation" form={form} setForm={setForm} placeholder="JJ/MM/AAAA" />
-            <Champ label="Fin formation (JJ/MM/AAAA)" champ="dateFinFormation" form={form} setForm={setForm} placeholder="JJ/MM/AAAA" />
+            <Champ label="Début contrat" champ="dateDebutContrat" form={form} setForm={setForm} type="date" />
+            <Champ label="Fin contrat" champ="dateFinContrat" form={form} setForm={setForm} type="date" />
+            <Champ label="Début formation" champ="dateDebutFormation" form={form} setForm={setForm} type="date" />
+            <Champ label="Fin formation" champ="dateFinFormation" form={form} setForm={setForm} type="date" />
             <Champ label="N° dossier OPCO" champ="numeroDossierOpco" form={form} setForm={setForm} placeholder="Ex: 123456789" />
             <Champ label="N° DECA (APC)" champ="numeroDeca" form={form} setForm={setForm} placeholder="Ex: 974202XXXXXXXXX" />
             <ChampSelect label="Situation avant contrat" champ="situationAvant" form={form} setForm={setForm} options={[
@@ -1870,10 +1870,10 @@ export default function FicheApprenant({ params }: { params: Promise<{ id: strin
               { label: 'Code', value: form.formation },
               { label: 'Statut', value: statutLabel },
               { label: 'Entreprise', value: form.entreprise },
-              { label: 'Début contrat', value: form.dateDebutContrat },
-              { label: 'Fin contrat', value: form.dateFinContrat },
-              { label: 'Début formation', value: form.dateDebutFormation },
-              { label: 'Fin formation', value: form.dateFinFormation },
+              { label: 'Début contrat', value: formaterDateFR(form.dateDebutContrat) },
+              { label: 'Fin contrat', value: formaterDateFR(form.dateFinContrat) },
+              { label: 'Début formation', value: formaterDateFR(form.dateDebutFormation) },
+              { label: 'Fin formation', value: formaterDateFR(form.dateFinFormation) },
               { label: 'N° dossier OPCO', value: form.numeroDossierOpco },
               { label: 'N° DECA (APC)', value: form.numeroDeca },
               { label: 'Situation avant contrat', value: form.situationAvant },
@@ -3111,16 +3111,16 @@ export default function FicheApprenant({ params }: { params: Promise<{ id: strin
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
                 <div>
                   <label style={{ fontSize: '11px', color: '#888', textTransform: 'uppercase', fontWeight: '600', display: 'block', marginBottom: '4px' }}>Début contrat *</label>
-                  <input style={inputStyle} value={conversion.dateDebutContrat} placeholder="JJ/MM/AAAA" onChange={e => setConversion(p => ({ ...p, dateDebutContrat: e.target.value }))} />
+                  <input type="date" style={inputStyle} value={conversion.dateDebutContrat} onChange={e => setConversion(p => ({ ...p, dateDebutContrat: e.target.value }))} />
                 </div>
                 <div>
                   <label style={{ fontSize: '11px', color: '#888', textTransform: 'uppercase', fontWeight: '600', display: 'block', marginBottom: '4px' }}>Fin contrat *</label>
-                  <input style={inputStyle} value={conversion.dateFinContrat} placeholder="JJ/MM/AAAA" onChange={e => setConversion(p => ({ ...p, dateFinContrat: e.target.value }))} />
+                  <input type="date" style={inputStyle} value={conversion.dateFinContrat} onChange={e => setConversion(p => ({ ...p, dateFinContrat: e.target.value }))} />
                 </div>
               </div>
               <div>
                 <label style={{ fontSize: '11px', color: '#888', textTransform: 'uppercase', fontWeight: '600', display: 'block', marginBottom: '4px' }}>Début formation (repris du P2S, modifiable)</label>
-                <input style={{ ...inputStyle, backgroundColor: '#f0fdf4' }} value={conversion.dateDebutFormation} placeholder="JJ/MM/AAAA" onChange={e => setConversion(p => ({ ...p, dateDebutFormation: e.target.value }))} />
+                <input type="date" style={{ ...inputStyle, backgroundColor: '#f0fdf4' }} value={conversion.dateDebutFormation} onChange={e => setConversion(p => ({ ...p, dateDebutFormation: e.target.value }))} />
                 <div style={{ fontSize: '10px', color: '#16a34a', marginTop: '4px' }}>💡 Date prise en compte par l'OPCO — conservée depuis le P2S.</div>
               </div>
             </div>
