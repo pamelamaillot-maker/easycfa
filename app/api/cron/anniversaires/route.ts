@@ -98,9 +98,17 @@ export async function GET(request: Request) {
 
   for (const a of apprenants) {
     if (!a.dateNaissance || !a.email) continue;
-    const parts = String(a.dateNaissance).split('/');
-    if (parts.length !== 3) continue;
-    const jourMois = `${parts[0]}/${parts[1]}`;
+    const brut = String(a.dateNaissance).trim();
+    let jourMois = '';
+    if (brut.includes('-')) {
+      const p = brut.slice(0, 10).split('-');
+      if (p.length !== 3) continue;
+      jourMois = `${p[2].padStart(2, '0')}/${p[1].padStart(2, '0')}`;
+    } else {
+      const p = brut.split('/');
+      if (p.length !== 3) continue;
+      jourMois = `${p[0].padStart(2, '0')}/${p[1].padStart(2, '0')}`;
+    }
     if (jourMois !== aujourdhui) continue;
 
     const cle = String(a.email).trim().toLowerCase();
