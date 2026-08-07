@@ -292,7 +292,7 @@ export default function SIFA() {
         </div>
 
         <div style={{ marginTop: '12px', padding: '10px 14px', backgroundColor: COLORS.background, borderRadius: '8px', fontSize: '12px', color: '#555' }}>
-          💡 Déclaration SIFA à transmettre <strong>fin novembre</strong> au ministère de l'Éducation Nationale.
+          💡 Déclaration SIFA à transmettre <strong>avant le 31 janvier</strong> au ministère de l'Éducation Nationale (recensement au 31 décembre).
           {' '}Référent handicap : <strong>{referent.prenom} {referent.nom}</strong> ({referent.email}) — modifiable dans <a href="/parametres" style={{ color: COLORS.primary }}>Paramètres CFA</a>.
         </div>
       </Card>

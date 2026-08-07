@@ -937,7 +937,15 @@ export default function Facturation() {
                   <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'12px'}}>
                     <h3 style={{fontSize:'13px',fontWeight:'700',color:'#006B68'}}>📅 Échéancier</h3>
                     <div style={{display:'flex',gap:'6px'}}>
-                      <button onClick={()=>{if(!confirm('Régénérer ?')) return;const u={...apcSel,echeances:genererEcheances(apcSel)};setApcSel(u);save(apcs.map(a=>a.id===u.id?u:a));}} style={{...btnSecondary,padding:'4px 10px',fontSize:'11px'}}>🔄 Régénérer</button>
+                      <button onClick={()=>{
+  const facturees=(apcSel.echeances||[]).filter((e:any)=>e.numeroFacture||e.dateFacture||e.montantPaye>0||e.dateDepotOpco);
+  if(facturees.length>0){
+    const detail=facturees.map((e:any)=>`• ${e.label}${e.numeroFacture?` — facture ${e.numeroFacture}`:''}${e.montantPaye>0?` — payé ${e.montantPaye} €`:''}`).join('\n');
+    if(!confirm(`🚨 ATTENTION — ${facturees.length} échéance(s) déjà facturée(s) :\n\n${detail}\n\nRégénérer EFFACERA définitivement les numéros de facture, dates de dépôt OPCO et paiements enregistrés.\n\n💡 Pour un avenant, utilisez plutôt « + Ajouter » afin de créer les échéances complémentaires sans toucher à l'existant.\n\nConfirmer malgré tout ?`)) return;
+    if(!confirm('Dernière confirmation : effacer les données de facturation existantes ?')) return;
+  } else if(!confirm('Régénérer les échéances de ce dossier ?')) return;
+  const u={...apcSel,echeances:genererEcheances(apcSel)};setApcSel(u);save(apcs.map(a=>a.id===u.id?u:a));
+}} style={{...btnSecondary,padding:'4px 10px',fontSize:'11px'}}>🔄 Régénérer</button>
                       <button onClick={()=>{const n:Echeance={id:Date.now().toString(),label:'Nouvelle échéance',type:'pedago',annee:1,pourcentage:0,montantPrevu:0,dateEcheance:'',numeroFacture:'',dateFacture:'',dateDepotOpco:'',dateEcheance30j:'',datePaiement:'',montantPaye:0,fichierFacture:'',modifiee:true};maj('echeances',[...apcSel.echeances,n]);}} style={{...btnPrimary,padding:'4px 10px',fontSize:'11px'}}>+ Ajouter</button>
                     </div>
                   </div>
