@@ -5,6 +5,7 @@ import * as XLSX from 'xlsx';
 import { useUser } from '../../lib/UserContext';
 import { COLORS } from '../../lib/constants';
 import { APPRENANTS_REELS, dateVersIso, calculerAnneeScolaire, deduireSexe, estMineur, verifierConformiteSifa } from '../../data/mockApprenants_reels';
+import { formaterDateFR } from '../../lib/dates';
 import { REFERENTIEL_FORMATIONS } from '../../data/mockData';
 import { getCfaIdentite, getReferentHandicap, CfaIdentite, ReferentHandicapCfa } from '../../lib/cfaConfig';
 import Card from '../../components/Card';
@@ -356,7 +357,7 @@ export default function SIFA() {
                         <a href={`/apprenants/${a.id}`} style={{ color: COLORS.primary, textDecoration: 'none', fontWeight: '600' }}>
                           {a.nom} {a.prenom}
                         </a>
-                        <div style={{ fontSize: '10px', color: '#888' }}>{a.dateNaissance} {mineur && '👶 Mineur'}</div>
+                        <div style={{ fontSize: '10px', color: '#888' }}>{formaterDateFR(a.dateNaissance)} {mineur && '👶 Mineur'}</div>
                       </td>
                       <td style={{ padding: '8px' }}>
                         <div style={{ fontWeight: '600' }}>{a.formation}</div>
