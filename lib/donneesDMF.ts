@@ -3,6 +3,8 @@
  * Calcule automatiquement la date de fin de maintien (= date rupture + 6 mois)
  */
 
+import { formaterDateFR, lireDate } from './dates';
+
 const FORMATION_LIBELLES: Record<string, string> = {
   'SC': 'TP Secrétaire Comptable',
   'GCF': 'TP Gestionnaire Comptable et Fiscal',
@@ -15,20 +17,16 @@ const FORMATION_LIBELLES: Record<string, string> = {
 };
 
 function ajouter6Mois(dateFr: string): string {
-  if (!dateFr) return '';
-  const p = dateFr.split('/');
-  if (p.length !== 3) return '';
-  const d = new Date(parseInt(p[2]), parseInt(p[1]) - 1, parseInt(p[0]));
+  const d = lireDate(dateFr);
+  if (!d) return '';
   d.setMonth(d.getMonth() + 6);
   return d.toLocaleDateString('fr-FR');
 }
 
 function calculerDureeMois(debut: string, fin: string): number {
-  if (!debut || !fin) return 0;
-  const pD = debut.split('/'), pF = fin.split('/');
-  if (pD.length !== 3 || pF.length !== 3) return 0;
-  const d1 = new Date(parseInt(pD[2]), parseInt(pD[1]) - 1, parseInt(pD[0]));
-  const d2 = new Date(parseInt(pF[2]), parseInt(pF[1]) - 1, parseInt(pF[0]));
+  const d1 = lireDate(debut);
+  const d2 = lireDate(fin);
+  if (!d1 || !d2) return 0;
   const ms = d2.getTime() - d1.getTime();
   if (ms <= 0) return 0;
   return Math.round(ms / (1000 * 60 * 60 * 24 * 30.4));
@@ -38,7 +36,7 @@ export function assemblerDonneesDMF(apprenant: any, entreprise?: any): Record<st
   const civilite = apprenant.sexe === 'F' ? 'Mme' : apprenant.sexe === 'M' ? 'M.' : 'Mme/M.';
   const formationLib = FORMATION_LIBELLES[apprenant.formation] || apprenant.formation || '';
   const duree = calculerDureeMois(apprenant.dateDebutFormation, apprenant.dateFinFormation);
-  const dateFinMaintien = ajouter6Mois(apprenant.dateRupture);
+  const dateFinMaintien = ajouter6Mois(apprenant.dateRuptureEffective || apprenant.dateRupture);
 
   return {
     // CFA
@@ -53,7 +51,7 @@ export function assemblerDonneesDMF(apprenant: any, entreprise?: any): Record<st
     APPRENANT_NOM: apprenant.nom || '',
     APPRENANT_PRENOM: apprenant.prenom || '',
     APPRENANT_NOM_COMPLET: `${apprenant.prenom || ''} ${apprenant.nom || ''}`.trim(),
-    APPRENANT_DATE_NAISSANCE: apprenant.dateNaissance || '',
+    APPRENANT_DATE_NAISSANCE: formaterDateFR(apprenant.dateNaissance),
     APPRENANT_LIEU_NAISSANCE: apprenant.lieuNaissance || '',
     APPRENANT_ADRESSE: apprenant.adresse || '',
     APPRENANT_CP: apprenant.codePostal || '',
@@ -81,16 +79,16 @@ export function assemblerDonneesDMF(apprenant: any, entreprise?: any): Record<st
     MAITRE_APPRENTISSAGE_EMAIL: apprenant.tuteurEmail || '',
 
     // Contrat
-    DATE_DEBUT_CONTRAT: apprenant.dateDebutContrat || '',
-    DATE_FIN_CONTRAT: apprenant.dateFinContrat || '',
-    DATE_DEBUT_FORMATION: apprenant.dateDebutFormation || '',
-    DATE_FIN_FORMATION: apprenant.dateFinFormation || '',
+    DATE_DEBUT_CONTRAT: formaterDateFR(apprenant.dateDebutContrat),
+    DATE_FIN_CONTRAT: formaterDateFR(apprenant.dateFinContrat),
+    DATE_DEBUT_FORMATION: formaterDateFR(apprenant.dateDebutFormation),
+    DATE_FIN_FORMATION: formaterDateFR(apprenant.dateFinFormation),
     DUREE_FORMATION: duree > 0 ? String(duree) : '',
     N_DECA: apprenant.numeroDeca || '',
     FORMATION_LIBELLE: formationLib,
 
     // Rupture & maintien
-    DATE_RUPTURE_CONTRAT: apprenant.dateRupture || '',
+    DATE_RUPTURE_CONTRAT: formaterDateFR(apprenant.dateRupture),
     DATE_FIN_MAINTIEN: dateFinMaintien,
     MAINTIEN: apprenant.maintienFormation === 'OUI' ? 'OUI' : apprenant.maintienFormation === 'NON' ? 'NON' : '',
 

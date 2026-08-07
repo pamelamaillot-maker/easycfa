@@ -2,6 +2,8 @@
  * Helper d'assemblage des données du formulaire de rupture
  */
 
+import { formaterDateFR } from './dates';
+
 const MOTIFS_RUPTURE: Record<string, { label: string; cle: string }> = {
   unilateral: { cle: 'unilateral', label: '45 premiers jours' },
   commun: { cle: 'commun', label: 'Commun accord' },
@@ -23,7 +25,7 @@ export function assemblerDonneesRupture(
   return {
     // Apprenant
     APPRENANT_NOM_COMPLET: `${apprenant.prenom || ''} ${apprenant.nom || ''}`.trim(),
-    APPRENANT_DATE_NAISSANCE: apprenant.dateNaissance || '',
+    APPRENANT_DATE_NAISSANCE: formaterDateFR(apprenant.dateNaissance),
 
     // Représentant légal (si mineur)
     REPRESENTANT_NOM_COMPLET: apprenant.representantPrenom || apprenant.representantNom
@@ -31,8 +33,8 @@ export function assemblerDonneesRupture(
       : '',
 
     // Contrat
-    DATE_DEBUT_CONTRAT: apprenant.dateDebutContrat || '',
-    DATE_FIN_CONTRAT: apprenant.dateFinContrat || '',
+    DATE_DEBUT_CONTRAT: formaterDateFR(apprenant.dateDebutContrat),
+    DATE_FIN_CONTRAT: formaterDateFR(apprenant.dateFinContrat),
     NUMERO_OPCO: apprenant.numeroDossierOpco || apprenant.numeroDeca || '',
 
     // Entreprise
@@ -40,10 +42,10 @@ export function assemblerDonneesRupture(
     ENTREPRISE_SIRET: entreprise?.siret || '',
 
     // Rupture
-    DATE_RUPTURE: apprenant.dateRupture || '',
+    DATE_RUPTURE: formaterDateFR(apprenant.dateRupture),
     MOTIF_CLE: motifCle || '',
     MAINTIEN: apprenant.maintienFormation === 'OUI' ? 'OUI' : apprenant.maintienFormation === 'NON' ? 'NON' : '',
-    DATE_SORTIE: apprenant.maintienFormation === 'NON' ? (apprenant.dateRupture || '') : '',
+    DATE_SORTIE: apprenant.maintienFormation === 'NON' ? formaterDateFR(apprenant.dateRuptureEffective || apprenant.dateRupture) : '',
 
     // Signature
     LIEU_SIGNATURE: 'Saint-Leu',

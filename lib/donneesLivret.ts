@@ -1,4 +1,5 @@
 import type { Apprenti } from '../data/apprentisSupabase';
+import { formaterDateFR } from './dates';
 
 /**
  * Mapping formation → Google Doc template ID
@@ -32,7 +33,7 @@ export function assemblerDonneesLivret(
     APPRENANT_NOM: apprenant.nom || '',
     APPRENANT_PRENOM: apprenant.prenom || '',
     APPRENANT_NOM_COMPLET: `${apprenant.prenom || ''} ${apprenant.nom || ''}`.trim(),
-    APPRENANT_DATE_NAISSANCE: apprenant.dateNaissance || '',
+    APPRENANT_DATE_NAISSANCE: formaterDateFR(apprenant.dateNaissance),
     APPRENANT_LIEU_NAISSANCE: apprenant.lieuNaissance || '',
     APPRENANT_ADRESSE: apprenant.adresse || '',
     APPRENANT_CP: apprenant.codePostal || '',
@@ -86,11 +87,11 @@ export function assemblerDonneesLivret(
     REFERENT_APPRENTI_EMAIL: 'pedagogie@pamoi.re',
 
     // === CONTRAT ===
-    DATE_DEBUT_CONTRAT: apprenant.dateDebutContrat || '',
-    DATE_FIN_CONTRAT: apprenant.dateFinContrat || '',
-    DATE_DEBUT_FORMATION: apprenant.dateDebutFormation || '',
-    DATE_FIN_FORMATION: apprenant.dateFinFormation || '',
-    DATE_RUPTURE_CONTRAT: apprenant.dateRupture || '',
+    DATE_DEBUT_CONTRAT: formaterDateFR(apprenant.dateDebutContrat),
+    DATE_FIN_CONTRAT: formaterDateFR(apprenant.dateFinContrat),
+    DATE_DEBUT_FORMATION: formaterDateFR(apprenant.dateDebutFormation),
+    DATE_FIN_FORMATION: formaterDateFR(apprenant.dateFinFormation),
+    DATE_RUPTURE_CONTRAT: formaterDateFR(apprenant.dateRupture),
     N_DECA: apprenant.numeroDeca || '',
 
     // === FORMATION ===

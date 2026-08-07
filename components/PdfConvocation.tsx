@@ -1,6 +1,7 @@
 'use client';
 
 import { Document, Page, Text, View, StyleSheet, Image } from '@react-pdf/renderer';
+import { formaterDateFR } from '../lib/dates';
 
 const S = StyleSheet.create({
   page: { paddingTop: 35, paddingBottom: 50, paddingHorizontal: 45, fontFamily: 'Helvetica', fontSize: 9, color: '#1a1a1a' },
@@ -84,7 +85,7 @@ export default function PdfConvocation({ candidat, formation, formationId, typeC
         <Text style={S.sectionBg}>Candidat(e)</Text>
         <View style={S.box}>
           <View style={S.row}><Text style={S.lbl}>Nom et prénom :</Text><Text style={S.val}>{candidat.prenom} {candidat.nom}</Text></View>
-          <View style={S.row}><Text style={S.lbl}>Date de naissance :</Text><Text style={S.val}>{candidat.dateNaissance}</Text></View>
+          <View style={S.row}><Text style={S.lbl}>Date de naissance :</Text><Text style={S.val}>{formaterDateFR(candidat.dateNaissance)}</Text></View>
           <View style={S.row}><Text style={S.lbl}>Email :</Text><Text style={S.val}>{candidat.email}</Text></View>
           <View style={S.row}><Text style={S.lbl}>Formation :</Text><Text style={S.val}>{formation} ({formationId})</Text></View>
           <View style={S.row}><Text style={S.lbl}>Type de candidature :</Text><Text style={S.val}>{typeCandidature}</Text></View>

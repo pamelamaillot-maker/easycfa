@@ -3,6 +3,8 @@
  * (Attestation pour quitter le CFA en cours de journée — décharge de responsabilité)
  */
 
+import { formaterDateFR } from './dates';
+
 export type MotifSortie = 'rdv_medical' | 'rdv_france_travail' | 'activite_entreprise' | 'urgence_familiale' | 'autre';
 
 export const MOTIFS_SORTIE_ANTICIPEE: Array<{ cle: MotifSortie; label: string }> = [
@@ -49,7 +51,7 @@ export function assemblerDonneesSortieAnticipee(
   const formationLib = FORMATION_LIBELLES[apprenant.formation] || apprenant.formation || '';
   return {
     APPRENANT_NOM_COMPLET: `${apprenant.prenom || ''} ${apprenant.nom || ''}`.trim(),
-    APPRENANT_DATE_NAISSANCE: apprenant.dateNaissance || '',
+    APPRENANT_DATE_NAISSANCE: formaterDateFR(apprenant.dateNaissance),
     FORMATION_LIBELLE: formationLib,
     ENTREPRISE_RAISON_SOCIALE: entreprise?.raisonSociale || apprenant.entreprise || '',
     ENTREPRISE_SIRET: entreprise?.siret || '',
