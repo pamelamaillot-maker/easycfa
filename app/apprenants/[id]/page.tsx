@@ -31,10 +31,11 @@ import {
   sauvegarderEntretien,
   supprimerEntretiensApprenant,
   calculerStatut,
+  calculerDatePrevue,
   dateIsoToFr,
   dateFrToIso,
 } from '../../../data/mockEntretiens';
-import { creerEntretien as creerEntretienSupabase } from '../../../data/entretiensSupabase';
+import { creerEntretien as creerEntretienSupabase, chargerOuCreerEntretiensSupabase } from '../../../data/entretiensSupabase';
 import { chargerEmargements } from '../../../data/emargementsSupabase';
 const BoutonPdfRupture = dynamic(() => import('../../../components/BoutonPdfRupture'), { ssr: false });
 const BoutonGenerationDMF = dynamic(() => import('../../../components/BoutonGenerationDMF'), { ssr: false });
@@ -847,6 +848,7 @@ export default function FicheApprenant({ params }: { params: Promise<{ id: strin
   const [entrepriseObj, setEntrepriseObj] = useState<any>(null);
   const [npecApprenant, setNpecApprenant] = useState<any>(null);
   const [modeEdition, setModeEdition] = useState(false);
+  const [nirVisible, setNirVisible] = useState(false);
   const [sauvegarde, setSauvegarde] = useState(false);
   const [modaleRupture, setModaleRupture] = useState(false);
   const [rupture, setRupture] = useState({ date: '', dateEffective: '', motif: '', maintien: 'NON' });
@@ -893,8 +895,9 @@ export default function FicheApprenant({ params }: { params: Promise<{ id: strin
       setEntreprises(chargerEntreprises());
 
       if (trouve) {
-        const ents = chargerOuCreerEntretiensApprenant(id, trouve.dateDebutContrat, trouve.dateFinContrat);
-        setEntretiens(ents);
+        const ents = await chargerOuCreerEntretiensSupabase(id, trouve.dateDebutContrat, trouve.dateFinContrat, calculerDatePrevue, calculerStatut);
+        setEntretiens(ents as any);
+        console.log(`[FicheApprenant ${id}] ${ents.length} entretien(s) chargés depuis Supabase ✅`);
       }
 
       setChargement(false);
@@ -1732,8 +1735,19 @@ export default function FicheApprenant({ params }: { params: Promise<{ id: strin
             {modeEdition ? (
               <input style={{ ...inputStyle, letterSpacing: '2px' }} value={form.nir ?? ''} placeholder="X XX XX XX XXX XXX XX" onChange={e => setForm((p: any) => ({ ...p, nir: e.target.value }))} maxLength={15} />
             ) : (
-              <div style={{ fontSize: '16px', fontWeight: '700', color: COLORS.text, letterSpacing: '2px' }}>
-                {form.nir ? '● ● ● ● ● ● ● ● ● ● ●' : '— À compléter'}
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
+                <div style={{ fontSize: '16px', fontWeight: '700', color: COLORS.text, letterSpacing: '2px' }}>
+                  {form.nir ? (nirVisible ? form.nir : '● ● ● ● ● ● ● ● ● ● ●') : '— À compléter'}
+                </div>
+                {form.nir && (
+                  <button
+                    onClick={() => setNirVisible(v => !v)}
+                    title={nirVisible ? 'Masquer le NIR' : 'Afficher le NIR'}
+                    style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '18px', padding: '2px 6px', lineHeight: 1 }}
+                  >
+                    {nirVisible ? '🙈' : '👁️'}
+                  </button>
+                )}
               </div>
             )}
           </div>

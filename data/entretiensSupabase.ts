@@ -12,9 +12,12 @@ export interface Entretien {
   statut?: string;
   realisePar?: string;
   modifiePar?: string;
-  supportUtilise?: Record<string, boolean>;
+  supportUtilise?: Record<string, any>;
   presents?: Record<string, boolean>;
   notes?: string;
+  decisions?: string;
+  motifNonFait?: string;
+  dateReport?: string;
   dateCreation?: string;
   dateModification?: string;
 }
@@ -119,4 +122,43 @@ export async function migrerEntretiensDepuisLocalStorage(
     else erreurs.push(`${raw.id} : ${res.error}`);
   }
   return { success, erreurs, ignores };
+}
+/**
+ * Charge les 2 entretiens obligatoires d'un apprenant depuis Supabase.
+ * Crée les entrées manquantes en mémoire (non persistées tant que non saisies).
+ */
+export async function chargerOuCreerEntretiensSupabase(
+  apprenantId: string,
+  dateDebutContrat?: string,
+  dateFinContrat?: string,
+  calculerDatePrevue?: (type: any, d?: string, f?: string) => string | undefined,
+  calculerStatut?: (e: any) => any,
+): Promise<any[]> {
+  const existants = await chargerEntretiensApprenant(apprenantId);
+  const types = ['6mois', '2moisAvantFin'];
+  const resultat: any[] = [];
+
+  types.forEach(type => {
+    let ent: any = existants.find(e => e.type === type);
+    if (!ent) {
+      const datePrevue = calculerDatePrevue ? calculerDatePrevue(type, dateDebutContrat, dateFinContrat) : '';
+      ent = {
+        id: `ENT_${apprenantId}_${type}`,
+        apprenantId,
+        type,
+        datePrevue: datePrevue ?? '',
+        statut: 'aprevoir',
+        dateCreation: new Date().toISOString(),
+      };
+    } else if (!ent.dateEffective && (dateDebutContrat || dateFinContrat) && calculerDatePrevue) {
+      const nouvelle = calculerDatePrevue(type, dateDebutContrat, dateFinContrat);
+      if (nouvelle && nouvelle !== ent.datePrevue) ent = { ...ent, datePrevue: nouvelle };
+    }
+    if (ent.statut !== 'fait' && ent.statut !== 'nonFait' && calculerStatut) {
+      ent = { ...ent, statut: calculerStatut(ent) };
+    }
+    resultat.push(ent);
+  });
+
+  return resultat;
 }

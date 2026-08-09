@@ -19,9 +19,17 @@ import {
 // ── Helpers dates ────────────────────────────────────────────────────────────
 function parseDateFr(str?: string): Date | null {
   if (!str) return null;
-  const p = str.split('/');
-  if (p.length === 3) return new Date(parseInt(p[2]), parseInt(p[1]) - 1, parseInt(p[0]));
-  return null;
+  const v = String(str).trim();
+  if (v.includes('-')) {
+    const p = v.slice(0, 10).split('-');
+    if (p.length !== 3) return null;
+    const d = new Date(parseInt(p[0]), parseInt(p[1]) - 1, parseInt(p[2]));
+    return isNaN(d.getTime()) ? null : d;
+  }
+  const p = v.split('/');
+  if (p.length !== 3) return null;
+  const d = new Date(parseInt(p[2]), parseInt(p[1]) - 1, parseInt(p[0]));
+  return isNaN(d.getTime()) ? null : d;
 }
 
 const MOIS_NOMS = ['Jan', 'Fév', 'Mar', 'Avr', 'Mai', 'Jun', 'Jul', 'Aoû', 'Sep', 'Oct', 'Nov', 'Déc'];
@@ -111,7 +119,7 @@ export default function Dashboard() {
       } catch (e) {
         console.error('[Dashboard] Erreur chargement APCs Supabase', e);
       }
-      setApprenants(apps);
+      setApprenants(apps.filter((a: any) => a.archive !== true));
       setApcs(apcsList);
 
       const retards: any[] = [];
