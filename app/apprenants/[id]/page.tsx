@@ -1046,14 +1046,18 @@ export default function FicheApprenant({ params }: { params: Promise<{ id: strin
   }, [form.dateDebutContrat, form.dateFinContrat]);
 
   async function handleSauvegarderEntretien(entretien: Entretien) {
-    // Supabase d'abord (upsert)
+    // Supabase = source de vérité
     const res = await creerEntretienSupabase(entretien as any);
-    if (!res.success) alert(`⚠️ Erreur Supabase : ${res.error}`);
-    else console.log(`[Entretien ${entretien.id}] Sauvegardé dans Supabase ✅`);
-    // localStorage en miroir + rafraîchissement UI
+    if (!res.success) {
+      alert(`⚠️ Erreur Supabase : ${res.error}\nL'entretien n'a PAS été enregistré.`);
+      return;
+    }
+    console.log(`[Entretien ${entretien.id}] Sauvegardé dans Supabase ✅`);
+    // localStorage en miroir (compatibilité)
     sauvegarderEntretien(entretien);
-    const ents = chargerOuCreerEntretiensApprenant(id, form.dateDebutContrat, form.dateFinContrat);
-    setEntretiens(ents);
+    // Rechargement depuis Supabase
+    const ents = await chargerOuCreerEntretiensSupabase(id, form.dateDebutContrat, form.dateFinContrat, calculerDatePrevue, calculerStatut);
+    setEntretiens(ents as any);
   }
 
   if (chargement) {

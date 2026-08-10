@@ -5,12 +5,9 @@ import Link from 'next/link';
 import { COLORS } from '../lib/constants';
 import { chargerApprentis } from '../data/apprentisSupabase';
 import { chargerApcs } from '../data/apcsSupabase';
+import { chargerEntretiens as chargerEntretiensSupabase } from '../data/entretiensSupabase';
 import { verifierConformiteSifa } from '../data/mockApprenants_reels';
-import {
-  chargerOuCreerEntretiensApprenant,
-  STATUT_STYLE,
-  LIBELLE_TYPE,
-} from '../data/mockEntretiens';
+import { chargerOuCreerEntretiensApprenant, calculerDatePrevue, calculerStatut, STATUT_STYLE, LIBELLE_TYPE } from '../data/mockEntretiens';
 import {
   PieChart, Pie, Cell, ResponsiveContainer, Legend, Tooltip,
   BarChart, Bar, XAxis, YAxis, CartesianGrid,
@@ -123,16 +120,31 @@ export default function Dashboard() {
       setApcs(apcsList);
 
       const retards: any[] = [];
-      apps.filter(a => a.statut === 'En cours').forEach(a => {
-        try {
-          const ents = chargerOuCreerEntretiensApprenant(a.id, a.dateDebutContrat, a.dateFinContrat);
-          ents.forEach(e => {
-            if (e.statut === 'enRetard') {
-              retards.push({ ...e, apprenantNom: `${a.prenom} ${a.nom}`, apprenantId: a.id });
+      try {
+        const tousEntretiens = await chargerEntretiensSupabase();
+        const parApprenant = new Map<string, any[]>();
+        tousEntretiens.forEach((e: any) => {
+          const l = parApprenant.get(e.apprenantId) || [];
+          l.push(e);
+          parApprenant.set(e.apprenantId, l);
+        });
+        apps.filter(a => a.statut === 'En cours' && a.archive !== true).forEach(a => {
+          const ents = parApprenant.get(a.id) || [];
+          ['6mois', '2moisAvantFin'].forEach(type => {
+            const ent = ents.find((e: any) => e.type === type);
+            if (ent && (ent.statut === 'fait' || ent.statut === 'nonFait')) return;
+            const datePrevue = ent?.datePrevue || calculerDatePrevue(type as any, a.dateDebutContrat, a.dateFinContrat);
+            if (!datePrevue) return;
+            const statut = calculerStatut({ ...(ent || {}), datePrevue, statut: ent?.statut });
+            if (statut === 'enRetard') {
+              retards.push({ ...(ent || {}), type, datePrevue, apprenantNom: `${a.prenom} ${a.nom}`, apprenantId: a.id });
             }
           });
-        } catch {}
-      });
+        });
+        console.log(`[Dashboard] ${tousEntretiens.length} entretien(s) chargés depuis Supabase ✅`);
+      } catch (e) {
+        console.error('[Dashboard] Erreur chargement entretiens Supabase', e);
+      }
       setEntretiensRetard(retards);
       setChargement(false);
     })();
