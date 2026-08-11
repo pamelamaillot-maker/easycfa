@@ -71,6 +71,7 @@ export interface Apprenti {
   passeParP2S?: boolean;
   dateSortieEffective?: string;
   prorogation?: boolean;
+  entreprisereprise?: string;
   maintienFormation?: string;
   contratPrecedent?: string;
   contratSuivant?: string;
@@ -394,7 +395,7 @@ const CHAMPS_VALIDES = new Set<string>([
   'tuteurNom', 'tuteurPrenom', 'tuteurEmail', 'tuteurTelephone',
   'representantNom', 'representantPrenom', 'representantLien', 'representantEmail',
   'representantTelephone', 'representantAdresse', 'representantCodePostal', 'representantVille',
-  'statut', 'dateRupture', 'dateRuptureEffective', 'passeParP2S', 'dateSortieEffective', 'prorogation',
+  'statut', 'dateRupture', 'dateRuptureEffective', 'passeParP2S', 'dateSortieEffective', 'prorogation', 'entrepriseReprise',
   'maintienFormation', 'contratPrecedent', 'contratSuivant', 'archive',
   'situationAvant', 'derniereSituationCode', 'dernierDiplome', 'intituleDernierDiplome',
   'derniereClasse', 'dernierEtablissement', 'dernierOrganismeUai', 'anneeObtention',

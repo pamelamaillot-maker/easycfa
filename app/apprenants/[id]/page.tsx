@@ -1543,6 +1543,27 @@ export default function FicheApprenant({ params }: { params: Promise<{ id: strin
               </button>
               <button
                 onClick={async () => {
+                  const dateSaisie = window.prompt("Date de fin de maintien (JJ/MM/AAAA) :\n\nDate à laquelle l'apprenant(e) a signé son nouveau contrat.", '');
+                  if (dateSaisie === null) return;
+                  const sortieReprise = isoDepuisFR(dateSaisie.trim());
+                  if (!sortieReprise) { alert('⚠️ Date invalide. Format attendu : JJ/MM/AAAA'); return; }
+                  const entrepriseSaisie = window.prompt("Raison sociale de la nouvelle entreprise :", '');
+                  if (entrepriseSaisie === null) return;
+                  if (!confirm(`Clôturer le maintien de ${form.prenom} ${form.nom} ?\n\n• Fin de maintien : ${dateSaisie}\n• Reprise chez : ${entrepriseSaisie || '—'}\n\nLe dossier sera archivé. Le contrat rompu et ses données sont conservés.`)) return;
+                  const maj = { maintienFormation: 'NON', archive: true, dateSortieEffective: sortieReprise as any, entrepriseReprise: entrepriseSaisie || undefined };
+                  const res = await modifierApprenti(id, maj as any);
+                  if (!res.success) { alert(`⚠️ Erreur Supabase : ${res.error}`); return; }
+                  console.log(`[FicheApprenant ${id}] Fin de maintien avec reprise enregistrée ✅`);
+                  const updated = { ...form, ...maj };
+                  setForm(updated); setApprenant(updated);
+                  router.push('/apprenants');
+                }}
+                style={{ backgroundColor: '#16a34a', color: 'white', border: 'none', borderRadius: '6px', padding: '7px 14px', fontSize: '12px', fontWeight: '700', cursor: 'pointer' }}
+              >
+                ✅ Fin de maintien — reprise sur contrat existant
+              </button>
+              <button
+                onClick={async () => {
                   if (!confirm(`Fin de maintien en formation pour ${form.prenom} ${form.nom} ?\n\nCela va :\n- Passer la fiche en "Rupture FMEF"\n- Le dossier sera archivé`)) return;
                   let echeance = '';
                   if (form.dateRuptureEffective) {

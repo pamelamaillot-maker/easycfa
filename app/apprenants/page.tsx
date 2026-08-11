@@ -18,19 +18,12 @@ function getStatut(a: any): { code: string; label: string; bg: string; color: st
   return { code: 'CA', label: 'CA', bg: '#e6f4f1', color: '#006B68' };
 }
 
+/**
+ * Un dossier est archivé UNIQUEMENT si la colonne 'archive' vaut true.
+ * L'archivage est une action volontaire — aucune déduction automatique.
+ */
 function estArchive(a: any): boolean {
-  if (a.archive === true) return true;
-  if (a.statut === 'Terminé') return true;
-  if (a.statut !== 'Rupture' || a.maintienFormation === 'OUI') return false;
-  if (!a.dateRupture) return false;
-  try {
-    const parts = a.dateRupture.split('/');
-    if (parts.length !== 3) return false;
-    const dateRupture = new Date(`${parts[2]}-${parts[1]}-${parts[0]}`);
-    const unMoisApres = new Date(dateRupture);
-    unMoisApres.setMonth(unMoisApres.getMonth() + 1);
-    return new Date() > unMoisApres;
-  } catch { return false; }
+  return a.archive === true;
 }
 
 /**
@@ -231,9 +224,23 @@ export default function Apprenants() {
                       <span style={{ backgroundColor: s.bg, color: s.color, padding: '3px 10px', borderRadius: '20px', fontSize: '12px', fontWeight: '700' }}>{s.label}</span>
                     </td>
                     <td style={{ padding: '12px' }}>
-                      <a href={`/apprenants/${a.id}`} style={{ backgroundColor: COLORS.background, color: COLORS.primary, borderRadius: '6px', padding: '5px 12px', fontSize: '12px', fontWeight: '600', textDecoration: 'none' }}>
-                        Voir →
-                      </a>
+                      <div style={{ display: 'flex', gap: '6px' }}>
+                        <a href={`/apprenants/${a.id}`} style={{ backgroundColor: COLORS.background, color: COLORS.primary, borderRadius: '6px', padding: '5px 12px', fontSize: '12px', fontWeight: '600', textDecoration: 'none' }}>
+                          Voir →
+                        </a>
+                        <button
+                          onClick={async () => {
+                            if (!confirm(`Archiver le dossier de ${a.prenom} ${a.nom} ?\n\nLe dossier sera déplacé dans les archives. Aucune donnée n'est modifiée ni supprimée.`)) return;
+                            const res = await modifierApprenti(a.id, { archive: true });
+                            if (!res.success) { alert(`⚠️ Erreur Supabase : ${res.error}`); return; }
+                            setApprenantsMerges(prev => prev.map(ap => ap.id === a.id ? { ...ap, archive: true } : ap));
+                          }}
+                          title="Archiver ce dossier"
+                          style={{ backgroundColor: 'white', color: '#888', border: '1.5px solid #ccc', borderRadius: '6px', padding: '5px 10px', fontSize: '12px', fontWeight: '600', cursor: 'pointer' }}
+                        >
+                          🗄️
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 );
@@ -285,20 +292,15 @@ export default function Apprenants() {
                       </a>
                       <button
                         onClick={async () => {
-                          const updated = { ...a, statut: 'En cours', dateRupture: '', maintienFormation: '' };
-                          // 1. Supabase d'abord
-                          const res = await modifierApprenti(a.id, { statut: 'En cours', dateRupture: '', maintienFormation: '' });
-                          if (!res.success) {
-                            alert(`Erreur Supabase : ${res.error}\nL'apprenant a quand même été réactivé localement.`);
-                          }
-                          // 2. localStorage en miroir (fallback)
-                          localStorage.setItem('apprenant_' + a.id, JSON.stringify(updated));
-                          // 3. UI
-                          setApprenantsMerges(prev => prev.map(ap => ap.id === a.id ? updated : ap));
+                          if (!confirm(`Sortir ${a.prenom} ${a.nom} des archives ?\n\nLe dossier reviendra dans la liste active. Son statut et ses données de rupture sont conservés.`)) return;
+                          const res = await modifierApprenti(a.id, { archive: false });
+                          if (!res.success) { alert(`⚠️ Erreur Supabase : ${res.error}`); return; }
+                          setApprenantsMerges(prev => prev.map(ap => ap.id === a.id ? { ...ap, archive: false } : ap));
                         }}
+                        title="Sortir des archives"
                         style={{ backgroundColor: '#e6f4f1', color: '#006B68', border: 'none', borderRadius: '6px', padding: '5px 12px', fontSize: '12px', fontWeight: '600', cursor: 'pointer' }}
                       >
-                        ♻️ Réactiver
+                        ♻️ Désarchiver
                       </button>
                     </div>
                   </td>
