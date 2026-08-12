@@ -28,9 +28,16 @@ export type ResultatsCandidat = {
   [key: string]: string | undefined;
 };
 
+// Rattachement au CFA — base des taux ventilés (jamais agrégés)
 export type TypeCandidature = 'apprentissage' | 'formation_continue' | 'vae' | 'libre';
+
+// Voie d'accès telle qu'elle figure sur le PV officiel
+export type VoieAcces = 'formation' | 'vae' | 'equivalence';
+
 export type EtatCcpCandidat = 'obtenu' | 'non_obtenu' | 'non_presente';
-export type DecisionJury = 'titre_obtenu' | 'titre_partiel' | 'ajourne' | 'absent';
+
+// Vocabulaire du PV général : Absence / Réussite / Réussite partielle / Échec
+export type DecisionJury = 'reussite' | 'reussite_partielle' | 'echec' | 'absence';
 
 export type Candidat = {
   id: string;
@@ -52,9 +59,20 @@ export type Candidat = {
   // Résultats au grain CCP, ex. { CCP1: 'obtenu', CCP2: 'non_obtenu' }
   resultatsCcp?: Record<string, EtatCcpCandidat>;
 
+  // Identifiant candidat figurant sur le PV (ex. 2616810)
+  identifiantCandidat?: string;
+
+  // Voie d'accès portée au PV — distincte de typeCandidature
+  voieAcces?: VoieAcces;
+
+  // Numéros de CCP attribués par la DEETS, ex. { CCP1: 'CP-003179' }
+  // Références UNIQUES et PÉRENNES : reprises telles quelles aux sessions suivantes.
+  numerosCcp?: Record<string, string>;
+
   decisionJury?: DecisionJury;
   dateDeliberation?: string;            // ISO AAAA-MM-JJ
   dateLimiteRepresentation?: string;    // ISO, délai d'un an après délibération
+  entretienFinalSatisfaisant?: boolean; // mention finale du PV individuel
   numeroLivretCertification?: string;
 };
 

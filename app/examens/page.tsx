@@ -7,6 +7,8 @@ import {
   sauvegarderExamen as sauvegarderExamenSupabase,
   supprimerExamen as supprimerExamenSupabase,
 } from '../../data/examensSupabase';
+import { chargerApprentis } from '../../data/apprentisSupabase';
+import { ccpsDuTP, dateLimiteRepresentation, joursAvantLimite } from '../../lib/referentielsTP';
 import {
   chargerAgrements,
   creerAgrement,
@@ -213,6 +215,9 @@ export default function Examens() {
   const [onglet, setOnglet] = useState<'sessions' | 'agrement' | 'jures'>('sessions');
   const [ongletFiche, setOngletFiche] = useState<'infos' | 'dte' | 'jury' | 'candidats' | 'documents' | 'pv' | 'emargement'>('infos');
   const [modale, setModale] = useState(false);
+  const [afficherArchives, setAfficherArchives] = useState(false);
+  const [apprenantsDb, setApprenantsDb] = useState<any[]>([]);
+  const [tousApprenants, setTousApprenants] = useState(false);
   const [form, setForm] = useState<Partial<SessionExamen>>({
     lieu: '1 Chemin Dubuisson 97436 Saint-Leu',
     responsableNom: 'MAILLOT', responsablePrenom: 'Paméla',
@@ -255,6 +260,15 @@ export default function Examens() {
         const ai = localStorage.getItem('easycfa_agrements_infos');
         if (ai) setAgreementsInfos(JSON.parse(ai));
       } catch {}
+      // Apprenants : pour le rattachement des candidats aux dossiers
+      try {
+        const apps = await chargerApprentis();
+        console.log(`[Examens] ${apps.length} apprenants chargés depuis Supabase ✅`);
+        setApprenantsDb(apps as any[]);
+      } catch (e) {
+        console.error('[Examens] Erreur chargement apprenants Supabase', e);
+      }
+
       // Agréments : nouvelle source Supabase (table agrements)
       try {
         const ags = await chargerAgrements();
@@ -509,13 +523,22 @@ export default function Examens() {
         <div style={{ display: 'grid', gridTemplateColumns: sessionSel ? '340px 1fr' : '1fr', gap: '20px' }}>
           {/* Liste sessions */}
           <Card>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px', paddingBottom: '8px', borderBottom: '1px solid #EAF4F3' }}>
+              <span style={{ fontSize: '11px', color: '#888', fontWeight: '600' }}>
+                {sessions.filter(s => !(s as any).archive).length} active(s) · {sessions.filter(s => (s as any).archive).length} archivée(s)
+              </span>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '11px', color: '#006B68', fontWeight: '600', cursor: 'pointer' }}>
+                <input type="checkbox" checked={afficherArchives} onChange={e => setAfficherArchives(e.target.checked)} />
+                📦 Voir les archives
+              </label>
+            </div>
             {sessions.length === 0 ? (
               <div style={{ padding: '40px', textAlign: 'center', color: '#888', fontStyle: 'italic' }}>
                 Aucune session d'examen — cliquez sur "+ Nouvelle session"
               </div>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                {[...sessions].sort((a, b) => dateTri(a.dateDebut) - dateTri(b.dateDebut)).map(s => {
+                {[...sessions].filter(s => afficherArchives ? true : !(s as any).archive).sort((a, b) => dateTri(a.dateDebut) - dateTri(b.dateDebut)).map(s => {
                   const cfg2 = FORMATIONS_EXAMEN[s.formation];
                   const st = statutStyles[s.statut] ?? { bg: '#f0f0f0', color: '#888' };
                   const j = diffJours(s.dateDebut);
@@ -541,6 +564,12 @@ export default function Examens() {
                             <span style={{ fontSize: '10px', fontWeight: '700', color: alerteCouleur(j, 120) }}>
                               {j >= 0 ? `J-${j}` : 'Passée'}
                             </span>
+                          )}
+                          {s.statut === 'Clôturée' && taux === 100 && !(s as any).archive && (
+                            <button onClick={e => { e.stopPropagation(); const u = { ...s, archive: true } as any; save(sessions.map(x => x.id === s.id ? u : x), u); if (sessionSel?.id === s.id) setSessionSel(null); }} style={{ backgroundColor: '#f0f0f0', color: '#888', border: 'none', borderRadius: '4px', padding: '2px 6px', fontSize: '10px', cursor: 'pointer', fontWeight: '600' }}>📦 Archiver</button>
+                          )}
+                          {(s as any).archive && (
+                            <button onClick={e => { e.stopPropagation(); const u = { ...s, archive: false } as any; save(sessions.map(x => x.id === s.id ? u : x), u); }} style={{ backgroundColor: '#EAF4F3', color: '#006B68', border: 'none', borderRadius: '4px', padding: '2px 6px', fontSize: '10px', cursor: 'pointer', fontWeight: '600' }}>♻️ Désarchiver</button>
                           )}
                           <button onClick={e => { e.stopPropagation(); if (confirm('Supprimer ?')) { save(sessions.filter(x => x.id !== s.id)); if (sessionSel?.id === s.id) setSessionSel(null); } }} style={{ backgroundColor: '#fde8e8', color: '#e53e3e', border: 'none', borderRadius: '4px', padding: '2px 6px', fontSize: '10px', cursor: 'pointer' }}>✕</button>
                         </div>
@@ -763,6 +792,48 @@ export default function Examens() {
                             const docsOk = c.dpFourni && c.ecfFourni;
                             return (
                               <div key={c.id} style={{ backgroundColor: docsOk ? '#e6f4f1' : '#fafafa', borderRadius: '8px', padding: '10px 12px', border: `1px solid ${docsOk ? '#006B68' : '#e0e0e0'}` }}>
+                                <div style={{ display: 'flex', gap: '8px', marginBottom: '8px', alignItems: 'flex-end', flexWrap: 'wrap' }}>
+                                  <div style={{ flex: '1 1 260px' }}>
+                                    <label style={{ fontSize: '9px', color: '#888', display: 'block', marginBottom: '2px', textTransform: 'uppercase' }}>Dossier apprenant</label>
+                                    <select style={{ ...inputStyle, fontSize: '11px', padding: '5px 7px' }} value={(c as any).apprenantId ?? ''} onChange={e => {
+                                      const app = apprenantsDb.find(a => a.id === e.target.value);
+                                      const candidats = sessionSel.candidats.map((cc, i) => i === ci ? {
+                                        ...cc,
+                                        apprenantId: e.target.value,
+                                        nom: app ? (app.nom ?? cc.nom) : cc.nom,
+                                        prenom: app ? (app.prenom ?? cc.prenom) : cc.prenom,
+                                        entreprise: app ? (app.entrepriseNom ?? app.entreprise ?? cc.entreprise) : cc.entreprise,
+                                        typeCandidature: app ? 'apprentissage' : (cc as any).typeCandidature,
+                                      } : cc);
+                                      maj('candidats', candidats);
+                                    }}>
+                                      <option value="">— Candidat libre / VAE (saisie manuelle) —</option>
+                                      {apprenantsDb
+                                        .filter(a => tousApprenants ? true : a.formation === sessionSel.formation)
+                                        .sort((a, b) => (a.nom ?? '').localeCompare(b.nom ?? ''))
+                                        .map(a => (
+                                          <option key={a.id} value={a.id}>{a.nom} {a.prenom} — {a.formation} ({a.statut})</option>
+                                        ))}
+                                    </select>
+                                  </div>
+                                  <div style={{ flex: '0 0 180px' }}>
+                                    <label style={{ fontSize: '9px', color: '#888', display: 'block', marginBottom: '2px', textTransform: 'uppercase' }}>Type de candidature</label>
+                                    <select style={{ ...inputStyle, fontSize: '11px', padding: '5px 7px' }} value={(c as any).typeCandidature ?? ''} onChange={e => {
+                                      const candidats = sessionSel.candidats.map((cc, i) => i === ci ? { ...cc, typeCandidature: e.target.value } : cc);
+                                      maj('candidats', candidats);
+                                    }}>
+                                      <option value="">— À préciser —</option>
+                                      <option value="apprentissage">Apprentissage</option>
+                                      <option value="formation_continue">Formation continue</option>
+                                      <option value="vae">VAE</option>
+                                      <option value="libre">Candidat libre</option>
+                                    </select>
+                                  </div>
+                                  <label style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '10px', color: '#006B68', fontWeight: '600', cursor: 'pointer', paddingBottom: '6px' }}>
+                                    <input type="checkbox" checked={tousApprenants} onChange={e => setTousApprenants(e.target.checked)} />
+                                    Tout afficher
+                                  </label>
+                                </div>
                                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px', marginBottom: '8px' }}>
                                   {[
                                     { label: 'Nom', k: 'nom' }, { label: 'Prénom', k: 'prenom' }, { label: 'Entreprise', k: 'entreprise' },
@@ -809,6 +880,104 @@ export default function Examens() {
                                     </div>
                                   ))}
                                   <button onClick={() => maj('candidats', sessionSel.candidats.filter((_, i) => i !== ci))} style={{ backgroundColor: '#fde8e8', color: '#e53e3e', border: 'none', borderRadius: '4px', padding: '2px 6px', fontSize: '10px', cursor: 'pointer', marginLeft: 'auto' }}>✕</button>
+                                </div>
+
+                                {/* ── CCP & DÉCISION DU JURY ── */}
+                                <div style={{ marginTop: '10px', paddingTop: '10px', borderTop: '1px dashed #d0e8e6' }}>
+                                  <div style={{ display: 'flex', gap: '8px', marginBottom: '8px', flexWrap: 'wrap' }}>
+                                    <div style={{ flex: '0 0 140px' }}>
+                                      <label style={{ fontSize: '9px', color: '#888', display: 'block', marginBottom: '2px', textTransform: 'uppercase' }}>Identifiant candidat</label>
+                                      <input style={{ ...inputStyle, fontSize: '11px', padding: '5px 7px' }} value={(c as any).identifiantCandidat ?? ''} placeholder="2616810" onChange={e => {
+                                        const candidats = sessionSel.candidats.map((cc, i) => i === ci ? { ...cc, identifiantCandidat: e.target.value } : cc);
+                                        maj('candidats', candidats);
+                                      }} />
+                                    </div>
+                                    <div style={{ flex: '0 0 160px' }}>
+                                      <label style={{ fontSize: '9px', color: '#888', display: 'block', marginBottom: '2px', textTransform: 'uppercase' }}>Voie d'accès (PV)</label>
+                                      <select style={{ ...inputStyle, fontSize: '11px', padding: '5px 7px' }} value={(c as any).voieAcces ?? ''} onChange={e => {
+                                        const candidats = sessionSel.candidats.map((cc, i) => i === ci ? { ...cc, voieAcces: e.target.value } : cc);
+                                        maj('candidats', candidats);
+                                      }}>
+                                        <option value="">— À préciser —</option>
+                                        <option value="formation">Formation</option>
+                                        <option value="vae">VAE</option>
+                                        <option value="equivalence">Par équivalence ou correspondance</option>
+                                      </select>
+                                    </div>
+                                  </div>
+
+                                  <div style={{ fontSize: '10px', color: '#888', fontWeight: '700', textTransform: 'uppercase', marginBottom: '6px' }}>🎯 CCP — résultats et numéros attribués</div>
+                                  {ccpsDuTP(sessionSel.formation).map(ccp => {
+                                    const etat = ((c as any).resultatsCcp ?? {})[ccp.code] ?? '';
+                                    const numero = ((c as any).numerosCcp ?? {})[ccp.code] ?? '';
+                                    return (
+                                      <div key={ccp.code} style={{ display: 'flex', gap: '8px', alignItems: 'center', marginBottom: '5px', flexWrap: 'wrap' }}>
+                                        <span style={{ fontSize: '11px', fontWeight: '700', color: '#006B68', flex: '0 0 46px' }}>{ccp.code}</span>
+                                        <span style={{ fontSize: '10px', color: '#555', flex: '1 1 240px' }}>{ccp.intitule}</span>
+                                        <select style={{ fontSize: '10px', border: '1px solid #e0e0e0', borderRadius: '4px', padding: '3px 5px', backgroundColor: 'white', flex: '0 0 120px', color: etat === 'obtenu' ? '#16a34a' : etat === 'non_obtenu' ? '#e53e3e' : '#888' }} value={etat} onChange={e => {
+                                          const candidats = sessionSel.candidats.map((cc, i) => i === ci ? { ...cc, resultatsCcp: { ...((cc as any).resultatsCcp ?? {}), [ccp.code]: e.target.value } } : cc);
+                                          maj('candidats', candidats);
+                                        }}>
+                                          <option value="">—</option>
+                                          <option value="obtenu">✅ Obtenu</option>
+                                          <option value="non_obtenu">❌ Non obtenu</option>
+                                          <option value="non_presente">⬜ Non présenté</option>
+                                        </select>
+                                        <input style={{ fontSize: '10px', border: '1px solid #e0e0e0', borderRadius: '4px', padding: '3px 5px', backgroundColor: 'white', flex: '0 0 110px' }} value={numero} placeholder="CP-003179" onChange={e => {
+                                          const candidats = sessionSel.candidats.map((cc, i) => i === ci ? { ...cc, numerosCcp: { ...((cc as any).numerosCcp ?? {}), [ccp.code]: e.target.value } } : cc);
+                                          maj('candidats', candidats);
+                                        }} />
+                                      </div>
+                                    );
+                                  })}
+
+                                  <div style={{ display: 'flex', gap: '8px', marginTop: '10px', flexWrap: 'wrap', alignItems: 'flex-end' }}>
+                                    <div style={{ flex: '0 0 190px' }}>
+                                      <label style={{ fontSize: '9px', color: '#888', display: 'block', marginBottom: '2px', textTransform: 'uppercase' }}>Décision du jury</label>
+                                      <select style={{ ...inputStyle, fontSize: '11px', padding: '5px 7px' }} value={(c as any).decisionJury ?? ''} onChange={e => {
+                                        const decision = e.target.value;
+                                        const dateDelib = (c as any).dateDeliberation ?? '';
+                                        const limite = decision === 'reussite' || !dateDelib ? '' : (dateLimiteRepresentation(dateDelib) ?? '');
+                                        const candidats = sessionSel.candidats.map((cc, i) => i === ci ? { ...cc, decisionJury: decision, dateLimiteRepresentation: limite } : cc);
+                                        maj('candidats', candidats);
+                                      }}>
+                                        <option value="">— À délibérer —</option>
+                                        <option value="reussite">🏆 Réussite</option>
+                                        <option value="reussite_partielle">🟡 Réussite partielle</option>
+                                        <option value="echec">🔴 Échec</option>
+                                        <option value="absence">⬜ Absence</option>
+                                      </select>
+                                    </div>
+                                    <div style={{ flex: '0 0 150px' }}>
+                                      <label style={{ fontSize: '9px', color: '#888', display: 'block', marginBottom: '2px', textTransform: 'uppercase' }}>Date délibération</label>
+                                      <input type="date" style={{ ...inputStyle, fontSize: '11px', padding: '5px 7px' }} value={(c as any).dateDeliberation ?? ''} onChange={e => {
+                                        const dateDelib = e.target.value;
+                                        const decision = (c as any).decisionJury ?? '';
+                                        const limite = decision === 'reussite' || !dateDelib ? '' : (dateLimiteRepresentation(dateDelib) ?? '');
+                                        const candidats = sessionSel.candidats.map((cc, i) => i === ci ? { ...cc, dateDeliberation: dateDelib, dateLimiteRepresentation: limite } : cc);
+                                        maj('candidats', candidats);
+                                      }} />
+                                    </div>
+                                    <label style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '11px', cursor: 'pointer', paddingBottom: '6px' }}>
+                                      <input type="checkbox" checked={(c as any).entretienFinalSatisfaisant ?? false} onChange={e => {
+                                        const candidats = sessionSel.candidats.map((cc, i) => i === ci ? { ...cc, entretienFinalSatisfaisant: e.target.checked } : cc);
+                                        maj('candidats', candidats);
+                                      }} />
+                                      <span style={{ color: (c as any).entretienFinalSatisfaisant ? '#16a34a' : '#888', fontWeight: '600' }}>Entretien final satisfaisant</span>
+                                    </label>
+                                  </div>
+
+                                  {(c as any).dateLimiteRepresentation && (() => {
+                                    const jrs = joursAvantLimite((c as any).dateLimiteRepresentation);
+                                    const couleur = jrs === null ? '#888' : jrs < 0 ? '#e53e3e' : jrs <= 90 ? '#e53e3e' : jrs <= 180 ? '#C8A23A' : '#16a34a';
+                                    const dLimite = (c as any).dateLimiteRepresentation.split('-').reverse().join('/');
+                                    return (
+                                      <div style={{ marginTop: '8px', padding: '6px 10px', borderRadius: '6px', backgroundColor: '#fef6e4', border: `1px solid ${couleur}`, fontSize: '11px', color: couleur, fontWeight: '600' }}>
+                                        ⏳ Doit se représenter avant le {dLimite}
+                                        {jrs !== null && (jrs >= 0 ? ` — ${jrs} jour(s) restant(s)` : ` — DÉLAI DÉPASSÉ de ${-jrs} jour(s)`)}
+                                      </div>
+                                    );
+                                  })()}
                                 </div>
                               </div>
                             );
@@ -999,6 +1168,7 @@ export default function Examens() {
 function RepertoireJures() {
   const [jures, setJures] = useState<Jure[]>([]);
   const [modale, setModale] = useState(false);
+  const [afficherArchives, setAfficherArchives] = useState(false);
   const [form, setForm] = useState<Partial<Jure>>({});
   const inputStyle2: React.CSSProperties = { border: '1.5px solid #e0e0e0', borderRadius: '8px', padding: '7px 10px', fontSize: '12px', width: '100%', boxSizing: 'border-box', backgroundColor: 'white' };
 
