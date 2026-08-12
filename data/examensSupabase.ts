@@ -28,6 +28,10 @@ export type ResultatsCandidat = {
   [key: string]: string | undefined;
 };
 
+export type TypeCandidature = 'apprentissage' | 'formation_continue' | 'vae' | 'libre';
+export type EtatCcpCandidat = 'obtenu' | 'non_obtenu' | 'non_presente';
+export type DecisionJury = 'titre_obtenu' | 'titre_partiel' | 'ajourne' | 'absent';
+
 export type Candidat = {
   id: string;
   nom: string;
@@ -37,6 +41,21 @@ export type Candidat = {
   ecfFourni?: boolean;
   convocationEnvoyee?: string;
   resultats?: ResultatsCandidat;
+
+  // Rattachement au dossier apprenant (indispensable au livret de certification)
+  apprenantId?: string;
+
+  // Catégorie de prestation : les taux se calculent SÉPARÉMENT par catégorie.
+  // Ne jamais agréger apprentissage / formation continue / VAE / libre.
+  typeCandidature?: TypeCandidature;
+
+  // Résultats au grain CCP, ex. { CCP1: 'obtenu', CCP2: 'non_obtenu' }
+  resultatsCcp?: Record<string, EtatCcpCandidat>;
+
+  decisionJury?: DecisionJury;
+  dateDeliberation?: string;            // ISO AAAA-MM-JJ
+  dateLimiteRepresentation?: string;    // ISO, délai d'un an après délibération
+  numeroLivretCertification?: string;
 };
 
 export type Examen = {
@@ -81,6 +100,14 @@ export type Examen = {
   // Émargements
   emargementJures?: string;
   emargementsCandidats?: Record<string, any>;
+
+  // Type de session — réf. arrêté du 22 décembre 2015
+  typeSession?: 'titre' | 'ccp' | 'ccs';
+  ccpVises?: string[];              // vide = tous les CCP du TP
+  avecEntretienFinal?: boolean;     // obligatoire au dernier CCP d'un parcours
+
+  // Archivage explicite — jamais déduit du statut
+  archive?: boolean;
 
   // Sous-données
   jures?: Jure[];

@@ -187,6 +187,18 @@ function diffJours(dateStr: string): number | null {
   return Math.ceil((d.getTime() - aujourdhui.getTime()) / 86400000);
 }
 
+function dateTri(dateStr: string): number {
+  if (!dateStr) return 0;
+  const p = dateStr.split('/');
+  if (p.length !== 3) return 0;
+  const j = parseInt(p[0]);
+  const m = parseInt(p[1]);
+  let a = parseInt(p[2]);
+  if (a < 100) a += 2000;
+  if (isNaN(j) || isNaN(m) || isNaN(a)) return 0;
+  return a * 10000 + m * 100 + j;
+}
+
 function alerteCouleur(jours: number | null, seuil: number): string {
   if (jours === null) return '#888';
   if (jours < 0) return '#e53e3e';
@@ -503,7 +515,7 @@ export default function Examens() {
               </div>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                {sessions.map(s => {
+                {[...sessions].sort((a, b) => dateTri(a.dateDebut) - dateTri(b.dateDebut)).map(s => {
                   const cfg2 = FORMATIONS_EXAMEN[s.formation];
                   const st = statutStyles[s.statut] ?? { bg: '#f0f0f0', color: '#888' };
                   const j = diffJours(s.dateDebut);
