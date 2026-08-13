@@ -74,6 +74,11 @@ export type Candidat = {
   dateLimiteRepresentation?: string;    // ISO, délai d'un an après délibération
   entretienFinalSatisfaisant?: boolean; // mention finale du PV individuel
   numeroLivretCertification?: string;
+
+  // PV individuel signé — preuve des résultats CCP portés à cette fiche
+  pvIndividuelNom?: string;
+  pvIndividuelUrl?: string;
+  pvIndividuelChemin?: string;
 };
 
 export type Examen = {
@@ -108,8 +113,12 @@ export type Examen = {
 
   // PV
   dateResultatsCERES?: string;
-  pvImporte?: string;
+  pvImporte?: string;          // obsolète — PV vierge, non utilisé
   pvSigne?: string;
+  pvSigneUrl?: string;
+  pvSigneChemin?: string;
+  pvDeetsUrl?: string;
+  pvDeetsChemin?: string;
   pvEnvoiDemarche?: string;
   pvCourrierReco?: string;
   pvReceptionDeets?: string;
@@ -283,6 +292,81 @@ export async function supprimerExamen(id: string): Promise<{ success: boolean; e
     return { success: true };
   } catch (e: any) {
     console.error('[examensSupabase] Exception suppression :', e);
+    return { success: false, error: e?.message || String(e) };
+  }
+}
+// ────────────────────────────────────────────────────────────────
+// UPLOAD PIÈCES D'EXAMEN (bucket "examens")
+// Même mécanisme que uploaderPdfAgrement : bucket privé, URL signée 1 an.
+// ────────────────────────────────────────────────────────────────
+
+function nettoyerNomFichier(nom: string): string {
+  return nom
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-zA-Z0-9._-]/g, '_');
+}
+
+export type ResultatUpload = {
+  success: boolean;
+  error?: string;
+  chemin?: string;
+  nom?: string;
+  url?: string;
+};
+
+/**
+ * Pièce rattachée à la session : PV général signé, PV DEETS, émargements.
+ * @param type identifiant court du document, ex. 'pvSigne'
+ */
+export async function uploaderPieceExamen(
+  examenId: string,
+  type: string,
+  file: File,
+): Promise<ResultatUpload> {
+  try {
+    const chemin = `${examenId}/${type}_${Date.now()}_${nettoyerNomFichier(file.name)}`;
+    const { error: upErr } = await supabase.storage.from('examens').upload(chemin, file, { upsert: true });
+    if (upErr) {
+      console.error('[examensSupabase] Erreur upload pièce :', upErr);
+      return { success: false, error: upErr.message };
+    }
+    const { data: signed, error: signErr } = await supabase.storage
+      .from('examens').createSignedUrl(chemin, 60 * 60 * 24 * 365);
+    if (signErr) {
+      console.error('[examensSupabase] Erreur URL signée :', signErr);
+      return { success: false, error: signErr.message };
+    }
+    return { success: true, chemin, nom: file.name, url: signed.signedUrl };
+  } catch (e: any) {
+    console.error('[examensSupabase] Exception upload pièce :', e);
+    return { success: false, error: e?.message || String(e) };
+  }
+}
+
+/**
+ * PV individuel d'un candidat — preuve des résultats CCP portés à sa fiche.
+ */
+export async function uploaderPvIndividuel(
+  examenId: string,
+  candidatId: string,
+  file: File,
+): Promise<ResultatUpload> {
+  try {
+    const chemin = `${examenId}/pv-individuels/${candidatId}_${Date.now()}_${nettoyerNomFichier(file.name)}`;
+    const { error: upErr } = await supabase.storage.from('examens').upload(chemin, file, { upsert: true });
+    if (upErr) {
+      console.error('[examensSupabase] Erreur upload PV individuel :', upErr);
+      return { success: false, error: upErr.message };
+    }
+    const { data: signed, error: signErr } = await supabase.storage
+      .from('examens').createSignedUrl(chemin, 60 * 60 * 24 * 365);
+    if (signErr) {
+      console.error('[examensSupabase] Erreur URL signée :', signErr);
+      return { success: false, error: signErr.message };
+    }
+    return { success: true, chemin, nom: file.name, url: signed.signedUrl };
+  } catch (e: any) {
+    console.error('[examensSupabase] Exception upload PV individuel :', e);
     return { success: false, error: e?.message || String(e) };
   }
 }

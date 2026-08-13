@@ -8,6 +8,8 @@ import {
   chargerExamens as chargerExamensSupabase,
   sauvegarderExamen as sauvegarderExamenSupabase,
   supprimerExamen as supprimerExamenSupabase,
+  uploaderPieceExamen,
+  uploaderPvIndividuel,
 } from '../../data/examensSupabase';
 import { chargerApprentis } from '../../data/apprentisSupabase';
 import { ccpsDuTP, dateLimiteRepresentation, joursAvantLimite } from '../../lib/referentielsTP';
@@ -1163,6 +1165,37 @@ export default function Examens() {
                                     </label>
                                   </div>
 
+                                  {/* PV individuel signé */}
+                                  <div style={{ marginTop: '10px', padding: '8px 10px', borderRadius: '8px', backgroundColor: (c as any).pvIndividuelUrl ? '#e6f4f1' : '#fafafa', border: `1px solid ${(c as any).pvIndividuelUrl ? '#006B68' : '#e0e0e0'}` }}>
+                                    <div style={{ fontSize: '10px', fontWeight: '700', color: '#006B68', textTransform: 'uppercase', marginBottom: '5px' }}>
+                                      📄 PV individuel signé
+                                    </div>
+                                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+                                      <label style={{ ...btnSecondary, display: 'inline-block', cursor: 'pointer', fontSize: '11px', padding: '5px 10px' }}>
+                                        📎 {(c as any).pvIndividuelUrl ? 'Remplacer' : 'Importer le PV'}
+                                        <input type="file" accept=".pdf,.jpg,.jpeg,.png" style={{ display: 'none' }} onChange={async ev => {
+                                          const f = ev.target.files?.[0];
+                                          ev.target.value = '';
+                                          if (!f) return;
+                                          const r = await uploaderPvIndividuel(sessionSel.id, c.id, f);
+                                          if (!r.success) { alert('Erreur : ' + r.error); return; }
+                                          const candidats = sessionSel.candidats.map((cc, i) => i === ci ? { ...cc, pvIndividuelNom: r.nom, pvIndividuelUrl: r.url, pvIndividuelChemin: r.chemin } : cc);
+                                          maj('candidats', candidats);
+                                        }} />
+                                      </label>
+                                      {(c as any).pvIndividuelUrl && (
+                                        <a href={(c as any).pvIndividuelUrl} target="_blank" rel="noopener noreferrer" style={{ fontSize: '11px', color: '#006B68', fontWeight: '600', textDecoration: 'underline' }}>
+                                          ✅ {(c as any).pvIndividuelNom}
+                                        </a>
+                                      )}
+                                      {!(c as any).pvIndividuelUrl && (c as any).pvIndividuelNom && (
+                                        <span style={{ fontSize: '11px', color: '#e53e3e', fontWeight: '600' }}>
+                                          ⚠️ {(c as any).pvIndividuelNom} — fichier non archivé, à reverser
+                                        </span>
+                                      )}
+                                    </div>
+                                  </div>
+
                                   {(c as any).dateLimiteRepresentation && (() => {
                                     const jrs = joursAvantLimite((c as any).dateLimiteRepresentation);
                                     const couleur = jrs === null ? '#888' : jrs < 0 ? '#e53e3e' : jrs <= 90 ? '#e53e3e' : jrs <= 180 ? '#C8A23A' : '#16a34a';
@@ -1219,15 +1252,29 @@ export default function Examens() {
                             {(sessionSel as any)[bloc.champ] ? '✅' : '⏳'} {bloc.titre}
                           </div>
                           {bloc.fichier ? (
-                            <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                            <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
                               <label style={{ ...btnSecondary, display: 'inline-block', cursor: 'pointer', fontSize: '11px', padding: '5px 10px' }}>
                                 📎 {(sessionSel as any)[bloc.champ] ? 'Remplacer' : 'Importer'}
-                                <input type="file" accept=".pdf,.jpg,.jpeg,.png" style={{ display: 'none' }} onChange={ev => {
+                                <input type="file" accept=".pdf,.jpg,.jpeg,.png" style={{ display: 'none' }} onChange={async ev => {
                                   const f = ev.target.files?.[0];
-                                  if (f) maj(bloc.champ, f.name);
+                                  ev.target.value = '';
+                                  if (!f) return;
+                                  const r = await uploaderPieceExamen(sessionSel.id, bloc.champ, f);
+                                  if (!r.success) { alert('Erreur : ' + r.error); return; }
+                                  const u = { ...sessionSel, [bloc.champ]: r.nom, [bloc.champ + 'Url']: r.url, [bloc.champ + 'Chemin']: r.chemin } as any;
+                                  setSessionSel(u);
+                                  save(sessions.map(x => x.id === u.id ? u : x), u);
                                 }} />
                               </label>
-                              {(sessionSel as any)[bloc.champ] && <span style={{ fontSize: '11px', color: '#006B68', fontWeight: '600' }}>{(sessionSel as any)[bloc.champ]}</span>}
+                              {(sessionSel as any)[bloc.champ + 'Url'] ? (
+                                <a href={(sessionSel as any)[bloc.champ + 'Url']} target="_blank" rel="noopener noreferrer" style={{ fontSize: '11px', color: '#006B68', fontWeight: '600', textDecoration: 'underline' }}>
+                                  ✅ {(sessionSel as any)[bloc.champ]}
+                                </a>
+                              ) : (sessionSel as any)[bloc.champ] ? (
+                                <span style={{ fontSize: '11px', color: '#e53e3e', fontWeight: '600' }}>
+                                  ⚠️ {(sessionSel as any)[bloc.champ]} — fichier non archivé, à reverser
+                                </span>
+                              ) : null}
                             </div>
                           ) : (
                             <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
@@ -1238,6 +1285,38 @@ export default function Examens() {
                           )}
                         </div>
                       ))}
+
+                      {/* PV individuels — consultation */}
+                      <div style={{ backgroundColor: '#EAF4F3', borderRadius: '8px', padding: '12px' }}>
+                        <div style={{ fontSize: '12px', fontWeight: '700', color: '#006B68', marginBottom: '4px' }}>
+                          📄 PV individuels des candidats
+                        </div>
+                        <div style={{ fontSize: '10px', color: '#888', marginBottom: '8px', fontStyle: 'italic' }}>
+                          Preuve des résultats CCP portés à chaque fiche. Import depuis l&apos;onglet Candidats.
+                        </div>
+                        {sessionSel.candidats.length === 0 ? (
+                          <div style={{ fontSize: '11px', color: '#888', fontStyle: 'italic' }}>Aucun candidat inscrit.</div>
+                        ) : sessionSel.candidats.map(c => {
+                          const url = (c as any).pvIndividuelUrl;
+                          const nom = (c as any).pvIndividuelNom;
+                          return (
+                            <div key={c.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px', padding: '5px 0', borderBottom: '1px solid #d0e8e6', fontSize: '11px', flexWrap: 'wrap' }}>
+                              <span style={{ color: '#333', fontWeight: '600' }}>
+                                {c.nom} {c.prenom}
+                              </span>
+                              {url ? (
+                                <a href={url} target="_blank" rel="noopener noreferrer" style={{ color: '#006B68', fontWeight: '600', textDecoration: 'underline' }}>
+                                  ✅ Consulter le PV
+                                </a>
+                              ) : nom ? (
+                                <span style={{ color: '#e53e3e', fontWeight: '600' }}>⚠️ {nom} — non archivé</span>
+                              ) : (
+                                <span style={{ color: '#C8A23A', fontWeight: '600' }}>⏳ PV non importé</span>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
 
                       {/* Clôture session */}
                       <div style={{ backgroundColor: sessionSel.statut === 'Clôturée' ? '#e6f4f1' : '#fef6e4', borderRadius: '8px', padding: '12px', border: `1.5px solid ${sessionSel.statut === 'Clôturée' ? '#006B68' : '#C8A23A'}` }}>
