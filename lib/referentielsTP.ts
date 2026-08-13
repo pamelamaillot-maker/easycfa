@@ -60,13 +60,16 @@ export const REFERENTIELS_TP: ReferentielTP[] = [
   {
     sigle: 'ARH',
     intitule: 'Assistant ressources humaines',
-    codeRncp: '41366',
+    codeRncp: '41366',            // ex-RNCP 35030 — seul l'enregistrement a changé
+    versionRev: 'REV2_ARH_V03_03082020',  // REV inchangé, prorogé jusqu'au 04/11/2027
     niveau: 5,
     dateEcheanceEnregistrement: '2027-11-04',
     ccps: [
       { code: 'CCP1', codeBloc: 'RNCP41366BC01', ordre: 1, numeroCp: 'CP-002821',
+        durees: { msp: '2h00', et: '0h20' },   // REV V03 — total 02h20
         intitule: 'Assurer les missions opérationnelles de la gestion des ressources humaines' },
       { code: 'CCP2', codeBloc: 'RNCP41366BC02', ordre: 2, numeroCp: 'CP-002822',
+        durees: { msp: '2h00', et: '0h20' },   // REV V03 — total 02h20
         intitule: 'Contribuer au développement des ressources humaines' },
     ],
   },
@@ -81,8 +84,10 @@ export const REFERENTIELS_TP: ReferentielTP[] = [
     niveau: 5,
     ccps: [
       { code: 'CCP1', codeBloc: 'RNCP38667BC01', ordre: 1, numeroCp: 'CP-003285',
+        durees: { msp: '3h00', et: '0h15' },   // REV V04 — total 03h15
         intitule: "Assurer les fonctions de support administratif et organisationnel à l'équipe de direction" },
       { code: 'CCP2', codeBloc: 'RNCP38667BC02', ordre: 2, numeroCp: 'CP-003286',
+        durees: { msp: '2h30', et: '0h15', qap: '0h20' },   // REV V04 — total 03h05
         intitule: "Organiser et suivre les projets et dossiers spécifiques de l'équipe de direction" },
     ],
   },
@@ -97,10 +102,13 @@ export const REFERENTIELS_TP: ReferentielTP[] = [
     niveau: 5,
     ccps: [
       { code: 'CCP1', codeBloc: 'RNCP37949BC01', ordre: 1, numeroCp: 'CP-003179',
+        durees: { msp: '1h45', et: '0h15' },   // REV V09 — total 02h00
         intitule: 'Établir et présenter les arrêtés comptables périodiques et annuels' },
       { code: 'CCP2', codeBloc: 'RNCP37949BC02', ordre: 2, numeroCp: 'CP-003180',
+        durees: { msp: '2h15', et: '0h15' },   // REV V09 — total 02h30
         intitule: 'Renseigner et contrôler les déclarations fiscales' },
       { code: 'CCP3', codeBloc: 'RNCP37949BC03', ordre: 3, numeroCp: 'CP-003181',
+        durees: { msp: '1h45', et: '0h15' },   // REV V09 — total 02h00
         intitule: "Établir et présenter les états prévisionnels de l'activité de l'entreprise" },
     ],
   },
@@ -116,10 +124,13 @@ export const REFERENTIELS_TP: ReferentielTP[] = [
     dateEcheanceEnregistrement: '2028-08-01',
     ccps: [
       { code: 'CCP1', codeBloc: 'RNCP37396BC01', ordre: 1, numeroCp: 'CP-003124',
+        durees: { msp: '0h25', et: '0h30' },   // REV V02 — total 00h55
         intitule: "Gérer une relation clientèle sur une destination et/ou un lieu touristique" },
       { code: 'CCP2', codeBloc: 'RNCP37396BC02', ordre: 2, numeroCp: 'CP-003125',
+        durees: { msp: '0h20', et: '0h15' },   // REV V02 — total 00h35
         intitule: 'Assister la clientèle sur des prestations touristiques et de loisirs' },
       { code: 'CCP3', codeBloc: 'RNCP37396BC03', ordre: 3, numeroCp: 'CP-003126',
+        durees: { msp: '0h30' },   // REV V02 — présentation de projet, pas de MSP classique
         intitule: "Contribuer à la mise en œuvre d'événements festifs et culturels" },
     ],
   },
@@ -130,8 +141,10 @@ export const REFERENTIELS_TP: ReferentielTP[] = [
     niveau: 3,
     ccps: [
       { code: 'CCP1', codeBloc: 'RNCP37099BC01', ordre: 1, numeroCp: 'CP-003062',
+        durees: { msp: '1h15', qap: '0h30' },   // REV V08 — total 01h45
         intitule: "Mettre à disposition des clients les produits de l'unité marchande dans un environnement omnicanal" },
       { code: 'CCP2', codeBloc: 'RNCP37099BC02', ordre: 2, numeroCp: 'CP-003063',
+        durees: { msp: '0h55' },   // REV V08 — total 00h55
         intitule: 'Accueillir les clients et répondre à leur demande dans un environnement omnicanal' },
     ],
   },
@@ -142,8 +155,10 @@ export const REFERENTIELS_TP: ReferentielTP[] = [
     niveau: 4,
     ccps: [
       { code: 'CCP1', codeBloc: 'RNCP37098BC01', ordre: 1, numeroCp: 'CP-003060',
+        durees: { msp: '1h15', et: '0h30', qap: '0h50' },   // REV 26/07/2022 — total 02h35
         intitule: "Contribuer à l'efficacité commerciale d'une unité marchande dans un environnement omnicanal" },
       { code: 'CCP2', codeBloc: 'RNCP37098BC02', ordre: 2, numeroCp: 'CP-003061',
+        durees: { msp: '0h45', qap: '0h30' },   // REV 26/07/2022 — total 01h15, pas d'entretien technique
         intitule: "Améliorer l'expérience client dans un environnement omnicanal" },
     ],
   },
@@ -160,12 +175,16 @@ export const REFERENTIELS_TP: ReferentielTP[] = [
     // Durées d'épreuve non renseignées : se reporter au REV / DTE.
     ccps: [
       { code: 'CCP1', codeBloc: 'RNCP37275BC01', ordre: 1, numeroCp: 'CP-003098',
+        durees: { msp: '0h35' },   // REV V07 — présentation de projet, total 00h35
         intitule: 'Concevoir et préparer la formation' },
       { code: 'CCP2', codeBloc: 'RNCP37275BC02', ordre: 2, numeroCp: 'CP-003099',
+        durees: { msp: '0h30' },   // REV V07 — présentation de projet, total 00h30
         intitule: 'Animer une formation et évaluer les acquis des apprenants' },
       { code: 'CCP3', codeBloc: 'RNCP37275BC03', ordre: 3, numeroCp: 'CP-003100',
+        durees: { msp: '0h25', et: '0h20' },   // REV V07 — total 00h45
         intitule: 'Accompagner les apprenants en formation' },
       { code: 'CCP4', codeBloc: 'RNCP37275BC04', ordre: 4, numeroCp: 'CP-003101',
+        durees: { msp: '0h55', et: '0h25' },   // REV V07 — total 01h20
         intitule: "Inscrire sa pratique professionnelle dans une démarche de qualité et de responsabilité sociale des entreprises" },
     ],
   },

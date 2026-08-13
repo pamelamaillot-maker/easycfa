@@ -10,6 +10,15 @@ import {
 import { chargerApprentis } from '../../data/apprentisSupabase';
 import { ccpsDuTP, dateLimiteRepresentation, joursAvantLimite } from '../../lib/referentielsTP';
 import {
+  chargerJures,
+  creerJure,
+  modifierJure,
+  supprimerJure,
+  synchroniserJuresDepuisExamens,
+  genererIdJure,
+  type Jure as JureDb,
+} from '../../data/juresSupabase';
+import {
   chargerAgrements,
   creerAgrement,
   modifierAgrement,
@@ -557,7 +566,7 @@ export default function Examens() {
 
       {/* ── RÉPERTOIRE JURÉS ── */}
       {onglet === 'jures' && (
-        <RepertoireJures />
+        <RepertoireJures examens={sessions} />
       )}
 
       {/* ── SESSIONS ── */}
@@ -1355,31 +1364,71 @@ export default function Examens() {
 }
 
 // ── Répertoire jurés global ───────────────────────────────────────────────────
-function RepertoireJures() {
-  const [jures, setJures] = useState<Jure[]>([]);
+function RepertoireJures({ examens }: { examens: SessionExamen[] }) {
+  const [jures, setJures] = useState<JureDb[]>([]);
   const [modale, setModale] = useState(false);
-  const [afficherArchives, setAfficherArchives] = useState(false);
-  const [form, setForm] = useState<Partial<Jure>>({});
+  const [form, setForm] = useState<Partial<JureDb>>({});
+  const [synchro, setSynchro] = useState<string | null>(null);
+  const [enCours, setEnCours] = useState(false);
   const inputStyle2: React.CSSProperties = { border: '1.5px solid #e0e0e0', borderRadius: '8px', padding: '7px 10px', fontSize: '12px', width: '100%', boxSizing: 'border-box', backgroundColor: 'white' };
 
-  useEffect(() => {
-    try { const s = localStorage.getItem('easycfa_jures'); if (s) setJures(JSON.parse(s)); } catch {}
-  }, []);
-
-  function save(liste: Jure[]) { setJures(liste); localStorage.setItem('easycfa_jures', JSON.stringify(liste)); }
-
-  function ajouter() {
-    if (!form.nom || !form.prenom) return;
-    save([...jures, { ...form as Jure, id: Date.now().toString(), disponible: false, confirme: false }]);
-    setModale(false); setForm({});
+  async function recharger() {
+    const liste = await chargerJures();
+    console.log(`[Jurés] ${liste.length} juré(s) chargés depuis Supabase ✅`);
+    setJures(liste.filter(j => !j.archive));
   }
+
+  useEffect(() => { recharger(); }, []);
+
+  async function lancerSynchro() {
+    setEnCours(true);
+    setSynchro(null);
+    const r = await synchroniserJuresDepuisExamens(examens, dateTri);
+    let msg = `${r.crees} juré(s) créé(s), ${r.enrichis} mis à jour.`;
+    if (r.doublonsProbables.length > 0) {
+      msg += ` ⚠️ Doublons probables : ${r.doublonsProbables.map(d => `${d.nom} ${d.prenom} (${d.nbFiches} fiches)`).join(', ')}.`;
+    }
+    if (r.ignores.length > 0) msg += ` ${r.ignores.length} entrée(s) ignorée(s) (nom ou prénom manquant).`;
+    if (r.erreurs.length > 0) msg += ` ❌ ${r.erreurs.length} erreur(s) : ${r.erreurs.join(' · ')}`;
+    setSynchro(msg);
+    await recharger();
+    setEnCours(false);
+  }
+
+  async function ajouter() {
+    if (!form.nom || !form.prenom) return;
+    const r = await creerJure({ ...(form as JureDb), id: genererIdJure(form.nom, form.prenom) });
+    if (!r.success) { alert('Erreur : ' + r.error); return; }
+    setModale(false); setForm({});
+    await recharger();
+  }
+
+  async function retirer(id: string) {
+    if (!confirm('Supprimer ce juré du répertoire ?')) return;
+    const r = await supprimerJure(id);
+    if (!r.success) { alert('Erreur : ' + r.error); return; }
+    await recharger();
+  }
+  
 
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px', flexWrap: 'wrap', gap: '8px' }}>
         <div style={{ fontSize: '14px', fontWeight: '700', color: '#006B68' }}>👨‍⚖️ Répertoire des jurés — {jures.length} juré(s)</div>
-        <button onClick={() => setModale(true)} style={{ backgroundColor: '#006B68', color: 'white', border: 'none', borderRadius: '8px', padding: '8px 14px', fontSize: '12px', fontWeight: '600', cursor: 'pointer' }}>+ Ajouter un juré</button>
+        <div style={{ display: 'flex', gap: '8px' }}>
+          <button onClick={lancerSynchro} disabled={enCours} style={{ backgroundColor: 'white', color: '#006B68', border: '1.5px solid #006B68', borderRadius: '8px', padding: '8px 14px', fontSize: '12px', fontWeight: '600', cursor: enCours ? 'wait' : 'pointer', opacity: enCours ? 0.6 : 1 }}>
+            {enCours ? '⏳ Synchronisation...' : '🔄 Alimenter depuis les sessions'}
+          </button>
+          <button onClick={() => setModale(true)} style={{ backgroundColor: '#006B68', color: 'white', border: 'none', borderRadius: '8px', padding: '8px 14px', fontSize: '12px', fontWeight: '600', cursor: 'pointer' }}>+ Ajouter un juré</button>
+        </div>
       </div>
+
+      {synchro && (
+        <div style={{ backgroundColor: synchro.includes('❌') ? '#fde8e8' : synchro.includes('⚠️') ? '#fef6e4' : '#e6f4f1', border: `1px solid ${synchro.includes('❌') ? '#e53e3e' : synchro.includes('⚠️') ? '#C8A23A' : '#006B68'}`, borderRadius: '8px', padding: '10px 12px', marginBottom: '14px', fontSize: '12px', color: '#333' }}>
+          {synchro}
+          <button onClick={() => setSynchro(null)} style={{ marginLeft: '10px', background: 'none', border: 'none', color: '#888', cursor: 'pointer', fontSize: '11px' }}>✕</button>
+        </div>
+      )}
       {jures.length === 0 ? (
         <Card><div style={{ padding: '40px', textAlign: 'center', color: '#888', fontStyle: 'italic' }}>Aucun juré enregistré</div></Card>
       ) : (
@@ -1393,7 +1442,7 @@ function RepertoireJures() {
                   <div style={{ fontSize: '11px', color: '#555', marginTop: '4px' }}>📞 {j.telephone}</div>
                   <div style={{ fontSize: '11px', color: '#555' }}>✉️ {j.email}</div>
                 </div>
-                <button onClick={() => { if (confirm('Supprimer ce juré ?')) save(jures.filter(jj => jj.id !== j.id)); }} style={{ backgroundColor: '#fde8e8', color: '#e53e3e', border: 'none', borderRadius: '4px', padding: '3px 8px', fontSize: '11px', cursor: 'pointer' }}>✕</button>
+                <button onClick={() => retirer(j.id)} style={{ backgroundColor: '#fde8e8', color: '#e53e3e', border: 'none', borderRadius: '4px', padding: '3px 8px', fontSize: '11px', cursor: 'pointer' }}>✕</button>
               </div>
             </Card>
           ))}
