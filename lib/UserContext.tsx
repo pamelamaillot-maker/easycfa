@@ -87,7 +87,26 @@ export function UserProvider({ children }: { children: React.ReactNode }) {
 
     (async () => {
       console.log('[UserContext] Init: getSession...');
-      const { data: { session } } = await supabase.auth.getSession();
+
+      // Garde-fou : getSession() peut rester pendant indéfiniment si le verrou
+      // interne du SDK n'a pas été relâché (fermeture brutale du navigateur,
+      // onglets multiples). Sans délai, l'application reste figée sur "Chargement...".
+      let session: any = null;
+      try {
+        const resultat: any = await Promise.race([
+          supabase.auth.getSession(),
+          new Promise((_, rejeter) => setTimeout(() => rejeter(new Error('timeout')), 5000)),
+        ]);
+        session = resultat?.data?.session ?? null;
+      } catch (err: any) {
+        if (err?.message === 'timeout') {
+          console.warn('[UserContext] getSession sans réponse après 5 s — bascule sur écran de connexion.');
+        } else {
+          console.error('[UserContext] Exception getSession :', err);
+        }
+        session = null;
+      }
+
       console.log('[UserContext] Init: session =', session?.user?.email ?? 'aucune');
       if (!actif) return;
 
