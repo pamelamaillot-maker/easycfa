@@ -9,11 +9,20 @@
 // Un CCP dont le TP porte aVerifier: true ne doit pas figurer sur un document
 // officiel (convocation, procès-verbal, livret de certification) avant contrôle.
 
+export interface DureesCcp {
+  msp?: string;
+  et?: string;
+  qap?: string;
+  qp?: string;
+}
+
 export interface CCP {
-  code: string;        // CCP1, CCP2, CCP3
-  codeBloc: string;    // RNCP37123BC01
+  code: string;
+  codeBloc: string;
   intitule: string;
   ordre: number;
+  numeroCp?: string;
+  durees?: DureesCcp;
 }
 
 export interface ReferentielTP {
@@ -37,11 +46,14 @@ export const REFERENTIELS_TP: ReferentielTP[] = [
     codeRncp: '37123',
     niveau: 4,
     ccps: [
-      { code: 'CCP1', codeBloc: 'RNCP37123BC01', ordre: 1,
+      { code: 'CCP1', codeBloc: 'RNCP37123BC01', ordre: 1, numeroCp: 'CP-003056',
+        durees: { msp: '1h30', et: '0h20' },   // REV V09 — total session CCP 01h50
         intitule: 'Assurer les travaux administratifs de secrétariat au quotidien' },
-      { code: 'CCP2', codeBloc: 'RNCP37123BC02', ordre: 2,
+      { code: 'CCP2', codeBloc: 'RNCP37123BC02', ordre: 2, numeroCp: 'CP-003057',
+        durees: { msp: '2h00', et: '0h15' },   // DTE 01v02 du 29/01/2025
         intitule: 'Assurer les opérations comptables au quotidien' },
-      { code: 'CCP3', codeBloc: 'RNCP37123BC03', ordre: 3,
+      { code: 'CCP3', codeBloc: 'RNCP37123BC03', ordre: 3, numeroCp: 'CP-003058',
+        durees: { msp: '1h30', et: '0h15' },   // DTE 01v01 du 31/05/2023
         intitule: 'Préparer les opérations comptables périodiques' },
     ],
   },

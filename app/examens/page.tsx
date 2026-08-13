@@ -144,6 +144,13 @@ type SessionExamen = {
   dateCreationCERES: string;
   numeroCERES: string;
   statut: 'Planifiée' | 'En cours' | 'Terminée' | 'Clôturée';
+  // Session titre (TP complet) ou session CCP (rattrapage) — 1 CCP = 1 session CERES
+  typeSession?: 'titre' | 'ccp' | 'ccs';
+  ccpVises?: string[];
+  avecEntretienFinal?: boolean;
+  // Regroupement des sessions d'une même journée d'examen (même jury, un seul entretien final)
+  groupeExamenId?: string;
+  archive?: boolean;
   // DTE
   dateCmdDTE: string;
   dateReceptionDTE: string;
@@ -201,6 +208,31 @@ function dateTri(dateStr: string): number {
   return a * 10000 + m * 100 + j;
 }
 
+/**
+ * Reconstitue le parcours certificatif d'un apprenant à partir de TOUTES les
+ * sessions d'examen. Un CCP obtenu l'est définitivement : aucune session
+ * ultérieure ne peut le dégrader.
+ */
+function livretApprenant(sessions: SessionExamen[], apprenantId: string, formation: string) {
+  const etats: Record<string, { etat: string; numero: string; dateSession: string }> = {};
+  const triees = [...sessions].sort((a, b) => dateTri(a.dateDebut) - dateTri(b.dateDebut));
+
+  for (const s of triees) {
+    if (s.formation !== formation) continue;
+    for (const cand of (s.candidats ?? [])) {
+      if ((cand as any).apprenantId !== apprenantId) continue;
+      const res = (cand as any).resultatsCcp ?? {};
+      const nums = (cand as any).numerosCcp ?? {};
+      for (const [code, etat] of Object.entries(res)) {
+        if (etats[code]?.etat === 'obtenu') continue; // acquis définitif
+        if (!etat) continue;
+        etats[code] = { etat: etat as string, numero: nums[code] ?? '', dateSession: s.dateDebut };
+      }
+    }
+  }
+  return etats;
+}
+
 function alerteCouleur(jours: number | null, seuil: number): string {
   if (jours === null) return '#888';
   if (jours < 0) return '#e53e3e';
@@ -218,6 +250,10 @@ export default function Examens() {
   const [afficherArchives, setAfficherArchives] = useState(false);
   const [apprenantsDb, setApprenantsDb] = useState<any[]>([]);
   const [tousApprenants, setTousApprenants] = useState(false);
+  const [filtreTP, setFiltreTP] = useState('');
+  const [filtreAnnee, setFiltreAnnee] = useState('');
+  const [filtreType, setFiltreType] = useState('');
+  const [recherche, setRecherche] = useState('');
   const [form, setForm] = useState<Partial<SessionExamen>>({
     lieu: '1 Chemin Dubuisson 97436 Saint-Leu',
     responsableNom: 'MAILLOT', responsablePrenom: 'Paméla',
@@ -318,6 +354,12 @@ export default function Examens() {
       responsableEmail: form.responsableEmail ?? 'pamelamaillot@pamoi.re',
       dateCreationCERES: form.dateCreationCERES ?? '',
       numeroCERES: form.numeroCERES ?? '',
+      typeSession: (form as any).typeSession ?? 'titre',
+      ccpVises: (form as any).ccpVises ?? [],
+      avecEntretienFinal: (form as any).typeSession === 'ccp'
+        ? ((form as any).avecEntretienFinal ?? false)
+        : true,
+      groupeExamenId: (form as any).groupeExamenId ?? '',
       statut: 'Planifiée',
       dateCmdDTE: '', dateReceptionDTE: '',
       jures: [], dateCmdJury: '',
@@ -523,14 +565,41 @@ export default function Examens() {
         <div style={{ display: 'grid', gridTemplateColumns: sessionSel ? '340px 1fr' : '1fr', gap: '20px' }}>
           {/* Liste sessions */}
           <Card>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px', paddingBottom: '8px', borderBottom: '1px solid #EAF4F3' }}>
-              <span style={{ fontSize: '11px', color: '#888', fontWeight: '600' }}>
-                {sessions.filter(s => !(s as any).archive).length} active(s) · {sessions.filter(s => (s as any).archive).length} archivée(s)
-              </span>
-              <label style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '11px', color: '#006B68', fontWeight: '600', cursor: 'pointer' }}>
-                <input type="checkbox" checked={afficherArchives} onChange={e => setAfficherArchives(e.target.checked)} />
-                📦 Voir les archives
-              </label>
+            <div style={{ marginBottom: '10px', paddingBottom: '8px', borderBottom: '1px solid #EAF4F3' }}>
+              <div style={{ display: 'flex', gap: '6px', marginBottom: '8px', flexWrap: 'wrap' }}>
+                <select style={{ ...inputStyle, fontSize: '11px', padding: '5px 7px', width: 'auto', flex: '1 1 90px' }} value={filtreTP} onChange={e => setFiltreTP(e.target.value)}>
+                  <option value="">Tous les TP</option>
+                  {Object.values(FORMATIONS_EXAMEN).map(f => <option key={f.code} value={f.code}>{f.code}</option>)}
+                </select>
+                <select style={{ ...inputStyle, fontSize: '11px', padding: '5px 7px', width: 'auto', flex: '1 1 80px' }} value={filtreAnnee} onChange={e => setFiltreAnnee(e.target.value)}>
+                  <option value="">Toutes années</option>
+                  {Array.from(new Set(sessions.map(s => (s.dateDebut ?? '').split('/')[2]).filter(Boolean)))
+                    .map(a => a.length === 2 ? '20' + a : a)
+                    .filter((a, i, t) => t.indexOf(a) === i)
+                    .sort()
+                    .map(a => <option key={a} value={a}>{a}</option>)}
+                </select>
+                <select style={{ ...inputStyle, fontSize: '11px', padding: '5px 7px', width: 'auto', flex: '1 1 110px' }} value={filtreType} onChange={e => setFiltreType(e.target.value)}>
+                  <option value="">Tous types</option>
+                  <option value="titre">🎓 TP complet</option>
+                  <option value="ccp">🎯 CCP</option>
+                </select>
+              </div>
+              <input style={{ ...inputStyle, fontSize: '11px', padding: '5px 7px', marginBottom: '8px' }} value={recherche} placeholder="🔍 CERES, candidat..." onChange={e => setRecherche(e.target.value)} />
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ fontSize: '11px', color: '#888', fontWeight: '600' }}>
+                  {sessions.filter(s => !s.archive).length} active(s) · {sessions.filter(s => s.archive).length} archivée(s)
+                </span>
+                <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+                  {(filtreTP || filtreAnnee || filtreType || recherche) && (
+                    <button onClick={() => { setFiltreTP(''); setFiltreAnnee(''); setFiltreType(''); setRecherche(''); }} style={{ backgroundColor: '#fde8e8', color: '#e53e3e', border: 'none', borderRadius: '6px', padding: '3px 8px', fontSize: '10px', fontWeight: '600', cursor: 'pointer' }}>✕ Filtres</button>
+                  )}
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '11px', color: '#006B68', fontWeight: '600', cursor: 'pointer' }}>
+                    <input type="checkbox" checked={afficherArchives} onChange={e => setAfficherArchives(e.target.checked)} />
+                    📦 Archives
+                  </label>
+                </div>
+              </div>
             </div>
             {sessions.length === 0 ? (
               <div style={{ padding: '40px', textAlign: 'center', color: '#888', fontStyle: 'italic' }}>
@@ -538,7 +607,27 @@ export default function Examens() {
               </div>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                {[...sessions].filter(s => afficherArchives ? true : !(s as any).archive).sort((a, b) => dateTri(a.dateDebut) - dateTri(b.dateDebut)).map(s => {
+                {[...sessions].filter(s => {
+                  // Une recherche par nom ou CERES doit trouver aussi dans les archives :
+                  // masquer un résultat explicitement demandé serait déroutant.
+                  if (!afficherArchives && s.archive && !recherche.trim()) return false;
+                  if (filtreTP && s.formation !== filtreTP) return false;
+                  if (filtreType && (s.typeSession ?? 'titre') !== filtreType) return false;
+                  if (filtreAnnee) {
+                    let a = (s.dateDebut ?? '').split('/')[2] ?? '';
+                    if (a.length === 2) a = '20' + a;
+                    if (a !== filtreAnnee) return false;
+                  }
+                  if (recherche.trim()) {
+                    const q = recherche.trim().toLowerCase();
+                    const dansCeres = (s.numeroCERES ?? '').toLowerCase().includes(q);
+                    const dansCandidats = (s.candidats ?? []).some(c =>
+                      `${c.nom ?? ''} ${c.prenom ?? ''}`.toLowerCase().includes(q));
+                    const dansGroupe = (s.groupeExamenId ?? '').toLowerCase().includes(q);
+                    if (!dansCeres && !dansCandidats && !dansGroupe) return false;
+                  }
+                  return true;
+                }).sort((a, b) => dateTri(a.dateDebut) - dateTri(b.dateDebut)).map(s => {
                   const cfg2 = FORMATIONS_EXAMEN[s.formation];
                   const st = statutStyles[s.statut] ?? { bg: '#f0f0f0', color: '#888' };
                   const j = diffJours(s.dateDebut);
@@ -548,7 +637,19 @@ export default function Examens() {
                     <div key={s.id} onClick={() => { setSessionSel(isOpen ? null : s); setOngletFiche('infos'); }} style={{ padding: '12px 14px', borderRadius: '10px', borderTop: '1.5px solid ' + (isOpen ? '#006B68' : '#e0e0e0'), borderRight: '1.5px solid ' + (isOpen ? '#006B68' : '#e0e0e0'), borderBottom: '1.5px solid ' + (isOpen ? '#006B68' : '#e0e0e0'), backgroundColor: isOpen ? '#EAF4F3' : 'white', cursor: 'pointer', borderLeft: `4px solid ${cfg2?.couleur ?? '#006B68'}` }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                         <div>
-                          <div style={{ fontSize: '12px', fontWeight: '700', color: cfg2?.couleur ?? '#006B68' }}>{cfg2?.label} — {cfg2?.numero}</div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                            <span style={{ fontSize: '12px', fontWeight: '700', color: cfg2?.couleur ?? '#006B68' }}>{cfg2?.label}</span>
+                            {s.typeSession === 'ccp' ? (
+                              <span style={{ backgroundColor: '#fef6e4', color: '#C8A23A', padding: '1px 7px', borderRadius: '10px', fontSize: '10px', fontWeight: '700', border: '1px solid #C8A23A' }}>
+                                🎯 CCP {(s.ccpVises ?? []).join(', ')}{s.avecEntretienFinal ? ' + EF' : ''}
+                              </span>
+                            ) : (
+                              <span style={{ backgroundColor: '#e6f4f1', color: '#006B68', padding: '1px 7px', borderRadius: '10px', fontSize: '10px', fontWeight: '700' }}>
+                                🎓 TP complet
+                              </span>
+                            )}
+                          </div>
+                          <div style={{ fontSize: '10px', color: '#888' }}>{cfg2?.numero}</div>
                           <div style={{ fontSize: '11px', color: '#555', marginTop: '2px' }}>📅 {s.dateDebut} → {s.dateFin}</div>
                           <div style={{ fontSize: '10px', color: '#888', marginTop: '2px' }}>👥 {s.candidats.length} candidat(s) · 👨‍⚖️ {s.jures.length} juré(s)</div>
                           {s.numeroCERES && <div style={{ fontSize: '10px', color: '#888' }}>CERES : {s.numeroCERES}</div>}
@@ -659,8 +760,36 @@ export default function Examens() {
                       </div>
                       {/* Situations évaluation */}
                       <div style={{ backgroundColor: '#EAF4F3', borderRadius: '8px', padding: '12px' }}>
-                        <div style={{ fontSize: '11px', fontWeight: '700', color: '#006B68', marginBottom: '8px', textTransform: 'uppercase' }}>📋 Situations d'évaluation</div>
-                        {cfg.situations.filter(s => s.applicable).map(s => (
+                        <div style={{ fontSize: '11px', fontWeight: '700', color: '#006B68', marginBottom: '8px', textTransform: 'uppercase' }}>
+                          📋 Situations d'évaluation {sessionSel.typeSession === 'ccp' ? '— session CCP' : '— TP complet'}
+                        </div>
+                        {sessionSel.typeSession === 'ccp' ? (() => {
+                          const codeCcp = (sessionSel.ccpVises ?? [])[0];
+                          const ccp = ccpsDuTP(sessionSel.formation).find(c => c.code === codeCcp);
+                          if (!ccp) return <div style={{ fontSize: '12px', color: '#e53e3e' }}>⚠️ Aucun CCP sélectionné pour cette session.</div>;
+                          if (!ccp.durees) return <div style={{ fontSize: '12px', color: '#C8A23A' }}>⚠️ Durées du {ccp.code} non renseignées dans le référentiel — se reporter au DTE.</div>;
+                          const lignes = [
+                            { label: 'Mise en situation professionnelle', duree: ccp.durees.msp },
+                            { label: 'Entretien technique', duree: ccp.durees.et },
+                            { label: 'Questionnement à partir de production(s)', duree: ccp.durees.qap },
+                            { label: 'Questionnaire professionnel', duree: ccp.durees.qp },
+                          ].filter(l => l.duree);
+                          if (sessionSel.avecEntretienFinal) {
+                            const ef = cfg.situations.find(s => s.id === 'EF');
+                            if (ef?.applicable) lignes.push({ label: 'Entretien final (dernier CCP du parcours)', duree: ef.duree });
+                          }
+                          return (
+                            <>
+                              <div style={{ fontSize: '11px', color: '#006B68', fontWeight: '600', marginBottom: '6px' }}>{ccp.code} — {ccp.intitule}{ccp.numeroCp ? ` (${ccp.numeroCp})` : ''}</div>
+                              {lignes.map(l => (
+                                <div key={l.label} style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', borderBottom: '1px solid #d0e8e6', fontSize: '12px' }}>
+                                  <span style={{ color: '#333' }}>{l.label}</span>
+                                  <span style={{ fontWeight: '700', color: cfg.couleur }}>{l.duree}</span>
+                                </div>
+                              ))}
+                            </>
+                          );
+                        })() : cfg.situations.filter(s => s.applicable).map(s => (
                           <div key={s.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', borderBottom: '1px solid #d0e8e6', fontSize: '12px' }}>
                             <span style={{ color: '#333' }}>{s.label}</span>
                             <span style={{ fontWeight: '700', color: cfg.couleur }}>{s.duree}</span>
@@ -882,6 +1011,36 @@ export default function Examens() {
                                   <button onClick={() => maj('candidats', sessionSel.candidats.filter((_, i) => i !== ci))} style={{ backgroundColor: '#fde8e8', color: '#e53e3e', border: 'none', borderRadius: '4px', padding: '2px 6px', fontSize: '10px', cursor: 'pointer', marginLeft: 'auto' }}>✕</button>
                                 </div>
 
+                                {/* ── LIVRET DE CERTIFICATION (consolidé, toutes sessions) ── */}
+                                {(c as any).apprenantId && (() => {
+                                  const livret = livretApprenant(sessions, (c as any).apprenantId, sessionSel.formation);
+                                  const tousCcps = ccpsDuTP(sessionSel.formation);
+                                  const acquis = tousCcps.filter(x => livret[x.code]?.etat === 'obtenu');
+                                  if (acquis.length === 0) return null;
+                                  return (
+                                    <div style={{ marginTop: '10px', padding: '8px 12px', borderRadius: '8px', backgroundColor: '#e6f4f1', border: '1px solid #006B68' }}>
+                                      <div style={{ fontSize: '10px', fontWeight: '700', color: '#006B68', textTransform: 'uppercase', marginBottom: '5px' }}>
+                                        📘 Livret de certification — {acquis.length}/{tousCcps.length} CCP acquis
+                                      </div>
+                                      {tousCcps.map(x => {
+                                        const l = livret[x.code];
+                                        const obtenu = l?.etat === 'obtenu';
+                                        return (
+                                          <div key={x.code} style={{ display: 'flex', gap: '6px', alignItems: 'center', fontSize: '11px', padding: '2px 0' }}>
+                                            <span style={{ fontWeight: '700', color: obtenu ? '#16a34a' : '#888', flex: '0 0 46px' }}>{obtenu ? '✅' : '⬜'} {x.code}</span>
+                                            <span style={{ color: obtenu ? '#333' : '#aaa', flex: '1 1 200px' }}>{x.intitule}</span>
+                                            {obtenu && (
+                                              <span style={{ fontSize: '10px', color: '#006B68', fontWeight: '600' }}>
+                                                {l.numero ? l.numero + ' · ' : ''}session du {l.dateSession}
+                                              </span>
+                                            )}
+                                          </div>
+                                        );
+                                      })}
+                                    </div>
+                                  );
+                                })()}
+
                                 {/* ── CCP & DÉCISION DU JURY ── */}
                                 <div style={{ marginTop: '10px', paddingTop: '10px', borderTop: '1px dashed #d0e8e6' }}>
                                   <div style={{ display: 'flex', gap: '8px', marginBottom: '8px', flexWrap: 'wrap' }}>
@@ -907,7 +1066,10 @@ export default function Examens() {
                                   </div>
 
                                   <div style={{ fontSize: '10px', color: '#888', fontWeight: '700', textTransform: 'uppercase', marginBottom: '6px' }}>🎯 CCP — résultats et numéros attribués</div>
-                                  {ccpsDuTP(sessionSel.formation).map(ccp => {
+                                  {ccpsDuTP(sessionSel.formation)
+                                    .filter(ccp => sessionSel.typeSession !== 'ccp'
+                                      || (sessionSel.ccpVises ?? []).includes(ccp.code))
+                                    .map(ccp => {
                                     const etat = ((c as any).resultatsCcp ?? {})[ccp.code] ?? '';
                                     const numero = ((c as any).numerosCcp ?? {})[ccp.code] ?? '';
                                     return (
@@ -1118,6 +1280,34 @@ export default function Examens() {
           <div style={{ backgroundColor: 'white', borderRadius: '12px', padding: '28px', width: '560px', maxHeight: '88vh', overflowY: 'auto', boxShadow: '0 8px 32px rgba(0,0,0,0.2)' }}>
             <h2 style={{ fontSize: '16px', fontWeight: '700', color: '#006B68', marginBottom: '20px' }}>+ Nouvelle session d'examen</h2>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                <div>
+                  <label style={{ fontSize: '11px', color: '#888', textTransform: 'uppercase', fontWeight: '600', display: 'block', marginBottom: '3px' }}>Type de session *</label>
+                  <select style={inputStyle} value={form.typeSession ?? 'titre'} onChange={e => setForm(p => ({ ...p, typeSession: e.target.value as any, ccpVises: [] }))}>
+                    <option value="titre">🎓 Session titre (TP complet)</option>
+                    <option value="ccp">🎯 Session CCP (rattrapage — 1 seul CCP)</option>
+                  </select>
+                </div>
+                <div>
+                  <label style={{ fontSize: '11px', color: '#888', textTransform: 'uppercase', fontWeight: '600', display: 'block', marginBottom: '3px' }}>Journée d'examen</label>
+                  <input style={inputStyle} value={form.groupeExamenId ?? ''} placeholder="ex. SC_20260921" onChange={e => setForm(p => ({ ...p, groupeExamenId: e.target.value }))} />
+                </div>
+              </div>
+              {form.typeSession === 'ccp' && form.formation && (
+                <div style={{ backgroundColor: '#EAF4F3', borderRadius: '8px', padding: '10px 12px' }}>
+                  <label style={{ fontSize: '11px', color: '#006B68', textTransform: 'uppercase', fontWeight: '700', display: 'block', marginBottom: '3px' }}>CCP visé *</label>
+                  <select style={inputStyle} value={(form.ccpVises ?? [])[0] ?? ''} onChange={e => setForm(p => ({ ...p, ccpVises: e.target.value ? [e.target.value] : [] }))}>
+                    <option value="">Choisir le CCP...</option>
+                    {ccpsDuTP(form.formation).map(c => (
+                      <option key={c.code} value={c.code}>{c.code} — {c.intitule}</option>
+                    ))}
+                  </select>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '11px', marginTop: '8px', cursor: 'pointer' }}>
+                    <input type="checkbox" checked={form.avecEntretienFinal ?? false} onChange={e => setForm(p => ({ ...p, avecEntretienFinal: e.target.checked }))} />
+                    <span style={{ color: '#006B68', fontWeight: '600' }}>Dernier CCP du parcours — entretien final dans cette session</span>
+                  </label>
+                </div>
+              )}
               <div>
                 <label style={{ fontSize: '11px', color: '#888', textTransform: 'uppercase', fontWeight: '600', display: 'block', marginBottom: '3px' }}>Formation *</label>
                 <select style={inputStyle} value={form.formation ?? ''} onChange={e => setForm(p => ({ ...p, formation: e.target.value }))}>
