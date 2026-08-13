@@ -1240,12 +1240,11 @@ export default function Examens() {
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                       {[
                         { titre: '📊 Enregistrement résultats CERES', champ: 'dateResultatsCERES', label: 'Date enregistrement résultats sur CERES', lien: true },
-                        { titre: '🖨 PV d\'examen', champ: 'pvImporte', label: 'PV imprimé et importé', fichier: true },
-                        { titre: '✍️ Signature PV par jurés', champ: 'pvSigne', label: 'PV signé importé', fichier: true },
-                        { titre: '🌐 Envoi copie PV — démarches.numerique.gouv.fr', champ: 'pvEnvoiDemarche', label: 'Date envoi demarche.numerique.gouv.fr', lien2: 'https://demarche.numerique.gouv.fr/' },
-                        { titre: '📮 PV original par courrier recommandé AR', champ: 'pvCourrierReco', label: 'Date envoi recommandé' },
-                        { titre: '📥 Réception PV validé par DEETS', champ: 'pvReceptionDeets', label: 'Date réception PV DEETS' },
-                        { titre: '📁 Import PV DEETS validé', champ: 'pvDeets', label: 'PV DEETS importé', fichier: true },
+                        { titre: '✍️ Importer PV Général signé par jurés', champ: 'pvSigne', label: 'PV signé importé', fichier: true },
+                        { titre: '🌐 Dépot PV validés — démarches.numerique.gouv.fr', champ: 'pvEnvoiDemarche', label: 'Date envoi demarche.numerique.gouv.fr', lien2: 'https://demarche.numerique.gouv.fr/' },
+                        { titre: '📮 PV originaux par courrier recommandé AR', champ: 'pvCourrierReco', label: 'Date envoi recommandé' },
+                        { titre: '📥 Réception PV validés par DEETS', champ: 'pvReceptionDeets', label: 'Date réception PV DEETS' },
+                        { titre: '📁 Import attestation PV validés DEETS', champ: 'pvDeets', label: 'PV DEETS importé', fichier: true },
                       ].map(bloc => (
                         <div key={bloc.champ} style={{ backgroundColor: (sessionSel as any)[bloc.champ] ? '#e6f4f1' : '#fafafa', borderRadius: '8px', padding: '10px 12px', border: `1px solid ${(sessionSel as any)[bloc.champ] ? '#006B68' : '#e0e0e0'}` }}>
                           <div style={{ fontSize: '12px', fontWeight: '700', color: '#006B68', marginBottom: '6px' }}>
