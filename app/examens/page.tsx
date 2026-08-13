@@ -2,6 +2,8 @@
 
 import { useState, useEffect } from 'react';
 import Card from '../../components/Card';
+import TauxReussite from '../../components/TauxReussite';
+import SelecteurJure from '../../components/SelecteurJure';
 import {
   chargerExamens as chargerExamensSupabase,
   sauvegarderExamen as sauvegarderExamenSupabase,
@@ -9,6 +11,20 @@ import {
 } from '../../data/examensSupabase';
 import { chargerApprentis } from '../../data/apprentisSupabase';
 import { ccpsDuTP, dateLimiteRepresentation, joursAvantLimite } from '../../lib/referentielsTP';
+import {
+  METHODE_PAR_DEFAUT,
+  libelleMethode,
+  deduireDecisionJury,
+  LIBELLE_DECISION,
+  COULEUR_DECISION,
+  LIBELLE_CANDIDATURE,
+  tauxParTP,
+  tauxParAnnee,
+  tauxParCandidature,
+  tauxParCcp,
+  phrasePublication,
+  type MethodeCalcul,
+} from '../../lib/tauxReussite';
 import {
   chargerJures,
   creerJure,
@@ -253,7 +269,7 @@ function alerteCouleur(jours: number | null, seuil: number): string {
 export default function Examens() {
   const [sessions, setSessions] = useState<SessionExamen[]>([]);
   const [sessionSel, setSessionSel] = useState<SessionExamen | null>(null);
-  const [onglet, setOnglet] = useState<'sessions' | 'agrement' | 'jures'>('sessions');
+  const [onglet, setOnglet] = useState<'sessions' | 'agrement' | 'jures' | 'taux'>('sessions');
   const [ongletFiche, setOngletFiche] = useState<'infos' | 'dte' | 'jury' | 'candidats' | 'documents' | 'pv' | 'emargement'>('infos');
   const [modale, setModale] = useState(false);
   const [afficherArchives, setAfficherArchives] = useState(false);
@@ -263,6 +279,7 @@ export default function Examens() {
   const [filtreAnnee, setFiltreAnnee] = useState('');
   const [filtreType, setFiltreType] = useState('');
   const [recherche, setRecherche] = useState('');
+  const [selecteurJure, setSelecteurJure] = useState(false);
   const [form, setForm] = useState<Partial<SessionExamen>>({
     lieu: '1 Chemin Dubuisson 97436 Saint-Leu',
     responsableNom: 'MAILLOT', responsablePrenom: 'Paméla',
@@ -462,6 +479,7 @@ export default function Examens() {
           { id: 'sessions', label: '📅 Sessions d\'examen' },
           { id: 'agrement', label: '📋 Agréments TP' },
           { id: 'jures', label: '👨‍⚖️ Répertoire jurés' },
+          { id: 'taux', label: '📊 Taux de réussite' },
         ].map(o => (
           <button key={o.id} onClick={() => setOnglet(o.id as any)} style={{ padding: '10px 18px', fontSize: '13px', fontWeight: '600', border: 'none', borderBottom: onglet === o.id ? '3px solid #006B68' : '3px solid transparent', backgroundColor: 'white', color: onglet === o.id ? '#006B68' : '#888', cursor: 'pointer', marginBottom: '-2px' }}>
             {o.label}
@@ -562,6 +580,16 @@ export default function Examens() {
             );
           })}
         </div>
+      )}
+
+      {/* ── TAUX DE RÉUSSITE ── */}
+      {onglet === 'taux' && (
+        <TauxReussite
+          sessions={sessions}
+          filtreTP={filtreTP}
+          filtreAnnee={filtreAnnee}
+          formations={FORMATIONS_EXAMEN}
+        />
       )}
 
       {/* ── RÉPERTOIRE JURÉS ── */}
@@ -851,10 +879,7 @@ export default function Examens() {
                             <span style={{ backgroundColor: '#fde8e8', color: '#e53e3e', padding: '4px 10px', borderRadius: '8px', fontWeight: '700', fontSize: '11px' }}>⚠️ Commander jurés sur CERES — J-{joursDebut}</span>
                           )}
                         </div>
-                        <button onClick={() => {
-                          const n: Jure = { id: Date.now().toString(), nom: '', prenom: '', telephone: '', email: '', specialite: '', disponible: false, mailEnvoye: '', confirme: false };
-                          maj('jures', [...sessionSel.jures, n]);
-                        }} style={{ ...btnPrimary, padding: '5px 10px', fontSize: '11px' }}>+ Ajouter juré</button>
+                        <button onClick={() => setSelecteurJure(true)} style={{ ...btnPrimary, padding: '5px 10px', fontSize: '11px' }}>+ Ajouter juré</button>
                       </div>
 
                       <div>
@@ -1281,6 +1306,15 @@ export default function Examens() {
             </div>
           )}
         </div>
+      )}
+
+      {selecteurJure && sessionSel && (
+        <SelecteurJure
+          formation={sessionSel.formation}
+          dejaPresents={sessionSel.jures}
+          onAjouter={j => maj('jures', [...sessionSel.jures, j])}
+          onFermer={() => setSelecteurJure(false)}
+        />
       )}
 
       {/* Modale création */}
