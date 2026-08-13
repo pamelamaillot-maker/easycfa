@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { COLORS } from '../lib/constants';
 import { chargerApprentis } from '../data/apprentisSupabase';
 import { chargerApcs } from '../data/apcsSupabase';
+import { chargerExamens } from '../data/examensSupabase';
 import { chargerEntretiens as chargerEntretiensSupabase } from '../data/entretiensSupabase';
 import { verifierConformiteSifa } from '../data/mockApprenants_reels';
 import { chargerOuCreerEntretiensApprenant, calculerDatePrevue, calculerStatut, STATUT_STYLE, LIBELLE_TYPE } from '../data/mockEntretiens';
@@ -95,6 +96,7 @@ export default function Dashboard() {
   const [apprenants, setApprenants] = useState<any[]>([]);
   const [apcs, setApcs] = useState<any[]>([]);
   const [entretiensRetard, setEntretiensRetard] = useState<any[]>([]);
+  const [examens, setExamens] = useState<any[]>([]);
   const [chargement, setChargement] = useState(true);
   const [annee, setAnnee] = useState<string>(new Date().getFullYear().toString());
   const [listeDetail, setListeDetail] = useState<{ titre: string; couleur: string; apprenants: any[] } | null>(null);
@@ -118,6 +120,14 @@ export default function Dashboard() {
       }
       setApprenants(apps.filter((a: any) => a.archive !== true));
       setApcs(apcsList);
+
+      try {
+        const exs = await chargerExamens();
+        console.log(`[Dashboard] ${exs.length} sessions d'examen chargées depuis Supabase ✅`);
+        setExamens(exs.filter((e: any) => e.archive !== true));
+      } catch (e) {
+        console.error('[Dashboard] Erreur chargement examens Supabase', e);
+      }
 
       const retards: any[] = [];
       try {
@@ -345,6 +355,109 @@ export default function Dashboard() {
         <ChiffreCle icone="⚠️" label="SIFA" valeur={sifaManquants.length} sous="à compléter (en cours)" couleur={sifaManquants.length > 0 ? '#C8A23A' : '#16a34a'} href="/apprenants" />
       </div>
 
+      {/* PLANNING DES SESSIONS D'EXAMEN */}
+      {(() => {
+        const aujourdhui = new Date();
+        aujourdhui.setHours(0, 0, 0, 0);
+        const sessionsAnnee = examens
+          .filter((e: any) => {
+            const d = parseDateFr(e.dateDebut);
+            return d && d.getFullYear() === anneeNum;
+          })
+          .map((e: any) => {
+            const d = parseDateFr(e.dateDebut);
+            const jours = d ? Math.ceil((d.getTime() - aujourdhui.getTime()) / 86400000) : null;
+            return { ...e, _date: d, _jours: jours };
+          })
+          .sort((a: any, b: any) => (a._date?.getTime() ?? 0) - (b._date?.getTime() ?? 0));
+
+        if (sessionsAnnee.length === 0) return null;
+
+        const aVenir = sessionsAnnee.filter((e: any) => e._jours !== null && e._jours >= 0);
+
+        return (
+          <div style={{ marginBottom: '24px' }}>
+            <CarteSection titre={`Sessions d'examen ${annee}`} icone="🎓" couleur="#006B68" href="/examens">
+              <div style={{ fontSize: '11px', color: '#888', marginBottom: '10px', fontWeight: '600' }}>
+                {sessionsAnnee.length} session{sessionsAnnee.length > 1 ? 's' : ''} · {aVenir.length} à venir
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                {sessionsAnnee.map((e: any) => {
+                  const estCcp = e.typeSession === 'ccp';
+                  const passee = e._jours !== null && e._jours < 0;
+                  const alertes: string[] = [];
+                  if (!passee && e._jours !== null) {
+                    if (!e.dateCmdDTE && e._jours <= 120) alertes.push('DTE');
+                    if (!e.dateCmdJury && e._jours <= 90) alertes.push('jurés');
+                    if (!e.dateEnvoiConvocations && e._jours <= 40) alertes.push('convocations');
+                  }
+                  const couleurJ = passee ? '#aaa' : (e._jours ?? 999) <= 40 ? '#e53e3e' : (e._jours ?? 999) <= 90 ? '#C8A23A' : '#16a34a';
+                  return (
+                    <div key={e.id} style={{
+                      display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '10px',
+                      padding: '8px 10px', borderRadius: '8px', flexWrap: 'wrap',
+                      backgroundColor: passee ? '#fafafa' : alertes.length > 0 ? '#fde8e8' : '#EAF4F3',
+                      opacity: passee ? 0.6 : 1,
+                    }}>
+                      <div style={{ flex: '1 1 220px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                          <span style={{ fontSize: '12px', fontWeight: '700', color: '#006B68' }}>{e.formation}</span>
+                          <span style={{
+                            fontSize: '9px', fontWeight: '700', padding: '1px 6px', borderRadius: '10px',
+                            backgroundColor: estCcp ? '#fef6e4' : '#e6f4f1',
+                            color: estCcp ? '#C8A23A' : '#006B68',
+                          }}>
+                            {estCcp ? `CCP ${(e.ccpVises ?? []).join(', ')}` : 'TP complet'}
+                          </span>
+                          {e.numeroCERES && <span style={{ fontSize: '10px', color: '#888' }}>CERES {e.numeroCERES}</span>}
+                        </div>
+                        <div style={{ fontSize: '11px', color: '#555', marginTop: '2px' }}>
+                          📅 {e.dateDebut}{e.dateFin ? ` → ${e.dateFin}` : ''} · 👥 {(e.candidats ?? []).length} candidat(s)
+                        </div>
+                        {(() => {
+                          // ⚠️ Mêmes 15 contrôles que tauxCompletion() dans app/examens/page.tsx.
+                          // Toute modification là-bas doit être répercutée ici.
+                          const checks = [
+                            !!e.dateCreationCERES, !!e.numeroCERES,
+                            !!e.dateCmdDTE, !!e.dateReceptionDTE,
+                            (e.jures ?? []).length > 0, !!e.dateCmdJury,
+                            !!e.dateEnvoiConvocations,
+                            !!e.affichageReglement, !!e.affichagePlanning, !!e.affichageConditions,
+                            !!e.dateResultatsCERES, !!e.pvSigne, !!e.pvEnvoiDemarche,
+                            !!e.pvCourrierReco, !!e.pvDeets,
+                          ];
+                          const taux = Math.round((checks.filter(Boolean).length / checks.length) * 100);
+                          const couleurT = taux === 100 ? '#16a34a' : taux >= 50 ? '#006B68' : '#C8A23A';
+                          return (
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '4px' }}>
+                              <div style={{ backgroundColor: '#e0e0e0', borderRadius: '4px', height: '4px', width: '110px' }}>
+                                <div style={{ height: '4px', borderRadius: '4px', backgroundColor: couleurT, width: taux + '%' }} />
+                              </div>
+                              <span style={{ fontSize: '10px', color: couleurT, fontWeight: '700' }}>{taux}% complété</span>
+                              {passee && taux < 100 && (
+                                <span style={{ fontSize: '10px', color: '#e53e3e', fontWeight: '700' }}>· 🔍 Vérification à mener</span>
+                              )}
+                            </div>
+                          );
+                        })()}
+                        {alertes.length > 0 && (
+                          <div style={{ fontSize: '10px', color: '#e53e3e', fontWeight: '700', marginTop: '2px' }}>
+                            ⚠️ À faire : {alertes.join(' · ')}
+                          </div>
+                        )}
+                      </div>
+                      <span style={{ fontSize: '12px', fontWeight: '800', color: couleurJ, flex: '0 0 60px', textAlign: 'right' }}>
+                        {passee ? 'Passée' : `J-${e._jours}`}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            </CarteSection>
+          </div>
+        );
+      })()}
+
       {/* GRAPHIQUES */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.6fr', gap: '16px', marginBottom: '24px' }}>
         <div style={{ backgroundColor: 'white', borderRadius: '14px', padding: '18px', boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }}>
@@ -527,7 +640,7 @@ export default function Dashboard() {
               {entretiensRetard.slice(0, 5).map((e: any) => {
                 const s = STATUT_STYLE[e.statut as keyof typeof STATUT_STYLE];
                 return (
-                  <Link key={e.id} href={`/apprenants/${e.apprenantId}`} style={{ textDecoration: 'none' }}>
+                  <Link key={e.id ?? `${e.apprenantId}_${e.type}`} href={`/apprenants/${e.apprenantId}`} style={{ textDecoration: 'none' }}>
                     <div style={{ padding: '8px 10px', borderRadius: '8px', backgroundColor: '#fde8e8', border: '1px solid #fecaca', cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                       <div>
                         <div style={{ fontSize: '12px', fontWeight: '700', color: '#c53030' }}>{e.apprenantNom}</div>
