@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import Card from '../../components/Card';
 import TauxReussite from '../../components/TauxReussite';
 import SelecteurJure from '../../components/SelecteurJure';
+import BoutonPdfEmargementExamen from '../../components/BoutonPdfEmargementExamen';
 import {
   chargerExamens as chargerExamensSupabase,
   sauvegarderExamen as sauvegarderExamenSupabase,
@@ -1335,6 +1336,18 @@ export default function Examens() {
                   {/* ── ÉMARGEMENTS ── */}
                   {ongletFiche === 'emargement' && (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                      {/* Génération des feuilles vierges */}
+                      <div style={{ backgroundColor: '#EAF4F3', borderRadius: '8px', padding: '12px', border: '1px solid #006B68' }}>
+                        <div style={{ fontSize: '12px', fontWeight: '700', color: '#006B68', marginBottom: '4px' }}>
+                          🖨 Générer les feuilles d&apos;émargement
+                        </div>
+                        <div style={{ fontSize: '10px', color: '#888', marginBottom: '10px', fontStyle: 'italic' }}>
+                          Une page par épreuve pour les candidats, une page jury, et le tableau de correspondance
+                          des identifiants. Dates et heures à compléter le jour de la session.
+                        </div>
+                        <BoutonPdfEmargementExamen session={sessionSel} situationsTitre={cfg.situations} />
+                      </div>
+
                       {/* Émargement jurés */}
                       <div style={{ backgroundColor: '#EAF4F3', borderRadius: '8px', padding: '12px' }}>
                         <div style={{ fontSize: '12px', fontWeight: '700', color: '#006B68', marginBottom: '8px' }}>👨‍⚖️ Émargement jurés (feuille collective)</div>

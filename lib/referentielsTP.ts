@@ -25,9 +25,22 @@ export interface CCP {
   durees?: DureesCcp;
 }
 
+/**
+ * Découpage de la mise en situation lorsqu'elle donne lieu à DEUX passages
+ * distincts appelant chacun une signature (cas de l'AD : partie orale
+ * obligatoirement après la partie écrite, devant le jury).
+ * Un simple découpage interne d'une MSP continue ne se déclare PAS ici :
+ * le candidat signe une fois pour l'épreuve, quel que soit son déroulé.
+ */
+export interface MspEnDeuxTemps {
+  ecrite: string;   // ex. '4h30'
+  orale: string;    // ex. '0h30'
+}
+
 export interface ReferentielTP {
   sigle: string;
   intitule: string;
+  mspDeuxTemps?: MspEnDeuxTemps;   // session titre uniquement
   codeRncp: string;
   codeTitre?: string;              // TP-00140 — code ministère
   millesime?: string;              // millésime du REV
@@ -44,6 +57,7 @@ export const REFERENTIELS_TP: ReferentielTP[] = [
     sigle: 'SC',
     intitule: 'Secrétaire comptable',
     codeRncp: '37123',
+    codeTitre: 'TP-00402',
     niveau: 4,
     ccps: [
       { code: 'CCP1', codeBloc: 'RNCP37123BC01', ordre: 1, numeroCp: 'CP-003056',
@@ -61,6 +75,7 @@ export const REFERENTIELS_TP: ReferentielTP[] = [
     sigle: 'ARH',
     intitule: 'Assistant ressources humaines',
     codeRncp: '41366',            // ex-RNCP 35030 — seul l'enregistrement a changé
+    codeTitre: 'TP-01284',
     versionRev: 'REV2_ARH_V03_03082020',  // REV inchangé, prorogé jusqu'au 04/11/2027
     niveau: 5,
     dateEcheanceEnregistrement: '2027-11-04',
@@ -76,6 +91,10 @@ export const REFERENTIELS_TP: ReferentielTP[] = [
   {
     sigle: 'AD',
     intitule: 'Assistant de direction',
+    // REV V04 : partie écrite 4h30 puis partie orale 0h30, cette dernière
+    // se déroulant obligatoirement après l'écrit, devant le jury.
+    // Deux passages distincts = deux signatures sur la feuille d'émargement.
+    mspDeuxTemps: { ecrite: '4h30', orale: '0h30' },
     codeRncp: '38667',
     codeTitre: 'TP-01293',
     millesime: '04',
@@ -138,6 +157,7 @@ export const REFERENTIELS_TP: ReferentielTP[] = [
     sigle: 'EC',
     intitule: 'Employé commercial',
     codeRncp: '37099',
+    codeTitre: 'TP-00219',
     niveau: 3,
     ccps: [
       { code: 'CCP1', codeBloc: 'RNCP37099BC01', ordre: 1, numeroCp: 'CP-003062',
@@ -152,6 +172,7 @@ export const REFERENTIELS_TP: ReferentielTP[] = [
     sigle: 'CV',
     intitule: 'Conseiller de vente',
     codeRncp: '37098',
+    codeTitre: 'TP-00520',
     niveau: 4,
     ccps: [
       { code: 'CCP1', codeBloc: 'RNCP37098BC01', ordre: 1, numeroCp: 'CP-003060',
@@ -170,6 +191,7 @@ export const REFERENTIELS_TP: ReferentielTP[] = [
     sigle: 'FPA',
     intitule: "Formateur professionnel d'adultes",
     codeRncp: '37275',
+    codeTitre: 'TP-00350',
     niveau: 5,
     // Intitulés et n° CP relevés dans CERES. Ordre des CCP confirmé.
     // Durées d'épreuve non renseignées : se reporter au REV / DTE.
