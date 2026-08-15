@@ -2,14 +2,21 @@
 
 import { useState } from 'react';
 import { COLORS } from '../../lib/constants';
+import { useEffect } from 'react';
+import { chargerApprentis } from '../../data/apprentisSupabase';
+import { chargerSessions } from '../../data/sessionsSupabase';
+import { chargerInterventions } from '../../data/interventionsSupabase';
 import Card from '../../components/Card';
 import StatCard from '../../components/StatCard';
 import { INDICATEURS_QUALIOPI, RESULTATS_FORMATIONS, PREUVES, QUALIOPI_STATS, SESSIONS_EXAMENS, EPREUVES_PAR_FORMATION, DOCUMENTS_EXAMEN } from '../../data/mockQualiopi';
 import type { ResultatCCP } from '../../data/mockQualiopi';
+import GestionEvaluationsEnseignements from '../../components/GestionEvaluationsEnseignements';
 import dynamic from 'next/dynamic';
 const BoutonPdfConvocation = dynamic(() => import('../../components/BoutonPdfConvocation'), { ssr: false });
 
-const ONGLETS = ['Tableau de bord', 'Indicateurs', 'Résultats & CCP', 'Preuves documentaires', 'Examens', 'Alertes'];
+// L'onglet « Examens » a été retiré : il faisait doublon avec la page Examens,
+// désormais alimentée par des données réelles (sessions, candidats, jurés, PV).
+const ONGLETS = ['Tableau de bord', 'Indicateurs', 'Résultats & CCP', 'Preuves documentaires', 'Éval. enseignements', 'Alertes'];
 
 const STATUT_IND: Record<string, { bg: string; color: string; icon: string }> = {
   'Conforme':     { bg: '#e6f4f1', color: '#006B68', icon: '✅' },
@@ -33,6 +40,29 @@ function TauxBar({ taux, color }: { taux: number; color: string }) {
 
 export default function Qualiopi() {
   const [onglet, setOnglet] = useState(0);
+
+  // Données réelles pour l'indicateur 33
+  const [interventionsDb, setInterventionsDb] = useState<any[]>([]);
+  const [sessionsDb, setSessionsDb] = useState<any[]>([]);
+  const [apprenantsDb, setApprenantsDb] = useState<any[]>([]);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const [i, s, a] = await Promise.all([
+          chargerInterventions(),
+          chargerSessions(),
+          chargerApprentis(),
+        ]);
+        console.log(`[Qualiopi] ${i.length} intervention(s), ${s.length} session(s), ${a.length} apprenant(s) ✅`);
+        setInterventionsDb(i as any[]);
+        setSessionsDb(s as any[]);
+        setApprenantsDb(a as any[]);
+      } catch (e) {
+        console.error('[Qualiopi] Erreur chargement données Supabase', e);
+      }
+    })();
+  }, []);
   const [formationSelectionnee, setFormationSelectionnee] = useState('SC');
   const [indicateurs, setIndicateurs] = useState(INDICATEURS_QUALIOPI);
   const [indicateurEdite, setIndicateurEdite] = useState<string | null>(null);
@@ -632,8 +662,20 @@ export default function Qualiopi() {
         </Card>
       )}
 
-{/* ===== ONGLET 5 — Examens ===== */}
+{/* ===== ONGLET 5 — Évaluation des enseignements (indicateur 33) ===== */}
       {onglet === 4 && (
+        <GestionEvaluationsEnseignements
+          interventions={interventionsDb}
+          sessions={sessionsDb}
+          apprenants={apprenantsDb}
+          analysePar="Paméla MAILLOT"
+        />
+      )}
+
+      {/* ⚠️ Ancien onglet Examens — code conservé mais inatteignable (onglet === 99).
+          À supprimer lors de la refonte de la page Qualiopi : il fait doublon
+          avec la page Examens, désormais alimentée par des données réelles. */}
+      {onglet === 99 && (
         <div>
           {/* Sélecteur session */}
           <Card style={{ marginBottom: '24px' }}>

@@ -147,7 +147,12 @@ export const RESULTATS_FORMATIONS = [
   },
 ];
 
-export const PREUVES = [
+export type PreuveQualiopi = {
+  id: number; indicateur: string; libelle: string; type: string;
+  dateAjout: string; statut: string; lien?: string; fichierNom?: string;
+};
+
+export const PREUVES: PreuveQualiopi[] = [
   { id: 1, indicateur: 'C1-I1', libelle: 'Plaquette de présentation formations', type: 'Document', dateAjout: '01/05/2026', statut: 'Validé' },
   { id: 2, indicateur: 'C1-I1', libelle: 'Page web programme formations', type: 'Lien web', dateAjout: '01/05/2026', statut: 'Validé' },
   { id: 3, indicateur: 'C2-I4', libelle: 'Référentiel de formation SC', type: 'Document', dateAjout: '01/05/2026', statut: 'Validé' },
@@ -193,6 +198,7 @@ export type CandidatExamen = {
   pvImporte: boolean;
   dateImportPV: string;
   obtentionTP: boolean;
+  emailApprenant?: string;
 };
 
 export type SessionExamen = {
