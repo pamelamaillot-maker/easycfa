@@ -17,7 +17,10 @@ function AppContent({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const estPageLogin = pathname === '/login';
   const estParcours = pathname.startsWith('/parcours/');
-  // Toutes les routes /formateur/* sont gérées par app/formateur/layout.tsx
+  // Questionnaire anonyme d'évaluation des enseignements (indicateur 33 RNQ).
+  // Accès par jeton, sans authentification : l'anonymat est structurel.
+  const estEvalEnseignements = pathname.startsWith('/eval-enseignements/');
+    // Toutes les routes /formateur/* sont gérées par app/formateur/layout.tsx
   // ET /emargement quand l'utilisateur est un formateur (Phase 4.b-bis : sidebar formateur visible)
   const estRouteFormateurPure = pathname === '/formateur' || pathname.startsWith('/formateur/');
   const estEmargementFormateur = !!utilisateur && utilisateur.role === 'formateur' && pathname === '/emargement';
@@ -26,6 +29,7 @@ function AppContent({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (chargement) return;
     if (estParcours) return; // page publique apprenti : pas de redirection
+    if (estEvalEnseignements) return; // questionnaire anonyme : pas de redirection
     if (estRouteFormateur) return; // déléguer à FormateurLayout
 
     if (!utilisateur && !estPageLogin) {
@@ -58,6 +62,7 @@ function AppContent({ children }: { children: React.ReactNode }) {
   if (estRouteFormateur) return <>{children}</>;
 
   if (estParcours) return <>{children}</>; // pas de sidebar, pas d'auth
+  if (estEvalEnseignements) return <>{children}</>; // questionnaire anonyme
   if (estPageLogin) return <>{children}</>;
 
   // Attendre que la session Supabase soit chargée

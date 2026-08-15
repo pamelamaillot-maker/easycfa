@@ -22,6 +22,12 @@ export interface ReponseEvaluation {
 export interface EvaluationEnseignement {
   id: string;
   sessionId?: string;
+  /** Sessions couvertes par la campagne. 36 des 41 interventions de PAM OI
+   *  regroupent plusieurs sessions : une campagne rattachée au seul sessionId
+   *  laisserait la majorité des apprentis sans questionnaire. */
+  sessionIds?: string[];
+  /** Jeton du lien public. Identifie la campagne, jamais le répondant. */
+  jeton?: string;
   formation?: string;
   activiteType?: string;            // AT1, AT2, AT3
   formateurId?: string;
@@ -43,7 +49,7 @@ export interface EvaluationEnseignement {
 }
 
 const CHAMPS_VALIDES_EVALUATION = new Set<string>([
-  'id', 'sessionId', 'formation', 'activiteType',
+  'id', 'sessionId', 'sessionIds', 'jeton', 'formation', 'activiteType',
   'formateurId', 'formateurNom',
   'datePeriodeDebut', 'datePeriodeFin',
   'dateEnvoi', 'dateCloture', 'statut',
@@ -81,6 +87,16 @@ function nettoyerEvaluationPourSupabase(raw: any): any {
 /**
  * Génère un identifiant lisible : EVAL_<session>_<AT>_<horodatage>
  */
+/**
+ * Jeton du lien public. Aléatoire et non devinable : il identifie la campagne
+ * et rien d'autre. Aucun élément permettant de remonter à un apprenti.
+ */
+export function genererJeton(): string {
+  const a = new Uint8Array(16);
+  crypto.getRandomValues(a);
+  return Array.from(a).map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
 export function genererIdEvaluation(sessionId: string, activiteType: string): string {
   return `EVAL_${sessionId}_${activiteType}_${Date.now()}`;
 }
@@ -226,6 +242,40 @@ export async function ajouterReponseAnonyme(
     if (data === false) return { success: false, error: "Cette évaluation n'est plus ouverte aux réponses." };
     return { success: true };
   } catch (e: any) { console.error('Erreur réseau ajouterReponseAnonyme:', e); return { success: false, error: e.message || 'Erreur réseau' }; }
+}
+
+/**
+ * Contexte d'une campagne depuis son jeton — appel PUBLIC, sans authentification.
+ * Ne renvoie jamais les réponses déjà déposées.
+ */
+export async function chargerEvaluationParJeton(jeton: string): Promise<{
+  id: string; formation: string; activiteType: string; formateurNom: string;
+  datePeriodeDebut: string; datePeriodeFin: string; statut: string;
+} | null> {
+  try {
+    const { data, error } = await supabase.rpc('evaluation_par_jeton', { p_jeton: jeton });
+    if (error) { console.error('Erreur Supabase chargerEvaluationParJeton:', error); return null; }
+    return data && data.length > 0 ? data[0] : null;
+  } catch (e) { console.error('Erreur réseau chargerEvaluationParJeton:', e); return null; }
+}
+
+/**
+ * Dépôt d'une réponse anonyme depuis le lien public.
+ * Aucun identifiant d'apprenti n'est transmis ni stocké.
+ */
+export async function repondreParJeton(
+  jeton: string,
+  reponse: ReponseEvaluation,
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const charge: any = { ...reponse, dateReponse: reponse.dateReponse || new Date().toISOString() };
+    for (const champ of ['apprenantId', 'apprentiId', 'nom', 'prenom', 'email', 'id']) delete charge[champ];
+
+    const { data, error } = await supabase.rpc('repondre_par_jeton', { p_jeton: jeton, p_reponse: charge });
+    if (error) { console.error('Erreur Supabase repondreParJeton:', error); return { success: false, error: error.message }; }
+    if (data === false) return { success: false, error: "Cette évaluation n'est plus ouverte aux réponses." };
+    return { success: true };
+  } catch (e: any) { console.error('Erreur réseau repondreParJeton:', e); return { success: false, error: e.message || 'Erreur réseau' }; }
 }
 
 /**
