@@ -168,6 +168,7 @@ export async function creerEvaluationEnseignement(
       nbReponses: 0,
       reponses: [],
       ...evaluation,
+      jeton: evaluation.jeton || genererJeton(),
       dateCreation: evaluation.dateCreation || maintenant,
       dateModification: maintenant,
     });

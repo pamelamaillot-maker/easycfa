@@ -288,7 +288,24 @@ export default function GestionEvaluationsEnseignements({
                       </div>
                       <div style={{ display: 'flex', gap: '7px', alignItems: 'center', flexWrap: 'wrap' }}>
                         <input readOnly value={lien(c)} style={{ ...champ, flex: '1 1 300px', fontSize: '11px', backgroundColor: '#fafafa' }} onFocus={e => e.currentTarget.select()} />
-                        <button onClick={() => { navigator.clipboard?.writeText(lien(c)); setMessage('✅ Lien copié.'); }} style={btnS}>📋 Copier</button>
+                        <button onClick={async () => {
+                          const url = lien(c);
+                          try {
+                            await navigator.clipboard.writeText(url);
+                            setMessage('✅ Lien copié.');
+                          } catch {
+                            // navigator.clipboard est bloqué hors HTTPS : on repasse par une sélection.
+                            const zone = document.createElement('textarea');
+                            zone.value = url;
+                            zone.style.position = 'fixed';
+                            zone.style.opacity = '0';
+                            document.body.appendChild(zone);
+                            zone.select();
+                            const ok = document.execCommand('copy');
+                            document.body.removeChild(zone);
+                            setMessage(ok ? '✅ Lien copié.' : '⚠️ Copie impossible : sélectionnez le lien à la main.');
+                          }
+                        }} style={btnS}>📋 Copier</button>
                       </div>
                       <div style={{ fontSize: '10px', color: '#888', marginTop: '5px', fontStyle: 'italic' }}>
                         Le même lien pour tous : il identifie la campagne, jamais le répondant.
@@ -365,7 +382,19 @@ export default function GestionEvaluationsEnseignements({
                       </button>
                     )}
                     {c.statut === 'envoyee' && (
-                      <button onClick={() => action(() => cloturerEvaluation(c.id!), '✅ Campagne clôturée.')} disabled={enCours} style={btnS}>
+                      <button
+                        onClick={() => {
+                          const restants = (c.nbApprenantsAttendus ?? 0) - (c.nbReponses ?? 0);
+                          const avertissement = restants > 0
+                            ? `\n\n⚠️ ${restants} apprenti(s) n'ont pas encore répondu : leur lien cessera de fonctionner.`
+                            : '';
+                          if (confirm(`Clôturer la campagne « ${c.formation} · ${c.activiteType} » ?${avertissement}\n\nPlus aucune réponse ne sera acceptée. Cette action ne peut pas être annulée.`)) {
+                            action(() => cloturerEvaluation(c.id!), '✅ Campagne clôturée.');
+                          }
+                        }}
+                        disabled={enCours}
+                        style={btnS}
+                      >
                         🔒 Clôturer
                       </button>
                     )}
