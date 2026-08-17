@@ -5,6 +5,7 @@ import Card from '../../components/Card';
 import TauxReussite from '../../components/TauxReussite';
 import SelecteurJure from '../../components/SelecteurJure';
 import BoutonPdfEmargementExamen from '../../components/BoutonPdfEmargementExamen';
+import BoutonsConvocations from '../../components/BoutonsConvocations';
 import {
   chargerExamens as chargerExamensSupabase,
   sauvegarderExamen as sauvegarderExamenSupabase,
@@ -950,6 +951,17 @@ export default function Examens() {
                         <label style={{ fontSize: '10px', color: '#888', display: 'block', marginBottom: '2px', textTransform: 'uppercase' }}>Date envoi convocations</label>
                         <input style={{ ...inputStyle, maxWidth: '200px' }} value={sessionSel.dateEnvoiConvocations ?? ''} placeholder="JJ/MM/AAAA" onChange={e => maj('dateEnvoiConvocations', e.target.value)} />
                       </div>
+
+                      {/* Génération des convocations */}
+                      <div style={{ backgroundColor: '#EAF4F3', borderRadius: '8px', padding: '12px', border: '1px solid #006B68' }}>
+                        <div style={{ fontSize: '12px', fontWeight: '700', color: '#006B68', marginBottom: '4px' }}>
+                          📄 Générer les convocations
+                        </div>
+                        <div style={{ fontSize: '10px', color: '#888', marginBottom: '10px', fontStyle: 'italic' }}>
+                          Une convocation par candidat et par membre du jury, adaptées au type de session.
+                        </div>
+                        <BoutonsConvocations session={sessionSel} situationsTitre={cfg.situations} avecJury={false} />
+                      </div>
                       {sessionSel.candidats.length === 0 ? (
                         <div style={{ padding: '20px', textAlign: 'center', color: '#888', fontStyle: 'italic', fontSize: '12px' }}>Aucun candidat inscrit</div>
                       ) : (
@@ -969,6 +981,8 @@ export default function Examens() {
                                         nom: app ? (app.nom ?? cc.nom) : cc.nom,
                                         prenom: app ? (app.prenom ?? cc.prenom) : cc.prenom,
                                         entreprise: app ? (app.entrepriseNom ?? app.entreprise ?? cc.entreprise) : cc.entreprise,
+                                        dateNaissance: app ? (app.dateNaissance ?? (cc as any).dateNaissance) : (cc as any).dateNaissance,
+                                        email: app ? (app.email ?? (cc as any).email) : (cc as any).email,
                                         typeCandidature: app ? 'apprentissage' : (cc as any).typeCandidature,
                                       } : cc);
                                       maj('candidats', candidats);

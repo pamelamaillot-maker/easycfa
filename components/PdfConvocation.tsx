@@ -86,7 +86,6 @@ export default function PdfConvocation({ candidat, formation, formationId, typeC
         <View style={S.box}>
           <View style={S.row}><Text style={S.lbl}>Nom et prénom :</Text><Text style={S.val}>{candidat.prenom} {candidat.nom}</Text></View>
           <View style={S.row}><Text style={S.lbl}>Date de naissance :</Text><Text style={S.val}>{formaterDateFR(candidat.dateNaissance)}</Text></View>
-          <View style={S.row}><Text style={S.lbl}>Email :</Text><Text style={S.val}>{candidat.email}</Text></View>
           <View style={S.row}><Text style={S.lbl}>Formation :</Text><Text style={S.val}>{formation} ({formationId})</Text></View>
           <View style={S.row}><Text style={S.lbl}>Type de candidature :</Text><Text style={S.val}>{typeCandidature}</Text></View>
           {ccpsPassés.length > 0 && ccpsPassés.length < 3 && (
