@@ -213,3 +213,93 @@ export function tauxConformite(inds: IndicateurQualiopi[]): { taux: number | nul
   const conformes = inds.filter(i => i.statut === 'conforme').length;
   return { taux: Math.round((conformes / base) * 100), base };
 }
+
+// ---------------------------------------------------------------------------
+// PREUVES DOCUMENTAIRES
+// ---------------------------------------------------------------------------
+
+export type TypePreuve = 'document' | 'lien' | 'capture';
+
+export interface PreuveQualiopi {
+  id: string;
+  auditId?: string;
+  indicateurNumero?: number;
+  libelle: string;
+  type?: TypePreuve;
+  fichierNom?: string;
+  fichierUrl?: string;
+  fichierChemin?: string;
+  lien?: string;
+  commentaire?: string;
+  dateAjout?: string | null;
+  ajoutePar?: string;
+  dateCreation?: string;
+  dateModification?: string;
+}
+
+const CHAMPS_PREUVE = new Set<string>([
+  'id', 'auditId', 'indicateurNumero', 'libelle', 'type',
+  'fichierNom', 'fichierUrl', 'fichierChemin', 'lien',
+  'commentaire', 'dateAjout', 'ajoutePar',
+  'dateCreation', 'dateModification',
+]);
+
+function nomFichierPropre(nom: string): string {
+  return nom.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-zA-Z0-9._-]/g, '_');
+}
+
+export async function chargerPreuves(auditId: string): Promise<PreuveQualiopi[]> {
+  try {
+    const { data, error } = await supabase
+      .from('preuves_qualiopi')
+      .select('*')
+      .eq('auditId', auditId)
+      .order('indicateurNumero', { ascending: true });
+    if (error) { console.error('Erreur Supabase chargerPreuves:', error); return []; }
+    return data || [];
+  } catch (e) { console.error('Erreur réseau chargerPreuves:', e); return []; }
+}
+
+export async function creerPreuve(p: PreuveQualiopi): Promise<{ success: boolean; error?: string }> {
+  try {
+    const maintenant = new Date().toISOString();
+    const enr = nettoyer({
+      type: 'document',
+      dateAjout: new Date().toISOString().slice(0, 10),
+      ...p,
+      dateCreation: p.dateCreation || maintenant,
+      dateModification: maintenant,
+    }, CHAMPS_PREUVE, ['dateAjout']);
+    const { error } = await supabase.from('preuves_qualiopi').upsert([enr]);
+    if (error) { console.error('Erreur Supabase creerPreuve:', error); return { success: false, error: error.message }; }
+    return { success: true };
+  } catch (e: any) { return { success: false, error: e.message || 'Erreur réseau' }; }
+}
+
+export async function supprimerPreuve(id: string): Promise<{ success: boolean; error?: string }> {
+  try {
+    const { error } = await supabase.from('preuves_qualiopi').delete().eq('id', id);
+    if (error) { console.error('Erreur Supabase supprimerPreuve:', error); return { success: false, error: error.message }; }
+    return { success: true };
+  } catch (e: any) { return { success: false, error: e.message || 'Erreur réseau' }; }
+}
+
+/** Téléversement réel dans le bucket privé, URL signée un an. */
+export async function uploaderPreuve(
+  auditId: string,
+  indicateurNumero: number,
+  file: File,
+): Promise<{ success: boolean; error?: string; nom?: string; url?: string; chemin?: string }> {
+  try {
+    const chemin = `${auditId}/ind${String(indicateurNumero).padStart(2, '0')}/${Date.now()}_${nomFichierPropre(file.name)}`;
+    const { error: up } = await supabase.storage.from('preuves-qualiopi').upload(chemin, file, { upsert: true });
+    if (up) { console.error('Erreur upload preuve :', up); return { success: false, error: up.message }; }
+    const { data: signed, error: sg } = await supabase.storage
+      .from('preuves-qualiopi').createSignedUrl(chemin, 60 * 60 * 24 * 365);
+    if (sg) { console.error('Erreur URL signée :', sg); return { success: false, error: sg.message }; }
+    return { success: true, nom: file.name, url: signed.signedUrl, chemin };
+  } catch (e: any) {
+    console.error('Exception upload preuve :', e);
+    return { success: false, error: e?.message || String(e) };
+  }
+}

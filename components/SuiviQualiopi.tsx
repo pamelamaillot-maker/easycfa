@@ -25,6 +25,11 @@ import {
   type AuditQualiopi,
   type IndicateurQualiopi,
   type StatutIndicateur,
+  chargerPreuves,
+  creerPreuve,
+  supprimerPreuve,
+  uploaderPreuve,
+  type PreuveQualiopi,
 } from '../data/qualiopiSupabase';
 
 const C = { primary: '#006B68', or: '#C8A23A', fond: '#EAF4F3', rouge: '#e53e3e', vert: '#16a34a' };
@@ -55,6 +60,8 @@ export default function SuiviQualiopi({ verifiePar = '' }: { verifiePar?: string
   const [filtre, setFiltre] = useState<string>('tous');
   const [ouvert, setOuvert] = useState<string | null>(null);
   const [aide, setAide] = useState<number | null>(null);
+  const [preuves, setPreuves] = useState<PreuveQualiopi[]>([]);
+  const [nouvLien, setNouvLien] = useState({ libelle: '', lien: '' });
   const [message, setMessage] = useState<string | null>(null);
   const [enCours, setEnCours] = useState(false);
   const [brouillon, setBrouillon] = useState<{ preuve: string; commentaire: string }>({ preuve: '', commentaire: '' });
@@ -76,6 +83,9 @@ export default function SuiviQualiopi({ verifiePar = '' }: { verifiePar?: string
       const i = await chargerIndicateurs(auditId);
       console.log(`[Qualiopi] ${i.length} indicateur(s) pour ${auditId} ✅`);
       setInds(i);
+      const p = await chargerPreuves(auditId);
+      console.log(`[Qualiopi] ${p.length} preuve(s) ✅`);
+      setPreuves(p);
     })();
   }, [auditId]);
 
@@ -95,6 +105,46 @@ export default function SuiviQualiopi({ verifiePar = '' }: { verifiePar?: string
     if (!r.success) { setMessage('❌ ' + r.error); return; }
     setInds(prev => prev.map(i => i.id === id ? { ...i, ...mods } : i));
     await rafraichirCompteurs(auditId);
+  }
+
+  async function ajouterPreuveFichier(numero: number, file: File) {
+    setEnCours(true);
+    const up = await uploaderPreuve(auditId, numero, file);
+    if (!up.success) { setEnCours(false); setMessage('❌ ' + up.error); return; }
+    const p: PreuveQualiopi = {
+      id: `PRV_${auditId}_${numero}_${Date.now()}`,
+      auditId, indicateurNumero: numero,
+      libelle: file.name, type: 'document',
+      fichierNom: up.nom, fichierUrl: up.url, fichierChemin: up.chemin,
+      ajoutePar: verifiePar,
+    };
+    const r = await creerPreuve(p);
+    setEnCours(false);
+    if (!r.success) { setMessage('❌ ' + r.error); return; }
+    setPreuves(prev => [...prev, p]);
+  }
+
+  async function ajouterPreuveLien(numero: number) {
+    if (!nouvLien.libelle.trim() || !nouvLien.lien.trim()) { setMessage('❌ Libellé et lien obligatoires.'); return; }
+    setEnCours(true);
+    const p: PreuveQualiopi = {
+      id: `PRV_${auditId}_${numero}_${Date.now()}`,
+      auditId, indicateurNumero: numero,
+      libelle: nouvLien.libelle.trim(), type: 'lien',
+      lien: nouvLien.lien.trim(), ajoutePar: verifiePar,
+    };
+    const r = await creerPreuve(p);
+    setEnCours(false);
+    if (!r.success) { setMessage('❌ ' + r.error); return; }
+    setPreuves(prev => [...prev, p]);
+    setNouvLien({ libelle: '', lien: '' });
+  }
+
+  async function retirerPreuve(id: string) {
+    if (!confirm('Supprimer cette preuve ?')) return;
+    const r = await supprimerPreuve(id);
+    if (!r.success) { setMessage('❌ ' + r.error); return; }
+    setPreuves(prev => prev.filter(p => p.id !== id));
   }
 
   async function validerAudit() {
@@ -361,6 +411,76 @@ export default function SuiviQualiopi({ verifiePar = '' }: { verifiePar?: string
                     onChange={e => setBrouillon(p => ({ ...p, commentaire: e.target.value }))}
                     placeholder="Ce qui reste à faire, points de vigilance…"
                     style={{ ...champ, fontFamily: 'inherit', resize: 'vertical', backgroundColor: lectureSeule ? '#fafafa' : 'white' }} />
+
+                  {/* Preuves rattachées */}
+                  <div style={{ marginTop: '10px', paddingTop: '9px', borderTop: '1px solid #d0e8e6' }}>
+                    <div style={{ fontSize: '10px', fontWeight: 800, color: C.primary, textTransform: 'uppercase', marginBottom: '5px' }}>
+                      📎 Preuves rattachées ({preuves.filter(p => p.indicateurNumero === i.numero).length})
+                    </div>
+                    {preuves.filter(p => p.indicateurNumero === i.numero).map(p => (
+                      <div key={p.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px', padding: '5px 8px', borderRadius: '6px', backgroundColor: 'white', border: '1px solid #e0e0e0', marginBottom: '4px', flexWrap: 'wrap' }}>
+                        <span style={{ fontSize: '11px', color: '#333', flex: '1 1 200px' }}>
+                          {p.type === 'lien' ? '🔗' : '📄'} {p.libelle}
+                        </span>
+                        {(p.fichierUrl || p.lien) && (
+                          <a href={p.fichierUrl || p.lien} target="_blank" rel="noopener noreferrer" style={{ fontSize: '11px', color: C.primary, fontWeight: 600, textDecoration: 'underline' }}>Ouvrir</a>
+                        )}
+                        {!lectureSeule && (
+                          <button onClick={() => retirerPreuve(p.id)} style={{ backgroundColor: '#fde8e8', color: C.rouge, border: 'none', borderRadius: '4px', padding: '2px 7px', fontSize: '10px', cursor: 'pointer' }}>✕</button>
+                        )}
+                      </div>
+                    ))}
+
+                    {!lectureSeule && (
+                      <div style={{ marginTop: '7px', display: 'flex', gap: '6px', flexWrap: 'wrap', alignItems: 'center' }}>
+                        <label style={{ ...btnS, display: 'inline-block', fontSize: '11px', padding: '5px 10px' }}>
+                          📎 Ajouter un fichier
+                          <input type="file" style={{ display: 'none' }} onChange={async ev => {
+                            const f = ev.target.files?.[0]; ev.target.value = '';
+                            if (f) await ajouterPreuveFichier(i.numero, f);
+                          }} />
+                        </label>
+                        <input style={{ ...champ, flex: '1 1 130px', fontSize: '11px', padding: '5px 8px', width: 'auto' }} placeholder="Libellé du lien" value={nouvLien.libelle} onChange={e => setNouvLien(p => ({ ...p, libelle: e.target.value }))} />
+                        <input style={{ ...champ, flex: '1 1 180px', fontSize: '11px', padding: '5px 8px', width: 'auto' }} placeholder="https://..." value={nouvLien.lien} onChange={e => setNouvLien(p => ({ ...p, lien: e.target.value }))} />
+                        <button onClick={() => ajouterPreuveLien(i.numero)} disabled={enCours} style={{ ...btnS, fontSize: '11px', padding: '5px 10px' }}>🔗 Ajouter</button>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Preuves rattachées */}
+                  <div style={{ marginTop: '10px', paddingTop: '9px', borderTop: '1px solid #d0e8e6' }}>
+                    <div style={{ fontSize: '10px', fontWeight: 800, color: C.primary, textTransform: 'uppercase', marginBottom: '5px' }}>
+                      📎 Preuves rattachées ({preuves.filter(p => p.indicateurNumero === i.numero).length})
+                    </div>
+                    {preuves.filter(p => p.indicateurNumero === i.numero).map(p => (
+                      <div key={p.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px', padding: '5px 8px', borderRadius: '6px', backgroundColor: 'white', border: '1px solid #e0e0e0', marginBottom: '4px', flexWrap: 'wrap' }}>
+                        <span style={{ fontSize: '11px', color: '#333', flex: '1 1 200px' }}>
+                          {p.type === 'lien' ? '🔗' : '📄'} {p.libelle}
+                        </span>
+                        {(p.fichierUrl || p.lien) && (
+                          <a href={p.fichierUrl || p.lien} target="_blank" rel="noopener noreferrer" style={{ fontSize: '11px', color: C.primary, fontWeight: 600, textDecoration: 'underline' }}>Ouvrir</a>
+                        )}
+                        {!lectureSeule && (
+                          <button onClick={() => retirerPreuve(p.id)} style={{ backgroundColor: '#fde8e8', color: C.rouge, border: 'none', borderRadius: '4px', padding: '2px 7px', fontSize: '10px', cursor: 'pointer' }}>✕</button>
+                        )}
+                      </div>
+                    ))}
+
+                    {!lectureSeule && (
+                      <div style={{ marginTop: '7px', display: 'flex', gap: '6px', flexWrap: 'wrap', alignItems: 'center' }}>
+                        <label style={{ ...btnS, display: 'inline-block', fontSize: '11px', padding: '5px 10px' }}>
+                          📎 Ajouter un fichier
+                          <input type="file" style={{ display: 'none' }} onChange={async ev => {
+                            const f = ev.target.files?.[0]; ev.target.value = '';
+                            if (f) await ajouterPreuveFichier(i.numero, f);
+                          }} />
+                        </label>
+                        <input style={{ ...champ, flex: '1 1 130px', fontSize: '11px', padding: '5px 8px', width: 'auto' }} placeholder="Libellé du lien" value={nouvLien.libelle} onChange={e => setNouvLien(p => ({ ...p, libelle: e.target.value }))} />
+                        <input style={{ ...champ, flex: '1 1 180px', fontSize: '11px', padding: '5px 8px', width: 'auto' }} placeholder="https://..." value={nouvLien.lien} onChange={e => setNouvLien(p => ({ ...p, lien: e.target.value }))} />
+                        <button onClick={() => ajouterPreuveLien(i.numero)} disabled={enCours} style={{ ...btnS, fontSize: '11px', padding: '5px 10px' }}>🔗 Ajouter</button>
+                      </div>
+                    )}
+                  </div>
 
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '8px', gap: '8px', flexWrap: 'wrap' }}>
                     <span style={{ fontSize: '10px', color: '#888' }}>
