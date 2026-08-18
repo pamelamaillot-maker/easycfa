@@ -11,6 +11,7 @@
 
 import { useEffect, useState } from 'react';
 import Card from './Card';
+import { REFERENCE_INDICATEURS } from '../lib/referentielQualiopi';
 import {
   chargerAudits,
   chargerIndicateurs,
@@ -53,6 +54,7 @@ export default function SuiviQualiopi({ verifiePar = '' }: { verifiePar?: string
   const [chargement, setChargement] = useState(true);
   const [filtre, setFiltre] = useState<string>('tous');
   const [ouvert, setOuvert] = useState<string | null>(null);
+  const [aide, setAide] = useState<number | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [enCours, setEnCours] = useState(false);
   const [brouillon, setBrouillon] = useState<{ preuve: string; commentaire: string }>({ preuve: '', commentaire: '' });
@@ -287,6 +289,11 @@ export default function SuiviQualiopi({ verifiePar = '' }: { verifiePar?: string
                   <span style={{ fontSize: '12px', fontWeight: 800, color: C.primary, marginRight: '7px' }}>Ind. {i.numero}</span>
                   <span style={{ fontSize: '12px', color: '#333' }}>{i.libelle}</span>
                   <span style={{ fontSize: '10px', color: '#999', marginLeft: '7px' }}>· critère {i.critere}</span>
+                  <button
+                    onClick={e => { e.stopPropagation(); setAide(aide === i.numero ? null : i.numero); }}
+                    title="Ce qui est attendu pour cet indicateur"
+                    style={{ marginLeft: '6px', backgroundColor: aide === i.numero ? C.or : '#fef6e4', color: aide === i.numero ? 'white' : C.or, border: `1px solid ${C.or}`, borderRadius: '50%', width: '18px', height: '18px', fontSize: '11px', fontWeight: 800, cursor: 'pointer', lineHeight: 1, padding: 0 }}
+                  >!</button>
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '7px' }}>
                   {!(i.elementsPreuve ?? '').trim() && i.statut !== 'non_applicable' && (
@@ -297,6 +304,29 @@ export default function SuiviQualiopi({ verifiePar = '' }: { verifiePar?: string
                   </span>
                 </div>
               </div>
+
+              {aide === i.numero && (() => {
+                const ref = REFERENCE_INDICATEURS[i.numero];
+                if (!ref) return null;
+                return (
+                  <div style={{ marginTop: '9px', padding: '10px 12px', borderRadius: '8px', backgroundColor: '#fffdf5', border: `1px solid ${C.or}` }}>
+                    <div style={{ fontSize: '10px', fontWeight: 800, color: C.or, textTransform: 'uppercase', marginBottom: '4px' }}>
+                      Niveau attendu
+                    </div>
+                    <div style={{ fontSize: '11px', color: '#444', lineHeight: 1.5, marginBottom: '8px' }}>{ref.niveauAttendu}</div>
+                    <div style={{ fontSize: '10px', fontWeight: 800, color: C.or, textTransform: 'uppercase', marginBottom: '4px' }}>
+                      Points de conformité vérifiés par l&apos;auditeur
+                    </div>
+                    {ref.pointsConformite.map((p, k) => (
+                      <div key={k} style={{ fontSize: '11px', color: '#444', lineHeight: 1.5, marginBottom: '2px' }}>• {p}</div>
+                    ))}
+                    <div style={{ fontSize: '9px', color: '#999', marginTop: '7px', fontStyle: 'italic' }}>
+                      Source : grille d&apos;audit Certifopac du 25-26 août 2025
+                      {i.numero === 33 && ' · indicateur 33 : fiche Certifopac du 6 août 2026, niveau attendu à confirmer'}
+                    </div>
+                  </div>
+                );
+              })()}
 
               {estOuvert && (
                 <div style={{ marginTop: '10px', paddingTop: '10px', borderTop: '1px dashed #d0e8e6' }}>

@@ -12,12 +12,28 @@ import { INDICATEURS_QUALIOPI, RESULTATS_FORMATIONS, PREUVES, QUALIOPI_STATS, SE
 import type { ResultatCCP } from '../../data/mockQualiopi';
 import GestionEvaluationsEnseignements from '../../components/GestionEvaluationsEnseignements';
 import SuiviQualiopi from '../../components/SuiviQualiopi';
+import TauxReussite from '../../components/TauxReussite';
+import { REFERENTIELS_TP } from '../../lib/referentielsTP';
+import { chargerExamens } from '../../data/examensSupabase';
 import dynamic from 'next/dynamic';
 const BoutonPdfConvocation = dynamic(() => import('../../components/BoutonPdfConvocation'), { ssr: false });
 
 // L'onglet « Examens » a été retiré : il faisait doublon avec la page Examens,
 // désormais alimentée par des données réelles (sessions, candidats, jurés, PV).
-const ONGLETS = ['Tableau de bord', 'Indicateurs', 'Résultats & CCP', 'Preuves documentaires', 'Éval. enseignements', 'Alertes'];
+// Onglet « Indicateurs » retiré : le suivi des 33 indicateurs est désormais
+// dans le tableau de bord, alimenté par les données réelles.
+const ONGLETS = ['Suivi des indicateurs', 'Résultats & CCP', 'Preuves documentaires', 'Éval. enseignements', 'Alertes'];
+
+// Libellés et couleurs des TP, dérivés du référentiel — source unique.
+const COULEURS_TP: Record<string, string> = {
+  SC: '#006B68', ARH: '#16a34a', AD: '#C8A23A', GCF: '#dc2626',
+  CATL: '#ea580c', EC: '#0891b2', CV: '#7c3aed', FPA: '#475569',
+};
+const FORMATIONS_EXAMEN_QUALIOPI: Record<string, { label: string; couleur: string }> =
+  Object.fromEntries(REFERENTIELS_TP.map(r => [r.sigle, {
+    label: r.intitule,
+    couleur: COULEURS_TP[r.sigle] ?? '#006B68',
+  }]));
 
 const STATUT_IND: Record<string, { bg: string; color: string; icon: string }> = {
   'Conforme':     { bg: '#e6f4f1', color: '#006B68', icon: '✅' },
@@ -46,15 +62,18 @@ export default function Qualiopi() {
   const [interventionsDb, setInterventionsDb] = useState<any[]>([]);
   const [sessionsDb, setSessionsDb] = useState<any[]>([]);
   const [apprenantsDb, setApprenantsDb] = useState<any[]>([]);
+  const [examensDb, setExamensDb] = useState<any[]>([]);
 
   useEffect(() => {
     (async () => {
       try {
-        const [i, s, a] = await Promise.all([
+        const [i, s, a, ex] = await Promise.all([
           chargerInterventions(),
           chargerSessions(),
           chargerApprentis(),
+          chargerExamens(),
         ]);
+        setExamensDb((ex as any[]).filter(e => e.archive !== true));
         console.log(`[Qualiopi] ${i.length} intervention(s), ${s.length} session(s), ${a.length} apprenant(s) ✅`);
         setInterventionsDb(i as any[]);
         setSessionsDb(s as any[]);
@@ -220,7 +239,7 @@ export default function Qualiopi() {
       )}
 
       {/* ===== ONGLET 2 — Indicateurs ===== */}
-      {onglet === 1 && (
+      {onglet === 97 && (
         <Card>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
             <h2 style={{ fontSize: '16px', fontWeight: '700', color: COLORS.primary }}>
@@ -380,8 +399,14 @@ export default function Qualiopi() {
         </Card>
       )}      
 
-      {/* ===== ONGLET 3 — Résultats & CCP ===== */}
-      {onglet === 2 && (
+        {/* ===== ONGLET 2 — Résultats & CCP (données réelles) ===== */}
+      {onglet === 1 && (
+        <TauxReussite sessions={examensDb} formations={FORMATIONS_EXAMEN_QUALIOPI} />
+      )}
+
+      {/* ⚠️ Ancien onglet Résultats & CCP — figé sur mockQualiopi, inatteignable.
+          CCP inventés, taux fictifs. À supprimer une fois la refonte terminée. */}
+      {onglet === 96 && (
         <div>
           {/* Sélecteur formation */}
           <Card style={{ marginBottom: '24px' }}>
@@ -478,8 +503,8 @@ export default function Qualiopi() {
         </div>
       )}
 
-      {/* ===== ONGLET 4 — Preuves documentaires ===== */}
-      {onglet === 3 && (
+      {/* ===== ONGLET 3 — Preuves documentaires ===== */}
+      {onglet === 2 && (
         <Card>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
             <h2 style={{ fontSize: '16px', fontWeight: '700', color: COLORS.primary }}>
@@ -669,8 +694,8 @@ export default function Qualiopi() {
         </Card>
       )}
 
-{/* ===== ONGLET 5 — Évaluation des enseignements (indicateur 33) ===== */}
-      {onglet === 4 && (
+      {/* ===== ONGLET 4 — Évaluation des enseignements (indicateur 33) ===== */}
+      {onglet === 3 && (
         <GestionEvaluationsEnseignements
           interventions={interventionsDb}
           sessions={sessionsDb}
