@@ -22,7 +22,7 @@ const BoutonPdfConvocation = dynamic(() => import('../../components/BoutonPdfCon
 // désormais alimentée par des données réelles (sessions, candidats, jurés, PV).
 // Onglet « Indicateurs » retiré : le suivi des 33 indicateurs est désormais
 // dans le tableau de bord, alimenté par les données réelles.
-const ONGLETS = ['Suivi des indicateurs', 'Résultats & CCP', 'Preuves documentaires', 'Éval. enseignements', 'Alertes'];
+const ONGLETS = ['Suivi des indicateurs', 'Résultats & CCP', 'Éval. enseignements', 'Alertes'];
 
 // Libellés et couleurs des TP, dérivés du référentiel — source unique.
 const COULEURS_TP: Record<string, string> = {
@@ -73,7 +73,9 @@ export default function Qualiopi() {
           chargerApprentis(),
           chargerExamens(),
         ]);
-        setExamensDb((ex as any[]).filter(e => e.archive !== true));
+        // Les sessions archivées comptent dans les taux : ce sont justement
+        // les sessions terminées, donc celles dont les résultats sont connus.
+        setExamensDb(ex as any[]);
         console.log(`[Qualiopi] ${i.length} intervention(s), ${s.length} session(s), ${a.length} apprenant(s) ✅`);
         setInterventionsDb(i as any[]);
         setSessionsDb(s as any[]);
@@ -503,8 +505,10 @@ export default function Qualiopi() {
         </div>
       )}
 
-      {/* ===== ONGLET 3 — Preuves documentaires ===== */}
-      {onglet === 2 && (
+      {/* ⚠️ Ancien onglet Preuves — figé sur mockQualiopi, rien n'était enregistré
+          ni téléversé. Les preuves sont désormais rattachées à chaque indicateur.
+          À supprimer une fois la refonte terminée. */}
+      {onglet === 95 && (
         <Card>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
             <h2 style={{ fontSize: '16px', fontWeight: '700', color: COLORS.primary }}>
@@ -695,7 +699,7 @@ export default function Qualiopi() {
       )}
 
       {/* ===== ONGLET 4 — Évaluation des enseignements (indicateur 33) ===== */}
-      {onglet === 3 && (
+      {onglet === 2 && (
         <GestionEvaluationsEnseignements
           interventions={interventionsDb}
           sessions={sessionsDb}

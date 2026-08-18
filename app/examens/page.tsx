@@ -156,7 +156,10 @@ type Jure = {
 type Candidat = {
   id: string; nom: string; prenom: string; entreprise: string;
   dpFourni: boolean; ecfFourni: boolean; convocationEnvoyee: string;
-  resultats: Record<string, 'Acquis' | 'Non acquis' | 'Absent' | ''>;
+  // Présence à chaque épreuve — NON un résultat certificatif.
+  // Le résultat se lit dans resultatsCcp : une seule MSP peut couvrir
+  // plusieurs CCP, dont certains obtenus et d'autres non.
+  resultats: Record<string, 'Présent' | 'Absent' | ''>;
 };
 
 type SessionExamen = {
@@ -1066,17 +1069,16 @@ export default function Examens() {
                                 </div>
                                 {/* Résultats par situation */}
                                 <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
-                                  <span style={{ fontSize: '10px', color: '#888', fontWeight: '700', textTransform: 'uppercase' }}>Résultats :</span>
+                                  <span style={{ fontSize: '10px', color: '#888', fontWeight: '700', textTransform: 'uppercase' }}>Présence :</span>
                                   {cfg.situations.filter(s => s.applicable).map(sit => (
                                     <div key={sit.id} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px' }}>
                                       <span style={{ fontSize: '9px', color: '#888' }}>{sit.id}</span>
-                                      <select style={{ fontSize: '10px', border: '1px solid #e0e0e0', borderRadius: '4px', padding: '2px 4px', backgroundColor: 'white', color: c.resultats[sit.id] === 'Acquis' ? '#16a34a' : c.resultats[sit.id] === 'Non acquis' ? '#e53e3e' : '#888' }} value={c.resultats[sit.id] ?? ''} onChange={e => {
+                                      <select style={{ fontSize: '10px', border: '1px solid #e0e0e0', borderRadius: '4px', padding: '2px 4px', backgroundColor: 'white', color: c.resultats[sit.id] === 'Présent' ? '#16a34a' : c.resultats[sit.id] === 'Absent' ? '#e53e3e' : '#888' }} value={c.resultats[sit.id] ?? ''} onChange={e => {
                                         const candidats = sessionSel.candidats.map((cc, i) => i === ci ? { ...cc, resultats: { ...cc.resultats, [sit.id]: e.target.value } } : cc);
                                         maj('candidats', candidats);
                                       }}>
                                         <option value="">—</option>
-                                        <option value="Acquis">Acquis</option>
-                                        <option value="Non acquis">Non acquis</option>
+                                        <option value="Présent">Présent</option>
                                         <option value="Absent">Absent</option>
                                       </select>
                                     </div>
