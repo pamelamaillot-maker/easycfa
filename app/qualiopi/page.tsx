@@ -11,6 +11,7 @@ import StatCard from '../../components/StatCard';
 import { INDICATEURS_QUALIOPI, RESULTATS_FORMATIONS, PREUVES, QUALIOPI_STATS, SESSIONS_EXAMENS, EPREUVES_PAR_FORMATION, DOCUMENTS_EXAMEN } from '../../data/mockQualiopi';
 import type { ResultatCCP } from '../../data/mockQualiopi';
 import GestionEvaluationsEnseignements from '../../components/GestionEvaluationsEnseignements';
+import SuiviQualiopi from '../../components/SuiviQualiopi';
 import dynamic from 'next/dynamic';
 const BoutonPdfConvocation = dynamic(() => import('../../components/BoutonPdfConvocation'), { ssr: false });
 
@@ -146,8 +147,14 @@ export default function Qualiopi() {
         ))}
       </div>
 
-      {/* ===== ONGLET 1 — Tableau de bord ===== */}
+      {/* ===== ONGLET 1 — Suivi des 33 indicateurs (données réelles) ===== */}
       {onglet === 0 && (
+        <SuiviQualiopi verifiePar="Paméla MAILLOT" />
+      )}
+
+      {/* ⚠️ Ancien tableau de bord — figé sur mockQualiopi, inatteignable.
+          À supprimer une fois la refonte terminée. */}
+      {onglet === 98 && (
         <div>
           {/* Carte certification */}
           <div style={{ backgroundColor: COLORS.primary, borderRadius: '12px', padding: '24px', marginBottom: '24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
