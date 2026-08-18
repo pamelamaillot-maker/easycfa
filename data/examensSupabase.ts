@@ -18,6 +18,12 @@ export type Jure = {
   disponible?: boolean;
   mailEnvoye?: string;
   confirme?: boolean;
+
+  // Convocation signée retournée par le juré (accusé de réception)
+  convocationNom?: string;
+  convocationUrl?: string;
+  convocationChemin?: string;
+  convocationEnvoyeeLe?: string;   // JJ/MM/AAAA
 };
 
 export type ResultatsCandidat = {
@@ -367,6 +373,65 @@ export async function uploaderPvIndividuel(
     return { success: true, chemin, nom: file.name, url: signed.signedUrl };
   } catch (e: any) {
     console.error('[examensSupabase] Exception upload PV individuel :', e);
+    return { success: false, error: e?.message || String(e) };
+  }
+}
+/**
+ * Convocation signée retournée par un membre du jury.
+ * L'accusé de réception n'est pas imposé par les textes, mais il établit
+ * que le juré a été informé de ses obligations — notamment celle de signaler
+ * tout lien avec un candidat. Pièce utile en cas de contestation.
+ */
+export async function uploaderConvocationJure(
+  examenId: string,
+  jureIndex: number,
+  file: File,
+): Promise<ResultatUpload> {
+  try {
+    const chemin = `${examenId}/convocations-jury/jure${jureIndex}_${Date.now()}_${nettoyerNomFichier(file.name)}`;
+    const { error: upErr } = await supabase.storage.from('examens').upload(chemin, file, { upsert: true });
+    if (upErr) {
+      console.error('[examensSupabase] Erreur upload convocation juré :', upErr);
+      return { success: false, error: upErr.message };
+    }
+    const { data: signed, error: signErr } = await supabase.storage
+      .from('examens').createSignedUrl(chemin, 60 * 60 * 24 * 365);
+    if (signErr) {
+      console.error('[examensSupabase] Erreur URL signée :', signErr);
+      return { success: false, error: signErr.message };
+    }
+    return { success: true, chemin, nom: file.name, url: signed.signedUrl };
+  } catch (e: any) {
+    console.error('[examensSupabase] Exception upload convocation juré :', e);
+    return { success: false, error: e?.message || String(e) };
+  }
+}
+/**
+ * Convocation signée retournée par un candidat.
+ * L'accusé de réception établit que le candidat a été informé de la date,
+ * du lieu et des documents à apporter — utile en cas d'absence contestée.
+ */
+export async function uploaderConvocationCandidat(
+  examenId: string,
+  candidatId: string,
+  file: File,
+): Promise<ResultatUpload> {
+  try {
+    const chemin = `${examenId}/convocations-candidats/${candidatId}_${Date.now()}_${nettoyerNomFichier(file.name)}`;
+    const { error: upErr } = await supabase.storage.from('examens').upload(chemin, file, { upsert: true });
+    if (upErr) {
+      console.error('[examensSupabase] Erreur upload convocation candidat :', upErr);
+      return { success: false, error: upErr.message };
+    }
+    const { data: signed, error: signErr } = await supabase.storage
+      .from('examens').createSignedUrl(chemin, 60 * 60 * 24 * 365);
+    if (signErr) {
+      console.error('[examensSupabase] Erreur URL signée :', signErr);
+      return { success: false, error: signErr.message };
+    }
+    return { success: true, chemin, nom: file.name, url: signed.signedUrl };
+  } catch (e: any) {
+    console.error('[examensSupabase] Exception upload convocation candidat :', e);
     return { success: false, error: e?.message || String(e) };
   }
 }

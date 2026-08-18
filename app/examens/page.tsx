@@ -930,6 +930,23 @@ export default function Examens() {
                       <a href="https://ceres.emploi.gouv.fr/ceres/#" target="_blank" rel="noopener noreferrer" style={{ ...btnSecondary, textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: '6px', width: 'fit-content' }}>
                         🔗 Commander jurés sur CERES
                       </a>
+
+                      {/* Convocations du jury */}
+                      <div style={{ backgroundColor: '#EAF4F3', borderRadius: '8px', padding: '12px', border: '1px solid #006B68' }}>
+                        <div style={{ fontSize: '12px', fontWeight: '700', color: '#006B68', marginBottom: '4px' }}>
+                          📄 Convocations du jury
+                        </div>
+                        <div style={{ fontSize: '10px', color: '#888', marginBottom: '10px', fontStyle: 'italic' }}>
+                          Objet de la mission, horaires, nombre de candidats et rappel des obligations.
+                          L&apos;accusé de réception signé établit que le juré a été informé de ses obligations.
+                        </div>
+                        <BoutonsConvocations
+                          session={sessionSel}
+                          situationsTitre={cfg.situations}
+                          avecCandidats={false}
+                          onMajJures={majs => maj('jures', majs)}
+                        />
+                      </div>
                     </div>
                   )}
 
@@ -960,7 +977,12 @@ export default function Examens() {
                         <div style={{ fontSize: '10px', color: '#888', marginBottom: '10px', fontStyle: 'italic' }}>
                           Une convocation par candidat et par membre du jury, adaptées au type de session.
                         </div>
-                        <BoutonsConvocations session={sessionSel} situationsTitre={cfg.situations} avecJury={false} />
+                        <BoutonsConvocations
+                          session={sessionSel}
+                          situationsTitre={cfg.situations}
+                          avecJury={false}
+                          onMajCandidats={majs => maj('candidats', majs)}
+                        />
                       </div>
                       {sessionSel.candidats.length === 0 ? (
                         <div style={{ padding: '20px', textAlign: 'center', color: '#888', fontStyle: 'italic', fontSize: '12px' }}>Aucun candidat inscrit</div>

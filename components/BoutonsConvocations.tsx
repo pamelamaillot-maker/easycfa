@@ -12,6 +12,7 @@ import { PDFDownloadLink } from '@react-pdf/renderer';
 import PdfConvocation from './PdfConvocation';
 import PdfConvocationJury, { type DonneesConvocationJury } from './PdfConvocationJury';
 import { epreuvesAEmarger, identifiantCandidat, dureeTotale } from '../lib/emargementsExamen';
+import { uploaderConvocationJure, uploaderConvocationCandidat } from '../data/examensSupabase';
 import { referentielParSigle, ccpsDuTP } from '../lib/referentielsTP';
 
 const DOCUMENTS_CANDIDAT = [
@@ -44,11 +45,16 @@ export default function BoutonsConvocations({
   situationsTitre,
   avecCandidats = true,
   avecJury = true,
+  onMajJures,
+  onMajCandidats,
 }: {
   session: any;
   situationsTitre?: { id: string; label: string; duree: string; applicable: boolean }[];
   avecCandidats?: boolean;
   avecJury?: boolean;
+  /** Appelé après import d'une convocation signée, pour enregistrer la session. */
+  onMajJures?: (jures: any[]) => void;
+  onMajCandidats?: (candidats: any[]) => void;
 }) {
   const sigle = session?.formation ?? '';
   const ref = referentielParSigle(sigle);
@@ -167,7 +173,30 @@ export default function BoutonsConvocations({
                   >
                     {({ loading }) => loading ? '⏳…' : '📄 Convocation'}
                   </PDFDownloadLink>
-                </div>
+
+                  {(c as any).convocationUrl ? (
+                    <a href={(c as any).convocationUrl} target="_blank" rel="noopener noreferrer" style={{ fontSize: '11px', color: '#006B68', fontWeight: 600, textDecoration: 'underline' }}>
+                      ✅ Signée
+                    </a>
+                  ) : (
+                    <span style={{ fontSize: '10px', color: '#C8A23A', fontWeight: 600 }}>⏳ Non retournée</span>
+                  )}
+
+                  <label style={{ backgroundColor: 'white', color: '#006B68', border: '1.5px solid #006B68', borderRadius: '8px', padding: '5px 10px', fontSize: '11px', fontWeight: 600, cursor: 'pointer' }}>
+                    📎 {(c as any).convocationUrl ? 'Remplacer' : 'Importer signée'}
+                    <input type="file" accept=".pdf,.jpg,.jpeg,.png" style={{ display: 'none' }} onChange={async ev => {
+                      const f = ev.target.files?.[0];
+                      ev.target.value = '';
+                      if (!f) return;
+                      const r = await uploaderConvocationCandidat(session.id, c.id, f);
+                      if (!r.success) { alert('Erreur : ' + r.error); return; }
+                      const majs = candidats.map((cc: any, k: number) => k === i
+                        ? { ...cc, convocationNom: r.nom, convocationUrl: r.url, convocationChemin: r.chemin }
+                        : cc);
+                      onMajCandidats?.(majs);
+                    }} />
+                  </label>
+                  </div>
               );
             })}
           </div>
@@ -199,13 +228,38 @@ export default function BoutonsConvocations({
                   </span>
                   {!j.email && <span style={{ fontSize: '10px', color: '#C8A23A', marginLeft: '7px' }}>⚠️ email manquant</span>}
                 </div>
-                <PDFDownloadLink
-                  document={<PdfConvocationJury donnees={donneesJury(i)} />}
-                  fileName={`Convocation_jury_${(j.nom ?? 'jure').replace(/\s/g, '_')}_${sigle}_${(session?.dateDebut ?? '').replace(/\//g, '-')}.pdf`}
-                  style={lienStyle}
-                >
-                  {({ loading }) => loading ? '⏳…' : '📄 Convocation'}
-                </PDFDownloadLink>
+                <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap' }}>
+                  <PDFDownloadLink
+                    document={<PdfConvocationJury donnees={donneesJury(i)} />}
+                    fileName={`Convocation_jury_${(j.nom ?? 'jure').replace(/\s/g, '_')}_${sigle}_${(session?.dateDebut ?? '').replace(/\//g, '-')}.pdf`}
+                    style={lienStyle}
+                  >
+                    {({ loading }) => loading ? '⏳…' : '📄 Convocation'}
+                  </PDFDownloadLink>
+
+                  {j.convocationUrl ? (
+                    <a href={j.convocationUrl} target="_blank" rel="noopener noreferrer" style={{ fontSize: '11px', color: '#006B68', fontWeight: 600, textDecoration: 'underline' }}>
+                      ✅ Signée
+                    </a>
+                  ) : (
+                    <span style={{ fontSize: '10px', color: '#C8A23A', fontWeight: 600 }}>⏳ Non retournée</span>
+                  )}
+
+                  <label style={{ backgroundColor: 'white', color: '#006B68', border: '1.5px solid #006B68', borderRadius: '8px', padding: '5px 10px', fontSize: '11px', fontWeight: 600, cursor: 'pointer' }}>
+                    📎 {j.convocationUrl ? 'Remplacer' : 'Importer signée'}
+                    <input type="file" accept=".pdf,.jpg,.jpeg,.png" style={{ display: 'none' }} onChange={async ev => {
+                      const f = ev.target.files?.[0];
+                      ev.target.value = '';
+                      if (!f) return;
+                      const r = await uploaderConvocationJure(session.id, i, f);
+                      if (!r.success) { alert('Erreur : ' + r.error); return; }
+                      const majs = jures.map((jj: any, k: number) => k === i
+                        ? { ...jj, convocationNom: r.nom, convocationUrl: r.url, convocationChemin: r.chemin }
+                        : jj);
+                      onMajJures?.(majs);
+                    }} />
+                  </label>
+                </div>
               </div>
             ))}
           </div>
