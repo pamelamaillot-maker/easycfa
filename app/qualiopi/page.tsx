@@ -13,6 +13,9 @@ import type { ResultatCCP } from '../../data/mockQualiopi';
 import GestionEvaluationsEnseignements from '../../components/GestionEvaluationsEnseignements';
 import SuiviQualiopi from '../../components/SuiviQualiopi';
 import TauxReussite from '../../components/TauxReussite';
+import AlertesQualiopi from '../../components/AlertesQualiopi';
+import { chargerEvaluationsEnseignements } from '../../data/evaluationsEnseignementsSupabase';
+import { chargerAgrements } from '../../data/agrementsSupabase';
 import { REFERENTIELS_TP } from '../../lib/referentielsTP';
 import { chargerExamens } from '../../data/examensSupabase';
 import dynamic from 'next/dynamic';
@@ -63,6 +66,8 @@ export default function Qualiopi() {
   const [sessionsDb, setSessionsDb] = useState<any[]>([]);
   const [apprenantsDb, setApprenantsDb] = useState<any[]>([]);
   const [examensDb, setExamensDb] = useState<any[]>([]);
+  const [campagnesDb, setCampagnesDb] = useState<any[]>([]);
+  const [agrementsDb, setAgrementsDb] = useState<any[]>([]);
 
   useEffect(() => {
     (async () => {
@@ -76,6 +81,12 @@ export default function Qualiopi() {
         // Les sessions archivées comptent dans les taux : ce sont justement
         // les sessions terminées, donc celles dont les résultats sont connus.
         setExamensDb(ex as any[]);
+        const [camp, agr] = await Promise.all([
+          chargerEvaluationsEnseignements(),
+          chargerAgrements(),
+        ]);
+        setCampagnesDb(camp as any[]);
+        setAgrementsDb((agr as any[]).filter(a => a.archive !== true));
         console.log(`[Qualiopi] ${i.length} intervention(s), ${s.length} session(s), ${a.length} apprenant(s) ✅`);
         setInterventionsDb(i as any[]);
         setSessionsDb(s as any[]);
@@ -705,6 +716,15 @@ export default function Qualiopi() {
           sessions={sessionsDb}
           apprenants={apprenantsDb}
           analysePar="Paméla MAILLOT"
+        />
+      )}
+
+      {/* ===== ONGLET 4 — Alertes de conformité ===== */}
+      {onglet === 3 && (
+        <AlertesQualiopi
+          examens={examensDb}
+          campagnes={campagnesDb}
+          agrements={agrementsDb}
         />
       )}
 
