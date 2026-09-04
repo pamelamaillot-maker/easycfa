@@ -11,12 +11,12 @@
 //
 // MODÈLE UTILISÉ
 // public/modeles/carte-etudiant-26-27.pdf — variante « classique », 86 × 54 mm,
-// deux pages : page 0 = recto (aucun champ), page 1 = verso (champs à remplir).
+// deux pages : page 0 = recto, page 1 = verso.
 // La variante « imprimeur » (109,3 × 77,3 mm, avec fonds perdus) n'est pas
 // utilisée ici : elle est destinée à un imprimeur professionnel.
 //
 // SIGNATURE
-// Le cadre « Signature » à droite est celui de L'APPRENTI, qui signe via
+// Le cadre « Signature » du verso est celui de L'APPRENTI, qui signe via
 // sign.plus après génération. Il est donc laissé VIERGE.
 // Le champ « Chef(fe) d'établissement : » attend le nom en toutes lettres
 // de la directrice, pas une signature.
@@ -31,21 +31,23 @@ import { useState } from 'react';
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
 
 const CHEMIN_MODELE = '/modeles/carte-etudiant-26-27.pdf';
+const CHEMIN_LOGO = '/modeles/logo-pam-oi.png';
 
 // Couleur du texte officiel, relevée sur la maquette du ministère.
 const BLEU_OFFICIEL = rgb(39 / 255, 51 / 255, 117 / 255);
 
 // ---------------------------------------------------------------------------
-// COORDONNÉES DES ZONES À REMPLIR
+// COORDONNÉES DES ZONES
 // ---------------------------------------------------------------------------
 // Mesurées sur le modèle officiel, en POINTS PDF, origine en HAUT à gauche.
-// La page verso mesure 243,779 × 153,071 pt.
+// Chaque page mesure 243,779 × 153,071 pt.
 // La conversion vers le repère pdf-lib (origine en bas) est faite au dessin.
 
 const HAUTEUR_PAGE = 153.071;
 
 interface Zone { x: number; largeur: number; yHaut: number; hauteur: number }
 
+// --- VERSO -----------------------------------------------------------------
 const ZONES: Record<string, Zone> = {
   nom:        { x: 67.4, largeur: 94.1, yHaut: 15.8,  hauteur: 10.6 },
   prenom:     { x: 67.4, largeur: 94.1, yHaut: 33.1,  hauteur: 10.8 },
@@ -58,6 +60,15 @@ const ZONES: Record<string, Zone> = {
   // signature : { x: 166.0, largeur: 66.3, yHaut: 102.5, hauteur: 28.3 }
   //   volontairement NON remplie — l'apprenti signe via sign.plus.
 };
+
+// --- RECTO -----------------------------------------------------------------
+// Le recto comporte une bande blanche en haut (jusqu'à y = 42,2 pt) où figure
+// le bloc « Ministère du Travail » à gauche (x 11,3 → 48,0 ; y 11,3 → 34,6)
+// et le titre à droite (à partir de x = 96,1).
+// L'espace intermédiaire est libre : le logo du CFA s'y insère à la MÊME
+// hauteur que celui du ministère, avec un espacement équilibré de part
+// et d'autre.
+const ZONE_LOGO: Zone = { x: 56.0, largeur: 38.0, yHaut: 11.3, hauteur: 23.3 };
 
 const MARGE_TEXTE = 3;      // retrait à gauche dans la case
 const TAILLE_MAX = 8;       // police de départ
@@ -102,6 +113,29 @@ function assainir(texte: string): string {
     .replace(/\u00A0/g, ' ');
 }
 
+/**
+ * Place une image dans un cadre sans déformation ni débordement.
+ * Une marge d'un demi-point de chaque côté préserve le liseré du modèle.
+ */
+function ajusterDansCadre(
+  zone: Zone,
+  largeurImage: number,
+  hauteurImage: number,
+): { x: number; y: number; width: number; height: number } {
+  const facteur = Math.min(
+    (zone.largeur - 1) / largeurImage,
+    (zone.hauteur - 1) / hauteurImage,
+  );
+  const l = largeurImage * facteur;
+  const h = hauteurImage * facteur;
+  return {
+    x: zone.x + (zone.largeur - l) / 2,
+    y: HAUTEUR_PAGE - (zone.yHaut + zone.hauteur) + (zone.hauteur - h) / 2,
+    width: l,
+    height: h,
+  };
+}
+
 // ---------------------------------------------------------------------------
 // COMPOSANT
 // ---------------------------------------------------------------------------
@@ -125,6 +159,7 @@ export default function BoutonCarteEtudiante2627({
   async function generer() {
     setEnCours(true);
     setMessage(null);
+    const avertissements: string[] = [];
 
     try {
       // --- 1. Charger le modèle officiel ---------------------------------
@@ -139,11 +174,24 @@ export default function BoutonCarteEtudiante2627({
 
       const pages = pdf.getPages();
       if (pages.length < 2) throw new Error('Le modèle doit comporter 2 pages (recto et verso).');
+      const recto = pages[0];
       const verso = pages[1];
 
       const police = await pdf.embedFont(StandardFonts.Helvetica);
 
-      // --- 2. Écrire une valeur dans une case ----------------------------
+      // --- 2. Logo du CFA sur le recto -----------------------------------
+      // Optionnel : son absence n'empêche pas la génération de la carte.
+      try {
+        const repLogo = await fetch(CHEMIN_LOGO);
+        if (!repLogo.ok) throw new Error(`statut ${repLogo.status}`);
+        const octetsLogo = await repLogo.arrayBuffer();
+        const logo = await pdf.embedPng(octetsLogo);
+        recto.drawImage(logo, ajusterDansCadre(ZONE_LOGO, logo.width, logo.height));
+      } catch (e: any) {
+        avertissements.push(`logo CFA absent (${e?.message ?? 'chargement impossible'})`);
+      }
+
+      // --- 3. Écrire une valeur dans une case du verso --------------------
       // La police est réduite progressivement jusqu'à ce que le texte tienne
       // dans la largeur de la case. Les cases font 33 mm : une adresse
       // complète ne tient pas à taille normale.
@@ -157,7 +205,6 @@ export default function BoutonCarteEtudiante2627({
           taille -= 0.25;
         }
 
-        // Repère pdf-lib : origine en bas à gauche.
         const basDeCase = HAUTEUR_PAGE - (zone.yHaut + zone.hauteur);
         const ligneDeBase = basDeCase + (zone.hauteur - taille * 0.72) / 2;
 
@@ -178,10 +225,9 @@ export default function BoutonCarteEtudiante2627({
       ecrire(ZONES.telephone, CFA_TELEPHONE);
       ecrire(ZONES.chef, CFA_CHEF);
 
-      // --- 3. Photo d'identité -------------------------------------------
+      // --- 4. Photo d'identité -------------------------------------------
       // Optionnelle : une carte sans photo reste générable, l'apprenti
-      // pourra en coller une. L'échec de chargement n'interrompt donc pas
-      // la génération, il est seulement signalé.
+      // pourra en coller une.
       const photo = apprenant?.piece_photo_identite ?? apprenant?.pieces?.photo_identite;
       if (photo?.url) {
         try {
@@ -191,28 +237,15 @@ export default function BoutonCarteEtudiante2627({
           const nom = String(photo.nom ?? '').toLowerCase();
           const estPng = nom.endsWith('.png') || (rep.headers.get('content-type') ?? '').includes('png');
           const image = estPng ? await pdf.embedPng(octets) : await pdf.embedJpg(octets);
-
-          const z = ZONES.photo;
-          // Ajustement « contain » : l'image entre entièrement dans le cadre,
-          // sans déformation ni débordement sur la maquette.
-          const facteur = Math.min((z.largeur - 1) / image.width, (z.hauteur - 1) / image.height);
-          const l = image.width * facteur;
-          const h = image.height * facteur;
-
-          verso.drawImage(image, {
-            x: z.x + (z.largeur - l) / 2,
-            y: HAUTEUR_PAGE - (z.yHaut + z.hauteur) + (z.hauteur - h) / 2,
-            width: l,
-            height: h,
-          });
+          verso.drawImage(image, ajusterDansCadre(ZONES.photo, image.width, image.height));
         } catch (e: any) {
-          setMessage(`Carte générée sans photo (${e?.message ?? 'chargement impossible'}).`);
+          avertissements.push(`photo non intégrée (${e?.message ?? 'chargement impossible'})`);
         }
       } else {
-        setMessage('Carte générée sans photo : aucune photo d\u2019identité sur la fiche.');
+        avertissements.push('aucune photo d\u2019identité sur la fiche');
       }
 
-      // --- 4. Téléchargement ---------------------------------------------
+      // --- 5. Téléchargement ---------------------------------------------
       const octetsPdf = await pdf.save();
       const blob = new Blob([octetsPdf as unknown as BlobPart], { type: 'application/pdf' });
       const url = URL.createObjectURL(blob);
@@ -225,6 +258,10 @@ export default function BoutonCarteEtudiante2627({
       lien.click();
       document.body.removeChild(lien);
       URL.revokeObjectURL(url);
+
+      if (avertissements.length > 0) {
+        setMessage(`Carte générée — ${avertissements.join(' ; ')}.`);
+      }
     } catch (e: any) {
       console.error('[CarteEtudiante2627]', e);
       setMessage(`Erreur : ${e?.message ?? 'génération impossible'}`);
