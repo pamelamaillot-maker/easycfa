@@ -1,5 +1,6 @@
 'use client';
 
+import FinEffectiveContrat from './FinEffectiveContrat';
 import React, { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { APPRENANTS_REELS, DERNIERE_SITUATION_SIFA, verifierConformiteSifa, estMineur } from '../../../data/mockApprenants_reels';
@@ -43,7 +44,7 @@ const BoutonRemplirLivret = dynamic(() => import('../../../components/BoutonRemp
 const BoutonPdfDroitImage = dynamic(() => import('../../../components/BoutonPdfDroitImage'), { ssr: false });
 const BoutonPdfAEF = dynamic(() => import('../../../components/BoutonPdfAEF'), { ssr: false });
 const SortiesAnticipeesManager = dynamic(() => import('../../../components/SortiesAnticipeesManager'), { ssr: false });
-const BoutonCarteEtudiante = dynamic(() => import('../../../components/BoutonCarteEtudiante'), { ssr: false });
+const BoutonCarteEtudiante = dynamic(() => import('../../../components/BoutonCarteEtudiante2627'), { ssr: false });
 const BoutonQuestionnairePSH = dynamic(() => import('../../../components/BoutonQuestionnairePSH'), { ssr: false });
 const BoutonFicheSyntheseRQTH = dynamic(() => import('../../../components/BoutonFicheSyntheseRQTH'), { ssr: false });
 
@@ -2285,7 +2286,7 @@ export default function FicheApprenant({ params }: { params: Promise<{ id: strin
           const border = cStatut === 'signee' ? '#006B68' : cStatut === 'en_attente' ? '#ffe082' : '#C8A23A';
           const icon = cStatut === 'signee' ? '✅' : cStatut === 'en_attente' ? '⏳' : '🎓';
           const label = cStatut === 'signee' ? 'Signée' : cStatut === 'en_attente' ? 'En attente de signature' : 'À générer puis faire signer';
-          const nomFichier = 'Carte_Etudiant_' + (form.nom || '') + '_' + (form.prenom || '') + '.pdf';
+          const nomFichier = 'Carte_Etudiant_2627_' + (form.nom || '') + '_' + (form.prenom || '') + '.pdf';
           return (
             <div style={{ padding: 14, backgroundColor: bg, borderRadius: 8, border: `1.5px solid ${border}` }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 10 }}>
@@ -2708,10 +2709,20 @@ export default function FicheApprenant({ params }: { params: Promise<{ id: strin
                 <div style={{ fontSize: '10px', color: '#888', textTransform: 'uppercase', fontWeight: '600', marginBottom: '4px' }}>Demande reçue le</div>
                 <div style={{ fontSize: '13px', fontWeight: '700', color: '#c53030' }}>{form.dateRupture || '—'}</div>
               </div>
-              <div style={{ backgroundColor: 'white', borderRadius: '8px', padding: '10px' }}>
-                <div style={{ fontSize: '10px', color: '#888', textTransform: 'uppercase', fontWeight: '600', marginBottom: '4px' }}>Fin effective du contrat</div>
-                <div style={{ fontSize: '13px', fontWeight: '700', color: form.dateRuptureEffective ? '#c53030' : '#C8A23A' }}>{formaterDateFR(form.dateRuptureEffective) || '⚠️ À renseigner'}</div>
-              </div>
+              <FinEffectiveContrat
+                apprenantId={id}
+                dateRuptureEffective={form.dateRuptureEffective}
+                origineDateFinEffective={(form as any).origineDateFinEffective}
+                peutModifier={peutModifier}
+                onEnregistre={(date, origine) => {
+                  const maj = { ...form, dateRuptureEffective: date, origineDateFinEffective: origine };
+                  setForm(maj);
+                  setApprenant(maj);
+                  localStorage.setItem('apprenant_' + id, JSON.stringify(maj));
+                  setSauvegarde(true);
+                  setTimeout(() => setSauvegarde(false), 3000);
+                }}
+              />
               <div style={{ backgroundColor: 'white', borderRadius: '8px', padding: '10px' }}>
                 <div style={{ fontSize: '10px', color: '#888', textTransform: 'uppercase', fontWeight: '600', marginBottom: '4px' }}>Maintien formation</div>
                 <div style={{ fontSize: '13px', fontWeight: '700', color: form.maintienFormation === 'OUI' ? COLORS.primary : '#888' }}>{form.maintienFormation || '—'}</div>
