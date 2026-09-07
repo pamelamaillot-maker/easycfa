@@ -22,6 +22,7 @@ import { uploaderFichier, cheminStorage } from '../../lib/storage';
 import { calculerPeriodeCr, calculerPeriodeCrFinal, nbJoursEntre, nbMoisEntre } from '../../lib/calculerPeriodeCr';
 import dynamic from 'next/dynamic';
 import { APPRENANTS_REELS as APPS_REELS_LIB } from '../../data/mockApprenants_reels';
+import ChampEcheance from '../../components/ChampEcheance';
 
 const BoutonGenerationCR = dynamic(() => import('../../components/BoutonGenerationCR'), { ssr: false });
 
@@ -73,6 +74,26 @@ function addMonths(date: Date, months: number): Date {
 function formatDate(date: Date): string { return date.toLocaleDateString('fr-FR'); }
 function r2(n: number): number { return Math.round(n*100)/100; }
 
+/**
+ * Montant du 1er équipement, selon la règle AKTO.
+ *
+ * RÈGLE (contrats débutant à compter du 01/09/2026) :
+ *   - Titres de niveau 5 : 300 €
+ *   - Titres de niveaux 3 et 4 : 500 €
+ * Les contrats antérieurs restent à 500 €, montant historique.
+ * La DATE DE DÉBUT DE CONTRAT fait foi, pas la date de saisie du dossier.
+ */
+const NIVEAU_PAR_TP: Record<string, 3|4|5> = {
+  SC:4, GCF:5, AD:5, ARH:5, EC:3, CV:4, CATL:4, FPA:5,
+};
+
+function montantEquipementParDefaut(formation?: string, dateDebutContrat?: string): number {
+  const d = parseDate(dateDebutContrat || '');
+  if (!d || d < new Date(2026, 8, 1)) return 500;
+  const niveau = NIVEAU_PAR_TP[(formation || '').trim().toUpperCase()];
+  return niveau === 5 ? 300 : 500;
+}
+
 function genererEcheances(apc: Partial<APC>): Echeance[] {
   const echeances: Echeance[] = [];
   const dF = parseDate(apc.dateDebutFormation||'');
@@ -110,7 +131,7 @@ function genererEcheances(apc: Partial<APC>): Echeance[] {
       echeances.push(mk('5','Éch. 5 — Solde An 2','pedago',2,0,r2(m2-e4v),e5));
     }
   }
-  echeances.push(mk('eq','1er équipement','equipement',1,0,eq>0?eq:500,dateDebut));
+  echeances.push(mk('eq','1er équipement','equipement',1,0,eq>0?eq:montantEquipementParDefaut(apc.formation,apc.dateDebutContrat),dateDebut));
   if (rep>0) echeances.push(mk('rep','Frais repas','repas',1,0,rep,addMonths(dateDebut,6)));
   return echeances;
 }
@@ -260,7 +281,7 @@ export default function Facturation() {
       dateDebutFormation:form.dateDebutFormation??form.dateDebutContrat??'',
       annee:form.annee??'2026',npecBranche:form.npecBranche??0,
       coutPedagoDemande:form.coutPedagoDemande??0,coutPedagoAccorde:form.coutPedagoAccorde??0,
-      premierEquipement:form.premierEquipement??500,fraisRepas:form.fraisRepas??0,
+      premierEquipement:form.premierEquipement??montantEquipementParDefaut(ap?.formation,form.dateDebutContrat??ap?.dateDebutContrat),fraisRepas:form.fraisRepas??0,
       nbJoursFormation:form.nbJoursFormation??0,resteACharge:form.resteACharge??0,
       apcRecu:'',dateReception:'',echeances:genererEcheances({...form}),statut:'En attente',
     };
@@ -876,15 +897,18 @@ export default function Facturation() {
                     {[
                       {label:'N° dossier OPCO',champ:'numeroDossierOpco'},
                       {label:'N° DECA',champ:'numeroDeca'},
-                      {label:'Début financement',champ:'dateDebutFormation'},
-                      {label:'Début contrat',champ:'dateDebutContrat'},
-                      {label:'Fin contrat',champ:'dateFinContrat'},
-                      {label:'Nb jours',champ:'nbJoursFormation'},
+                      {label:'Début financement',champ:'dateDebutFormation',type:'date' as const},
+                      {label:'Début contrat',champ:'dateDebutContrat',type:'date' as const},
+                      {label:'Fin contrat',champ:'dateFinContrat',type:'date' as const},
+                      {label:'Nb jours',champ:'nbJoursFormation',type:'montant' as const},
                     ].map(f=>(
-                      <div key={f.champ}>
-                        <label style={{fontSize:'10px',color:'#888',display:'block',marginBottom:'2px',textTransform:'uppercase'}}>{f.label}</label>
-                        <input style={inputStyle} value={(apcSel as any)[f.champ]??''} onChange={e=>maj(f.champ,e.target.value)}/>
-                      </div>
+                      <ChampEcheance
+                        key={f.champ}
+                        label={f.label}
+                        type={(f as any).type ?? 'text'}
+                        valeur={(apcSel as any)[f.champ]}
+                        onValider={val=>maj(f.champ,val)}
+                      />
                     ))}
                   </div>
                   <div style={{display:'flex',gap:'8px',alignItems:'center',marginBottom:'12px'}}>
@@ -920,10 +944,13 @@ export default function Facturation() {
                         {label:'Péda accordée (€)',champ:'coutPedagoAccorde'},{label:'1er équipement (€)',champ:'premierEquipement'},
                         {label:'Frais repas (€)',champ:'fraisRepas'},{label:'Reste à charge (€)',champ:'resteACharge'},
                       ].map(f=>(
-                        <div key={f.champ}>
-                          <label style={{fontSize:'10px',color:'#555',display:'block',marginBottom:'2px'}}>{f.label}</label>
-                          <input type="number" step="0.01" style={inputStyle} value={(apcSel as any)[f.champ]??0} onChange={e=>maj(f.champ,parseFloat(e.target.value)||0)}/>
-                        </div>
+                        <ChampEcheance
+                          key={f.champ}
+                          label={f.label}
+                          type="montant"
+                          valeur={(apcSel as any)[f.champ]}
+                          onValider={val=>maj(f.champ,val)}
+                        />
                       ))}
                     </div>
                     <div style={{marginTop:'10px',backgroundColor:'#006B68',borderRadius:'6px',padding:'8px 12px',display:'flex',justifyContent:'space-between'}}>
@@ -1020,16 +1047,20 @@ export default function Facturation() {
                             </div>
                             <div style={{padding:'8px 10px',display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:'6px'}}>
                               {[
-                                {label:'Libellé',champ:'label',type:'text'},{label:'Date échéance',champ:'dateEcheance',type:'text'},
-                                {label:'Montant prévu (€)',champ:'montantPrevu',type:'number'},{label:'N° Facture',champ:'numeroFacture',type:'text'},
-                                {label:'Date facture',champ:'dateFacture',type:'text'},{label:'Date dépôt OPCO',champ:'dateDepotOpco',type:'text'},
-                                {label:'Échéance 30j (auto)',champ:'dateEcheance30j',type:'text'},{label:'Date paiement',champ:'datePaiement',type:'text'},
-                                {label:'Montant payé (€)',champ:'montantPaye',type:'number'},
+                                {label:'Libellé',champ:'label',type:'text' as const},{label:'Date échéance',champ:'dateEcheance',type:'date' as const},
+                                {label:'Montant prévu (€)',champ:'montantPrevu',type:'montant' as const},{label:'N° Facture',champ:'numeroFacture',type:'text' as const},
+                                {label:'Date facture',champ:'dateFacture',type:'date' as const},{label:'Date dépôt OPCO',champ:'dateDepotOpco',type:'date' as const},
+                                {label:'Échéance 30j (auto)',champ:'dateEcheance30j',type:'date' as const,auto:true},{label:'Date paiement',champ:'datePaiement',type:'date' as const},
+                                {label:'Montant payé (€)',champ:'montantPaye',type:'montant' as const},
                               ].map(f=>(
-                                <div key={f.champ}>
-                                  <label style={{fontSize:'9px',color:'#888',display:'block',marginBottom:'2px',textTransform:'uppercase'}}>{f.label}</label>
-                                  <input type={f.type} step={f.type==='number'?'0.01':undefined} style={{...inputStyle,fontSize:'11px',padding:'5px 7px'}} value={(e as any)[f.champ]??''} onChange={ev=>majEch(e.id,f.champ,f.type==='number'?(ev.target.value===''?0:parseFloat(ev.target.value)):ev.target.value)}/>
-                                </div>
+                                <ChampEcheance
+                                  key={f.champ}
+                                  label={f.label}
+                                  type={f.type}
+                                  valeur={(e as any)[f.champ]}
+                                  lectureSeule={(f as any).auto}
+                                  onValider={val=>majEch(e.id,f.champ,val)}
+                                />
                               ))}
                             </div>
 
@@ -1707,7 +1738,7 @@ export default function Facturation() {
                 <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:'8px'}}>
                   {[
                     {l:'NPEC branche (€)',k:'npecBranche'},{l:'Coût péda demandé (€)',k:'coutPedagoDemande'},
-                    {l:'Coût péda accordé (€)',k:'coutPedagoAccorde'},{l:'1er équipement (€)',k:'premierEquipement',d:500},
+                    {l:'Coût péda accordé (€)',k:'coutPedagoAccorde'},{l:'1er équipement (€)',k:'premierEquipement',d:montantEquipementParDefaut(apprenantsListe.find((a:any)=>a.id===form.apprenantId)?.formation,form.dateDebutContrat)},
                     {l:'Frais repas (€)',k:'fraisRepas'},{l:'Reste à charge (€)',k:'resteACharge'},
                   ].map(f=>(
                     <div key={f.k}><label style={{fontSize:'10px',color:'#555',display:'block',marginBottom:'2px'}}>{f.l}</label>
