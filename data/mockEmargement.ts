@@ -9,6 +9,10 @@ export type PresenceApprenant = {
   emailEntreprise: string;
   statut: StatutPresence;
   heureArrivee?: string;
+  /** Départ anticipé (HH:MM). Réduit heuresComptees — voir lib/heuresEffectives.ts */
+  heureDepart?: string;
+  /** Renseigné si le départ vient d'une décharge signée sur la fiche apprenant. */
+  sortieAnticipeeId?: string;
   heuresComptees: number;
   justificatifRecu: boolean;
   emailEnvoye: boolean;

@@ -15,6 +15,10 @@ export interface Presence {
   emailEnvoye?: boolean;
   justificatifRecu?: boolean;
   heureArrivee?: string;
+  /** Départ anticipé (HH:MM). Réduit heuresComptees — voir lib/heuresEffectives.ts */
+  heureDepart?: string;
+  /** Renseigné si la sortie vient d'une décharge signée sur la fiche apprenant. */
+  sortieAnticipeeId?: string;
   [k: string]: any;
 }
 

@@ -33,6 +33,7 @@ import {
 } from '../../data/emargementsSupabase';
 import Card from '../../components/Card';
 import dynamic from 'next/dynamic';
+import { calculerHeuresEffectives } from '../../lib/heuresEffectives';
 const BoutonPdfEmargement = dynamic(() => import('../../components/BoutonPdfEmargement'), { ssr: false });
 
 const STATUT_STYLE: Record<StatutPresence, { bg: string; color: string; icon: string }> = {
@@ -573,21 +574,20 @@ export default function Emargement() {
     })();
   }, [feuilleId, formateurId, monNomFormateur, estAdmin, formateurs.length]);
 
-  function calculerHeures(statut: StatutPresence, heureArrivee?: string, heureDebut = '08:30', heureFin = '12:00'): number {
-    if (statut === 'Présent' || statut === 'Absent justifié') return 3.5;
-    if (statut === 'Absent') return 0;
-    if (statut === 'Retard' && heureArrivee) {
-      const [hA, mA] = heureArrivee.split(':').map(Number);
-      const [hF, mF] = heureFin.split(':').map(Number);
-      const minutesArrivee = hA * 60 + mA;
-      const minutesFin = hF * 60 + mF;
-      const minutesDuree = minutesFin - minutesArrivee;
-      return Math.max(0, Math.round(minutesDuree / 60 * 4) / 4);
-    }
-    return 0;
+  function calculerHeures(
+    statut: StatutPresence,
+    heureArrivee?: string,
+    heureDebut = '08:30',
+    heureFin = '12:00',
+    heureDepart?: string,
+  ): number {
+    // Règle unique, partagée avec la fiche apprenant : les heures comptées
+    // correspondent au temps réellement présent, entre l'arrivée effective
+    // et le départ effectif. Voir lib/heuresEffectives.ts.
+    return calculerHeuresEffectives(statut, heureArrivee, heureDepart, heureDebut, heureFin);
   }
 
-  function mettreAJourStatut(apprenantId: string, statut: StatutPresence, heureArrivee?: string) {
+  function mettreAJourStatut(apprenantId: string, statut: StatutPresence, heureArrivee?: string, heureDepart?: string) {
     if (!feuille || !dj) return;
     const estLocale = feuillesLocales.some(f => f.id === feuilleId);
 
@@ -607,8 +607,10 @@ export default function Emargement() {
               ...d,
               presences: d.presences.map(p => {
                 if (p.apprenantId !== apprenantId) return p;
-                const heures = calculerHeures(statut, heureArrivee, d.heureDebut, d.heureFin);
-                return { ...p, statut, heureArrivee: heureArrivee ?? p.heureArrivee, heuresComptees: heures };
+                                const arrivee = heureArrivee ?? p.heureArrivee;
+                const depart = heureDepart !== undefined ? (heureDepart || undefined) : p.heureDepart;
+                const heures = calculerHeures(statut, arrivee, d.heureDebut, d.heureFin, depart);
+                return { ...p, statut, heureArrivee: arrivee, heureDepart: depart, heuresComptees: heures };
               }),
             };
           }),
@@ -1396,7 +1398,7 @@ export default function Emargement() {
                       <table style={{ width: '100%', borderCollapse: 'collapse' }}>
                         <thead>
                           <tr style={{ borderBottom: `2px solid ${COLORS.background}` }}>
-                            {['Apprenant', 'Entreprise', 'Statut', 'Heure arrivée', 'Heures comptées', 'Email envoyé', 'Justificatif', 'Actions'].map((col) => (
+                             {['Apprenant', 'Entreprise', 'Statut', 'Heure arrivée', 'Heure départ', 'Heures comptées', 'Email envoyé', 'Justificatif', 'Actions'].map((col) => (
                               <th key={col} style={{ textAlign: 'left', padding: '8px 10px', fontSize: '11px', color: '#999', fontWeight: '600', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>{col}</th>
                             ))}
                           </tr>
@@ -1418,6 +1420,18 @@ export default function Emargement() {
                                 <td style={{ padding: '12px 10px' }}>
                                   {p.statut === 'Retard' ? (
                                     <input type="time" defaultValue={p.heureArrivee} disabled={dj.valide} onChange={(e) => mettreAJourStatut(p.apprenantId, 'Retard', e.target.value)} style={{ ...inputStyle, width: '100px', padding: '4px 8px', fontSize: '12px' }} />
+                                  ) : (
+                                    <span style={{ fontSize: '12px', color: '#aaa' }}>—</span>
+                                  )}
+                                </td>
+                                <td style={{ padding: '12px 10px' }}>
+                                  {(p.statut === 'Présent' || p.statut === 'Retard') ? (
+                                    <div>
+                                      <input type="time" defaultValue={p.heureDepart} disabled={dj.valide} onChange={(e) => mettreAJourStatut(p.apprenantId, p.statut, undefined, e.target.value)} style={{ ...inputStyle, width: '100px', padding: '4px 8px', fontSize: '12px' }} />
+                                      {p.sortieAnticipeeId && (
+                                        <div style={{ fontSize: '10px', color: '#ea580c', marginTop: '2px' }}>décharge signée</div>
+                                      )}
+                                    </div>
                                   ) : (
                                     <span style={{ fontSize: '12px', color: '#aaa' }}>—</span>
                                   )}
