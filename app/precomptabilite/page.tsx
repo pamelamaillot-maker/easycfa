@@ -74,6 +74,13 @@ function addMonths(date: Date, months: number): Date {
 function formatDate(date: Date): string { return date.toLocaleDateString('fr-FR'); }
 function r2(n: number): number { return Math.round(n*100)/100; }
 
+/** Ramène une date ISO (AAAA-MM-JJ) au format JJ/MM/AAAA attendu par parseDate. */
+function versFR(v?: string): string {
+  const s = (v || '').trim();
+  const m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  return m ? `${m[3]}/${m[2]}/${m[1]}` : s;
+}
+
 /**
  * Montant du 1er équipement, selon la règle AKTO.
  *
@@ -276,14 +283,14 @@ export default function Facturation() {
       formation:ap?.formation??'',entreprise:ap?.entreprise??'',
       opco:form.opco??'',numeroDossierOpco:form.numeroDossierOpco??'',
       numeroDeca:form.numeroDeca??'',
-      dateDebutContrat:form.dateDebutContrat??ap?.dateDebutContrat??'',
-      dateFinContrat:form.dateFinContrat??ap?.dateFinContrat??'',
+      dateDebutContrat:versFR(form.dateDebutContrat||ap?.dateDebutContrat),
+      dateFinContrat:versFR(form.dateFinContrat||ap?.dateFinContrat),
       dateDebutFormation:form.dateDebutFormation??form.dateDebutContrat??'',
       annee:form.annee??'2026',npecBranche:form.npecBranche??0,
       coutPedagoDemande:form.coutPedagoDemande??0,coutPedagoAccorde:form.coutPedagoAccorde??0,
       premierEquipement:form.premierEquipement??montantEquipementParDefaut(ap?.formation,form.dateDebutContrat??ap?.dateDebutContrat),fraisRepas:form.fraisRepas??0,
       nbJoursFormation:form.nbJoursFormation??0,resteACharge:form.resteACharge??0,
-      apcRecu:'',dateReception:'',echeances:genererEcheances({...form}),statut:'En attente',
+      apcRecu:'',dateReception:'',echeances:genererEcheances({...form,formation:ap?.formation,dateDebutContrat:versFR(form.dateDebutContrat||ap?.dateDebutContrat),dateFinContrat:versFR(form.dateFinContrat||ap?.dateFinContrat),dateDebutFormation:versFR(form.dateDebutFormation||form.dateDebutContrat||ap?.dateDebutContrat)}),statut:'En attente',
     };
     // Supabase d'abord (APC + ses échéances)
     const res = await creerApcSupabase(n as any);
@@ -394,6 +401,23 @@ export default function Facturation() {
     else console.log(`[Echeance ${eid}] ${champ} mis à jour dans Supabase ✅`);
     // UI + localStorage
     const u={...apcSel,echeances:echs}; setApcSel(u); save(apcs.map(a=>a.id===u.id?u:a));
+  }
+
+  // Met à jour PLUSIEURS champs en un seul appel. Des appels successifs à
+  // maj() ou majEch() s'écrasent mutuellement : ils lisent tous le même apcSel figé.
+  async function majApcMulti(mods: Record<string, any>) {
+    if (!apcSel) return;
+    const res = await modifierApc(apcSel.id, mods as any);
+    if (!res.success) { alert(`⚠️ Erreur Supabase : ${res.error}`); return; }
+    const u = { ...apcSel, ...mods }; setApcSel(u); save(apcs.map(a => a.id === u.id ? u : a));
+  }
+  async function majEchMulti(eid: string, mods: Record<string, any>) {
+    if (!apcSel) return;
+    const toutes = { ...mods, modifiee: true };
+    const res = await modifierEcheance(eid, toutes);
+    if (!res.success) { alert(`⚠️ Erreur Supabase : ${res.error}`); return; }
+    const u = { ...apcSel, echeances: apcSel.echeances.map(e => e.id === eid ? { ...e, ...toutes } : e) };
+    setApcSel(u); save(apcs.map(a => a.id === u.id ? u : a));
   }
 
   // Supprime une échéance : DELETE réel dans Supabase (pas un upsert, qui ne supprimerait rien)
@@ -924,11 +948,13 @@ export default function Facturation() {
                           return;
                         }
                         console.log(`[APC ${apcSel.id}] APC reçu uploadé vers Storage ✅`);
-                        await maj('apcRecu',f.name);
-                        await maj('apcRecuUrl',resUpload.fichier.url);
-                        await maj('apcRecuCheminStorage',resUpload.fichier.cheminStorage);
-                        await maj('dateReception',new Date().toLocaleDateString('fr-FR'));
-                        await maj('statut','Accordé');
+                        await majApcMulti({
+                          apcRecu: f.name,
+                          apcRecuUrl: resUpload.fichier.url,
+                          apcRecuCheminStorage: resUpload.fichier.cheminStorage,
+                          dateReception: new Date().toLocaleDateString('fr-FR'),
+                          statut: 'Accordé',
+                        });
                       }}/>
                     </label>
                     {apcSel.apcRecu&&<span style={{fontSize:'11px',color:'#006B68',fontWeight:'600',display:'inline-flex',alignItems:'center',gap:'6px'}}>
@@ -999,9 +1025,11 @@ export default function Facturation() {
                                       return;
                                     }
                                     console.log(`[Échéance ${e.id}] Facture uploadée vers Storage ✅`);
-                                    await majEch(e.id,'fichierFacture',f.name);
-                                    await majEch(e.id,'fichierFactureUrl',resUpload.fichier.url);
-                                    await majEch(e.id,'fichierFactureCheminStorage',resUpload.fichier.cheminStorage);
+                                    await majEchMulti(e.id, {
+                                      fichierFacture: f.name,
+                                      fichierFactureUrl: resUpload.fichier.url,
+                                      fichierFactureCheminStorage: resUpload.fichier.cheminStorage,
+                                    });
                                   }}/>
                                 </label>
                               </div>
@@ -1020,9 +1048,11 @@ export default function Facturation() {
                                       return;
                                     }
                                     console.log(`[Échéance ${e.id}] Facture remplacée vers Storage ✅`);
-                                    majEch(e.id,'fichierFacture',f.name);
-                                    majEch(e.id,'fichierFactureUrl',resUpload.fichier.url);
-                                    majEch(e.id,'fichierFactureCheminStorage',resUpload.fichier.cheminStorage);
+                                    await majEchMulti(e.id, {
+                                      fichierFacture: f.name,
+                                      fichierFactureUrl: resUpload.fichier.url,
+                                      fichierFactureCheminStorage: resUpload.fichier.cheminStorage,
+                                    });
                                   }}/>
                                 </label>
                               </div>
@@ -1702,7 +1732,7 @@ export default function Facturation() {
             <div style={{display:'flex',flexDirection:'column',gap:'12px'}}>
               <div>
                 <label style={{fontSize:'11px',color:'#888',textTransform:'uppercase',fontWeight:'600',display:'block',marginBottom:'3px'}}>Apprenant *</label>
-                <select style={inputStyle} value={form.apprenantId??''} onChange={e=>{const a=apprenantsListe.find((ap:any)=>ap.id===e.target.value);setForm(p=>({...p,apprenantId:e.target.value,dateDebutContrat:a?.dateDebutContrat??'',dateFinContrat:a?.dateFinContrat??''}));}}>
+                <select style={inputStyle} value={form.apprenantId??''} onChange={e=>{const a=apprenantsListe.find((ap:any)=>ap.id===e.target.value);setForm(p=>({...p,apprenantId:e.target.value,numeroDossierOpco:a?.numeroDossierOpco??'',numeroDeca:a?.numeroDeca??'',dateDebutContrat:versFR(a?.dateDebutContrat),dateFinContrat:versFR(a?.dateFinContrat),dateDebutFormation:versFR(a?.dateDebutFormation||a?.dateDebutContrat)}));}}>
                   <option value="">Choisir un apprenant...</option>
                   {apprenantsListe.filter((a:any)=>a.statut==='En cours'||a.statut==='P2S'||a.statut==='Rupture').sort((a:any,b:any)=>a.nom.localeCompare(b.nom)).map((a:any)=>(
                     <option key={a.id} value={a.id}>{a.nom} {a.prenom} — {a.formation} — {a.entreprise||'P2S'}</option>
