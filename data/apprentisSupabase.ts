@@ -37,6 +37,10 @@ export interface Apprenti {
 
   // Formation
   formation?: string;
+  /** Type de financement — voir lib/financeurs.ts.
+   *  Décide de l'inclusion dans SIFA et France Compétences (apprentissage seul).
+   *  Vide = apprentissage, pour les dossiers antérieurs à 2026. */
+  typeFinancement?: string;
   sessionId?: string;
   dateDebutFormation?: string;
   dateFinFormation?: string;
@@ -391,7 +395,7 @@ const CHAMPS_VALIDES = new Set<string>([
   'dateNaissance', 'lieuNaissance', 'codePostalNaissance', 'departementNaissance', 'paysNaissance',
   'email', 'telephone', 'adresse', 'codePostal', 'ville',
   'nir', 'rqth', 'sportifHautNiveau',
-  'formation', 'sessionId', 'dateDebutFormation', 'dateFinFormation',
+  'formation', 'typeFinancement', 'sessionId', 'dateDebutFormation', 'dateFinFormation',
   'entreprise', 'dateDebutContrat', 'dateFinContrat', 'numeroDeca', 'numeroDossierOpco',
   'tuteurNom', 'tuteurPrenom', 'tuteurEmail', 'tuteurTelephone',
   'representantNom', 'representantPrenom', 'representantLien', 'representantEmail',

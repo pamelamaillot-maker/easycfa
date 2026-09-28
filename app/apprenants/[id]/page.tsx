@@ -1,6 +1,8 @@
 'use client';
 
 import FinEffectiveContrat from './FinEffectiveContrat';
+import TypeFinancement from './TypeFinancement';
+import { titreActionFormation, champSansObjet, libelleChamp, estApprentissage } from '../../../lib/financeurs';
 import React, { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { APPRENANTS_REELS, DERNIERE_SITUATION_SIFA, verifierConformiteSifa, estMineur } from '../../../data/mockApprenants_reels';
@@ -1780,9 +1782,27 @@ export default function FicheApprenant({ params }: { params: Promise<{ id: strin
         </Card>
       </div>
 
-      {/* Contrat */}
+      {/* Type de financement — commande le vocabulaire et les champs du bloc suivant */}
+      <Card style={{ marginBottom: '16px' }}>
+        <h2 style={{ fontSize: '15px', fontWeight: '700', color: COLORS.primary, marginBottom: '12px' }}>Financement de la formation</h2>
+        <TypeFinancement
+          apprenantId={id}
+          typeFinancement={(form as any).typeFinancement}
+          peutModifier={peutModifier}
+          onEnregistre={(type) => {
+            const maj = { ...form, typeFinancement: type };
+            setForm(maj);
+            setApprenant(maj);
+            localStorage.setItem('apprenant_' + id, JSON.stringify(maj));
+            setSauvegarde(true);
+            setTimeout(() => setSauvegarde(false), 3000);
+          }}
+        />
+      </Card>
+
+      {/* Action de formation */}
       <Card style={{ marginBottom: '24px' }}>
-        <h2 style={{ fontSize: '15px', fontWeight: '700', color: COLORS.primary, marginBottom: '12px' }}>Contrat d'apprentissage</h2>
+        <h2 style={{ fontSize: '15px', fontWeight: '700', color: COLORS.primary, marginBottom: '12px' }}>{titreActionFormation((form as any).typeFinancement)}</h2>
         {modeEdition ? (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '16px' }}>
             <div>
@@ -1845,18 +1865,32 @@ export default function FicheApprenant({ params }: { params: Promise<{ id: strin
             </div>
 
             <Champ label="Statut" champ="statut" form={form} setForm={setForm} />
-            <Champ label="Début contrat" champ="dateDebutContrat" form={form} setForm={setForm} type="date" />
-            <Champ label="Fin contrat" champ="dateFinContrat" form={form} setForm={setForm} type="date" />
+            <Champ label={libelleChamp('dateDebutContrat', (form as any).typeFinancement)} champ="dateDebutContrat" form={form} setForm={setForm} type="date" />
+            <Champ label={libelleChamp('dateFinContrat', (form as any).typeFinancement)} champ="dateFinContrat" form={form} setForm={setForm} type="date" />
             <Champ label="Début formation" champ="dateDebutFormation" form={form} setForm={setForm} type="date" />
             <Champ label="Fin formation" champ="dateFinFormation" form={form} setForm={setForm} type="date" />
-            <Champ label="N° dossier OPCO" champ="numeroDossierOpco" form={form} setForm={setForm} placeholder="Ex: 123456789" />
-            <Champ label="N° DECA (APC)" champ="numeroDeca" form={form} setForm={setForm} placeholder="Ex: 974202XXXXXXXXX" />
+            <Champ label={libelleChamp('numeroDossierOpco', (form as any).typeFinancement)} champ="numeroDossierOpco" form={form} setForm={setForm} placeholder="Ex: 123456789" />
+            {champSansObjet('numeroDeca', (form as any).typeFinancement) ? (
+              <div style={{ opacity: 0.5 }}>
+                <label style={{ fontSize: '11px', color: '#888', textTransform: 'uppercase', fontWeight: '600', display: 'block', marginBottom: '4px' }}>N° DECA (APC)</label>
+                <div style={{ ...inputStyle, backgroundColor: '#f2f2f2', color: '#aaa', fontStyle: 'italic' }}>Sans objet</div>
+              </div>
+            ) : (
+              <Champ label="N° DECA (APC)" champ="numeroDeca" form={form} setForm={setForm} placeholder="Ex: 974202XXXXXXXXX" />
+            )}
+            {champSansObjet('situationAvant', (form as any).typeFinancement) ? (
+              <div style={{ opacity: 0.5 }}>
+                <label style={{ fontSize: '11px', color: '#888', textTransform: 'uppercase', fontWeight: '600', display: 'block', marginBottom: '4px' }}>Situation avant contrat</label>
+                <div style={{ ...inputStyle, backgroundColor: '#f2f2f2', color: '#aaa', fontStyle: 'italic' }}>Sans objet</div>
+              </div>
+            ) : (
             <ChampSelect label="Situation avant contrat" champ="situationAvant" form={form} setForm={setForm} options={[
               { value: '1 Scolaire', label: '1 - Scolaire' },
               { value: '4 Contrat d\'apprentissage', label: '4 - Contrat d\'apprentissage' },
               { value: '7 En formation au CFA sous le statut de stagiaire de la formation professionnelle, avant la conclusion d\'un CA', label: '7 - Stagiaire FP avant CA' },
               { value: '11 Personne à la recherche d\'un emploi (inscrite ou non à France Travail)', label: '11 - Demandeur d\'emploi' },
             ]} />
+            )}
             <ChampSelect label="Dernier diplôme obtenu" champ="dernierDiplome" form={form} setForm={setForm} options={[
               { value: 'Brevet des collèges', label: 'Brevet des collèges' },
               { value: 'CAP', label: 'CAP' },
@@ -1908,24 +1942,31 @@ export default function FicheApprenant({ params }: { params: Promise<{ id: strin
             {[
               { label: 'Formation', value: ({'SC':'TP Secrétaire Comptable','GCF':'TP Gestionnaire Comptable et Fiscal','ARH':'TP Assistant(e) en Ressources Humaines','AD':'TP Assistant(e) de Direction','CATL':'TP Chargé(e) d\'Accueil Touristique et de Loisirs','EC':'TP Employé(e) Commercial(e)','CV':'TP Conseiller(ère) de Vente','FPA':'TP Formateur(trice) Professionnel(le) d\'Adultes'} as Record<string,string>)[form.formation] || form.formationLibelle || form.formation || '—' },
               { label: 'Code', value: form.formation },
-              { label: 'Statut', value: statutLabel },
+              { champ: 'statut', label: 'Statut', value: estApprentissage((form as any).typeFinancement) ? statutLabel : (form.statut || '—') },
               { label: 'Entreprise', value: form.entreprise },
-              { label: 'Début contrat', value: formaterDateFR(form.dateDebutContrat) },
-              { label: 'Fin contrat', value: formaterDateFR(form.dateFinContrat) },
-              { label: 'Début formation', value: formaterDateFR(form.dateDebutFormation) },
-              { label: 'Fin formation', value: formaterDateFR(form.dateFinFormation) },
-              { label: 'N° dossier OPCO', value: form.numeroDossierOpco },
-              { label: 'N° DECA (APC)', value: form.numeroDeca },
-              { label: 'Situation avant contrat', value: form.situationAvant },
+              { champ: 'dateDebutContrat', label: libelleChamp('dateDebutContrat', (form as any).typeFinancement), value: formaterDateFR(form.dateDebutContrat) },
+              { champ: 'dateFinContrat', label: libelleChamp('dateFinContrat', (form as any).typeFinancement), value: formaterDateFR(form.dateFinContrat) },
+              { champ: 'dateDebutFormation', label: 'Début formation', value: formaterDateFR(form.dateDebutFormation) },
+              { champ: 'dateFinFormation', label: 'Fin formation', value: formaterDateFR(form.dateFinFormation) },
+              { champ: 'numeroDossierOpco', label: libelleChamp('numeroDossierOpco', (form as any).typeFinancement), value: form.numeroDossierOpco },
+              { champ: 'numeroDeca', label: 'N° DECA (APC)', value: form.numeroDeca },
+              { champ: 'situationAvant', label: 'Situation avant contrat', value: form.situationAvant },
               { label: 'Dernier diplôme obtenu', value: form.dernierDiplome },
               { label: 'RQTH', value: form.rqth },
               { label: '📅 Session de formation', value: sessionActuelle ? `Session #${sessionActuelle.id} — ${libelleSession(sessionActuelle)}` : '— Non assignée' },
-            ].map((info) => (
-              <div key={info.label} style={{ backgroundColor: COLORS.background, borderRadius: '8px', padding: '12px' }}>
-                <div style={{ fontSize: '11px', color: '#888', textTransform: 'uppercase', fontWeight: '600', marginBottom: '4px' }}>{info.label}</div>
-                <div style={{ fontSize: '13px', fontWeight: '600', color: (!info.value || info.value === '—' || info.value === '— Non assignée') ? '#ccc' : COLORS.text }}>{info.value || '—'}</div>
-              </div>
-            ))}
+            ].map((info: any) => {
+              const inactif = champSansObjet(info.champ ?? '', (form as any).typeFinancement);
+              return (
+                <div key={info.label} style={{ backgroundColor: inactif ? '#f2f2f2' : COLORS.background, borderRadius: '8px', padding: '12px' }}>
+                  <div style={{ fontSize: '11px', color: '#888', textTransform: 'uppercase', fontWeight: '600', marginBottom: '4px' }}>{info.label}</div>
+                  {inactif ? (
+                    <div style={{ fontSize: '12px', color: '#aaa', fontStyle: 'italic' }} title="Champ propre à l'apprentissage">Sans objet</div>
+                  ) : (
+                    <div style={{ fontSize: '13px', fontWeight: '600', color: (!info.value || info.value === '—' || info.value === '— Non assignée') ? '#ccc' : COLORS.text }}>{info.value || '—'}</div>
+                  )}
+                </div>
+              );
+            })}
           </div>
         )}
       </Card>
