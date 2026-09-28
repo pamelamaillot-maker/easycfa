@@ -157,9 +157,14 @@ export default function ValidationPedagogique() {
           return {
             ...p,
             justifiee: decision,
-            // Si justifiée OUI, on bascule le statut à "Absent justifié" (uniquement si Absent à l'origine)
-            statut: decision === 'OUI' && p.statut === 'Absent' ? 'Absent justifié' : p.statut,
-            justificatifRecu: decision === 'OUI' ? true : p.justificatifRecu,
+            // Le statut suit la décision, dans les deux sens : un retour sur
+            // « Non justifiée » doit ramener l'apprenant en « Absent ».
+            statut: decision === 'OUI' && p.statut === 'Absent' ? 'Absent justifié'
+                  : decision === 'NON' && p.statut === 'Absent justifié' ? 'Absent'
+                  : p.statut,
+            // « Reçu » décrit la pièce, pas la décision : on ne le coche que
+            // si un justificatif existe réellement.
+            justificatifRecu: decision === 'OUI' ? !!p.justificatifUrl : false,
           };
         }),
       };

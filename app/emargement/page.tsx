@@ -1442,8 +1442,8 @@ export default function Emargement() {
                                 </td>
                                 <td style={{ padding: '12px 10px', textAlign: 'center' }}>
                                   {(p.statut === 'Absent' || p.statut === 'Retard') ? (
-                                    <span style={{ backgroundColor: p.justificatifRecu ? '#e6f4f1' : '#fde8e8', color: p.justificatifRecu ? '#006B68' : '#e53e3e', padding: '3px 8px', borderRadius: '20px', fontSize: '11px', fontWeight: '600' }}>
-                                      {p.justificatifRecu ? '✅ Reçu' : '⏳ En attente'}
+                                       <span style={{ backgroundColor: p.justifiee === 'OUI' ? '#dcfce7' : p.justifiee === 'NON' ? '#fde8e8' : p.justificatifRecu ? '#e6f4f1' : '#fef6e4', color: p.justifiee === 'OUI' ? '#15803d' : p.justifiee === 'NON' ? '#e53e3e' : p.justificatifRecu ? '#006B68' : '#7a5c00', padding: '3px 8px', borderRadius: '20px', fontSize: '11px', fontWeight: '600', whiteSpace: 'nowrap' }}>
+                                      {p.justifiee === 'OUI' ? '✅ Justifiée' : p.justifiee === 'NON' ? '❌ Non justifiée' : p.justificatifRecu ? '📄 Reçu' : '⏳ En attente'}
                                     </span>
                                   ) : <span style={{ color: '#aaa', fontSize: '12px' }}>—</span>}
                                 </td>
