@@ -14,6 +14,7 @@ import {
   sauvegarderCrEcheance,
   marquerCrSignee,
   supprimerCrEcheance,
+  remplacerEcheances,
   type CertificatRealisation,
 } from '../../data/apcsSupabase';
 import { chargerApprentis } from '../../data/apprentisSupabase';
@@ -23,6 +24,10 @@ import { calculerPeriodeCr, calculerPeriodeCrFinal, nbJoursEntre, nbMoisEntre } 
 import dynamic from 'next/dynamic';
 import { APPRENANTS_REELS as APPS_REELS_LIB } from '../../data/mockApprenants_reels';
 import ChampEcheance from '../../components/ChampEcheance';
+import BlocConvention from '../../components/BlocConvention';
+import { CODES_FINANCEURS, categorieDe } from '../../lib/financeurs';
+import { genererEcheancesMensuelles } from '../../lib/echeancesMensuelles';
+import { donneesCrMensuel } from '../../lib/crMensuel';
 
 const BoutonGenerationCR = dynamic(() => import('../../components/BoutonGenerationCR'), { ssr: false });
 
@@ -30,7 +35,11 @@ const inputStyle: React.CSSProperties = { border: '1.5px solid #e0e0e0', borderR
 const btnPrimary: React.CSSProperties = { backgroundColor: '#006B68', color: 'white', border: 'none', borderRadius: '8px', padding: '8px 14px', fontSize: '12px', fontWeight: '600', cursor: 'pointer' };
 const btnSecondary: React.CSSProperties = { backgroundColor: 'white', color: '#006B68', border: '1.5px solid #006B68', borderRadius: '8px', padding: '8px 14px', fontSize: '12px', fontWeight: '600', cursor: 'pointer' };
 
-const OPCOS = ['AKTO','ATLAS','AFDAS','OPCO EP','OCAPIAT','OPCOMMERCE','UNIFORMATION','CNFPT','CONSTRUCTYS','OPCO MOBILITES','OPCO 2i'];
+// Liste des financeurs — source unique : lib/financeurs.ts
+// Le nom OPCOS reste celui de la variable, utilisée à plusieurs endroits de la page.
+// Elle désigne désormais TOUS les financeurs : OPCO, Transition Pro, CPF, Région,
+// France Travail, entreprise, particulier.
+const OPCOS = CODES_FINANCEURS;
 const MOIS_NOMS = ['Jan','Fév','Mar','Avr','Mai','Jun','Jul','Aoû','Sep','Oct','Nov','Déc'];
 const ANNEES = ['2024','2025','2026','2027'];
 
@@ -102,6 +111,14 @@ function montantEquipementParDefaut(formation?: string, dateDebutContrat?: strin
 }
 
 function genererEcheances(apc: Partial<APC>): Echeance[] {
+  // Financeur hors OPCO : facturation mensuelle au réel, pas d'échéancier NPEC.
+  // Voir lib/echeancesMensuelles.ts.
+  const categorieFinanceur = categorieDe(apc.opco);
+  console.log('[Échéancier] financeur =', JSON.stringify(apc.opco), '→ catégorie =', categorieFinanceur);
+  if (categorieFinanceur && categorieFinanceur !== 'opco') {
+    return genererEcheancesMensuelles(apc) as Echeance[];
+  }
+
   const echeances: Echeance[] = [];
   const dF = parseDate(apc.dateDebutFormation||'');
   const dC = parseDate(apc.dateDebutContrat||'');
@@ -969,7 +986,12 @@ export default function Facturation() {
                         {label:'NPEC (€/an)',champ:'npecBranche'},{label:'Péda demandée (€)',champ:'coutPedagoDemande'},
                         {label:'Péda accordée (€)',champ:'coutPedagoAccorde'},{label:'1er équipement (€)',champ:'premierEquipement'},
                         {label:'Frais repas (€)',champ:'fraisRepas'},{label:'Reste à charge (€)',champ:'resteACharge'},
-                      ].map(f=>(
+                      ].filter(f=>{
+                        // NPEC, 1er équipement et frais repas sont propres à l'apprentissage.
+                        const cat=categorieDe(apcSel.opco);
+                        const propresApprentissage=['npecBranche','premierEquipement','fraisRepas'];
+                        return !(cat&&cat!=='opco'&&propresApprentissage.includes(f.champ));
+                      }).map(f=>(
                         <ChampEcheance
                           key={f.champ}
                           label={f.label}
@@ -981,23 +1003,31 @@ export default function Facturation() {
                     </div>
                     <div style={{marginTop:'10px',backgroundColor:'#006B68',borderRadius:'6px',padding:'8px 12px',display:'flex',justifyContent:'space-between'}}>
                       <span style={{fontSize:'12px',fontWeight:'700',color:'white'}}>Total accordé</span>
-                      <span style={{fontSize:'13px',fontWeight:'800',color:'#C8A23A'}}>{(apcSel.coutPedagoAccorde+apcSel.premierEquipement+apcSel.fraisRepas).toLocaleString('fr-FR')} €</span>
+                      <span style={{fontSize:'13px',fontWeight:'800',color:'#C8A23A'}}>{((apcSel.coutPedagoAccorde||0)+(apcSel.premierEquipement||0)+(apcSel.fraisRepas||0)).toLocaleString('fr-FR')} €</span>
                     </div>
                   </div>
+
+                  <BlocConvention apc={apcSel} onValider={maj} />
                 </Card>
 
                 <Card>
                   <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'12px'}}>
                     <h3 style={{fontSize:'13px',fontWeight:'700',color:'#006B68'}}>📅 Échéancier</h3>
                     <div style={{display:'flex',gap:'6px'}}>
-                      <button onClick={()=>{
+                      <button onClick={async()=>{
   const facturees=(apcSel.echeances||[]).filter((e:any)=>e.numeroFacture||e.dateFacture||e.montantPaye>0||e.dateDepotOpco);
   if(facturees.length>0){
     const detail=facturees.map((e:any)=>`• ${e.label}${e.numeroFacture?` — facture ${e.numeroFacture}`:''}${e.montantPaye>0?` — payé ${e.montantPaye} €`:''}`).join('\n');
     if(!confirm(`🚨 ATTENTION — ${facturees.length} échéance(s) déjà facturée(s) :\n\n${detail}\n\nRégénérer EFFACERA définitivement les numéros de facture, dates de dépôt OPCO et paiements enregistrés.\n\n💡 Pour un avenant, utilisez plutôt « + Ajouter » afin de créer les échéances complémentaires sans toucher à l'existant.\n\nConfirmer malgré tout ?`)) return;
     if(!confirm('Dernière confirmation : effacer les données de facturation existantes ?')) return;
   } else if(!confirm('Régénérer les échéances de ce dossier ?')) return;
-  const u={...apcSel,echeances:genererEcheances(apcSel)};setApcSel(u);save(apcs.map(a=>a.id===u.id?u:a));
+  // Persister AVANT d'afficher : save() n'écrit que dans le localStorage,
+  // et le rechargement suivant restaurerait les anciennes échéances de la base.
+  const nouvelles = genererEcheances(apcSel);
+  const res = await remplacerEcheances(apcSel.id, nouvelles as any);
+  if (!res.success) { alert(`⚠️ Erreur Supabase : ${res.error}`); return; }
+  console.log(`[APCs ${apcSel.id}] ${nouvelles.length} échéances remplacées dans Supabase ✅`);
+  const u={...apcSel,echeances:nouvelles};setApcSel(u);save(apcs.map(a=>a.id===u.id?u:a));
 }} style={{...btnSecondary,padding:'4px 10px',fontSize:'11px'}}>🔄 Régénérer</button>
                       <button onClick={()=>{const n:Echeance={id:Date.now().toString(),label:'Nouvelle échéance',type:'pedago',annee:1,pourcentage:0,montantPrevu:0,dateEcheance:'',numeroFacture:'',dateFacture:'',dateDepotOpco:'',dateEcheance30j:'',datePaiement:'',montantPaye:0,fichierFacture:'',modifiee:true};maj('echeances',[...apcSel.echeances,n]);}} style={{...btnPrimary,padding:'4px 10px',fontSize:'11px'}}>+ Ajouter</button>
                     </div>
@@ -1097,7 +1127,13 @@ export default function Facturation() {
                             {/* === SECTION CERTIFICAT DE RÉALISATION === */}
                             {e.type === 'pedago' && (() => {
                               const apprenant = APPS_REELS_LIB.find(a => a.id === apcSel.apprenantId);
-                              const data = donneesCrPourEcheance(apcSel as any, e as any, apprenant);
+                              // Hors apprentissage : CR MENSUEL, obligatoire dès le premier mois.
+                              // En apprentissage : CR par échéance, aucun sur la première facture,
+                              // émise avant toute réalisation.
+                              const categorieCr = categorieDe(apcSel.opco);
+                              const data = (categorieCr && categorieCr !== 'opco')
+                                ? donneesCrMensuel(apcSel as any, e as any, apprenant)
+                                : donneesCrPourEcheance(apcSel as any, e as any, apprenant);
                               const cr: CertificatRealisation | undefined = (e as any).pieces?.certificatRealisation;
                               const colorCR = cr?.statut === 'signe' ? '#16a34a' : cr?.statut === 'a_signer' ? '#C8A23A' : '#888';
                               const bgCR = cr?.statut === 'signe' ? '#dcfce7' : cr?.statut === 'a_signer' ? '#fef6e4' : '#fafafa';
@@ -1223,6 +1259,12 @@ export default function Facturation() {
 
                       {/* === CR FINAL — couvre tout le contrat pour contrôle OPCO === */}
                       {(() => {
+                        // Le CR final couvrant tout le contrat est propre à l'apprentissage
+                        // (preuve de réalisation pour contrôle OPCO). Une convention hors
+                        // apprentissage exige un CR MENSUEL, pas un CR global.
+                        const categorieFin = categorieDe(apcSel.opco);
+                        if (categorieFin && categorieFin !== 'opco') return null;
+
                         const apprenant = APPS_REELS_LIB.find(a => a.id === apcSel.apprenantId);
                         const dataFinal = donneesCrFinal(apcSel as any, apprenant);
                         if (!dataFinal) return null;

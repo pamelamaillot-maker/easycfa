@@ -49,6 +49,19 @@ export interface Apc {
   fraisRepas?: number;
   nbJoursFormation?: number;
   resteACharge?: number;
+
+  // --- Convention hors apprentissage (Transition Pro, CPF, Région…) ---
+  /** Heures de formation théorique prises en charge — le H1 de l'attestation mensuelle. */
+  heuresTheoriques?: number;
+  /** Heures de stage pratique en entreprise prises en charge. Déclarées, non facturées. */
+  heuresStagePratique?: number;
+  /** Taux horaire HT pris en charge, tel qu'imprimé sur la décision de prise en charge.
+   *  ⚠️ Le formulaire Transition Pro le nomme « taux horaire TTC », mais la pratique
+   *  établit qu'il s'agit d'un montant HT : la TVA s'ajoute à la facturation. */
+  tauxHoraire?: number;
+  /** Taux de TVA applicable, en %. 8,5 à La Réunion pour la formation professionnelle
+   *  continue. L'apprentissage en est exonéré : le champ y reste vide. */
+  tauxTva?: number;
   apcRecu?: string;
   dateReception?: string;
   statut?: string;
@@ -64,6 +77,7 @@ const CHAMPS_VALIDES_APC = new Set<string>([
   'dateDebutContrat', 'dateFinContrat', 'dateDebutFormation', 'annee',
   'npecBranche', 'coutPedagoDemande', 'coutPedagoAccorde', 'premierEquipement', 'fraisRepas',
   'nbJoursFormation', 'resteACharge', 'apcRecu', 'apcRecuUrl', 'apcRecuCheminStorage', 'dateReception', 'statut',
+  'heuresTheoriques', 'heuresStagePratique', 'tauxHoraire', 'tauxTva',
   'dateCreation', 'dateModification',
 ]);
 
@@ -243,6 +257,26 @@ export async function modifierEcheance(id: string, modifications: Partial<Echean
     delete mods.apc_id; // on ne change pas l'apc parent
     const { error } = await supabase.from('echeances').update(mods).eq('id', id);
     if (error) { console.error('Erreur Supabase modifierEcheance:', error); return { success: false, error: error.message }; }
+    return { success: true };
+  } catch (e: any) { return { success: false, error: e.message || 'Erreur réseau' }; }
+}
+
+/**
+ * Remplace INTÉGRALEMENT l'échéancier d'un APC.
+ *
+ * Les anciennes lignes sont supprimées avant insertion des nouvelles.
+ * Un simple upsert ne suffirait pas : les identifiants d'échéance sont
+ * régénérés à chaque appel, si bien que l'ancien et le nouvel échéancier
+ * cohabiteraient dans la table.
+ */
+export async function remplacerEcheances(apcId: string, echeances: Echeance[]): Promise<{ success: boolean; error?: string }> {
+  try {
+    const { error: errDel } = await supabase.from('echeances').delete().eq('apc_id', apcId);
+    if (errDel) { console.error('Erreur Supabase remplacerEcheances (delete):', errDel); return { success: false, error: errDel.message }; }
+    if (!echeances || echeances.length === 0) return { success: true };
+    const clean = echeances.map(e => nettoyerEcheancePourSupabase(e, apcId));
+    const { error } = await supabase.from('echeances').upsert(clean);
+    if (error) { console.error('Erreur Supabase remplacerEcheances (upsert):', error); return { success: false, error: error.message }; }
     return { success: true };
   } catch (e: any) { return { success: false, error: e.message || 'Erreur réseau' }; }
 }
