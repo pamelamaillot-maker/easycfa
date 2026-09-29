@@ -28,6 +28,8 @@ import BlocConvention from '../../components/BlocConvention';
 import { CODES_FINANCEURS, categorieDe } from '../../lib/financeurs';
 import { genererEcheancesMensuelles } from '../../lib/echeancesMensuelles';
 import { donneesCrMensuel } from '../../lib/crMensuel';
+import LigneHtTva from '../../components/LigneHtTva';
+import TotalHt from '../../components/TotalHt';
 
 const BoutonGenerationCR = dynamic(() => import('../../components/BoutonGenerationCR'), { ssr: false });
 
@@ -1124,7 +1126,8 @@ export default function Facturation() {
                               ))}
                             </div>
 
-                            {/* === SECTION CERTIFICAT DE RÉALISATION === */}
+                            <LigneHtTva apc={apcSel} echeance={e} />
+{/* === SECTION CERTIFICAT DE RÉALISATION === */}
                             {e.type === 'pedago' && (() => {
                               const apprenant = APPS_REELS_LIB.find(a => a.id === apcSel.apprenantId);
                               // Hors apprentissage : CR MENSUEL, obligatoire dès le premier mois.
@@ -1156,7 +1159,7 @@ export default function Facturation() {
                                     </div>
                                     <div style={{fontSize:'10px',color:'#666'}}>
                                       Période : <strong>{data.periode.debut}</strong> → <strong>{data.periode.fin}</strong>
-                                      <span style={{marginLeft:'6px',color:'#888'}}>({nbJoursEntre(data.periode.debut, data.periode.fin)} jours)</span>
+                                      <span style={{marginLeft:'6px',color:'#888'}}></span>
                                     </div>
                                   </div>
 
@@ -1255,6 +1258,7 @@ export default function Facturation() {
                             <div style={{fontSize:'13px',fontWeight:'800',color:t.c}}>{t.v.toLocaleString('fr-FR')} €</div>
                           </div>
                         ))}
+                        <TotalHt apc={apcSel} echeances={apcSel.echeances} />
                       </div>
 
                       {/* === CR FINAL — couvre tout le contrat pour contrôle OPCO === */}
