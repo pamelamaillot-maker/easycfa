@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { usePathname } from 'next/navigation';
 import { TEMPLATES_LIVRET, assemblerDonneesLivret } from '../lib/donneesLivret';
 
 type Props = {
@@ -14,6 +15,11 @@ export default function BoutonRemplirLivret({ apprenant, entreprise, npec }: Pro
   const [lienGenere, setLienGenere] = useState<string | null>(null);
   const [erreur, setErreur] = useState<string | null>(null);
   const tpl = TEMPLATES_LIVRET[apprenant.formation];
+
+  // Page courante, transmise a Google pour qu'il nous y ramene apres
+  // autorisation. Sans elle, le retour se fait sur /documents/generation,
+  // ce qui oblige a revenir a la main sur la fiche de l'apprenant.
+  const cheminCourant = usePathname();
 
   if (!tpl) {
     return (
@@ -61,6 +67,10 @@ export default function BoutonRemplirLivret({ apprenant, entreprise, npec }: Pro
     }
   }
 
+  // Adresse de reconnexion, porteuse de la page de retour.
+  const lienReconnexion =
+    '/api/auth/google?retour=' + encodeURIComponent(cheminCourant || '/apprenants');
+
   return (
     <div style={{ display: 'inline-block', position: 'relative' }}>
       <button
@@ -89,7 +99,7 @@ export default function BoutonRemplirLivret({ apprenant, entreprise, npec }: Pro
             ✅ Livret généré avec succès !
           </div>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-            
+
             <a href={lienGenere}
               target="_blank"
               rel="noopener noreferrer"
@@ -125,11 +135,12 @@ export default function BoutonRemplirLivret({ apprenant, entreprise, npec }: Pro
             🔑 Connexion Google expirée
           </div>
           <div style={{ fontSize: 12, color: '#7a5c00', marginBottom: 10, lineHeight: 1.5 }}>
-            La connexion à Google Docs a expiré. Reconnectez-vous, puis relancez la génération du livret.
+            La connexion à Google Docs a expiré. Reconnectez-vous — vous reviendrez sur
+            cette fiche — puis relancez la génération du livret.
           </div>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            
-              <a href="/api/auth/google" style={{ backgroundColor: '#006B68', color: 'white', borderRadius: 8, padding: '8px 14px', fontSize: 13, fontWeight: 600, textDecoration: 'none' }}>Reconnecter Google</a>
+
+              <a href={lienReconnexion} style={{ backgroundColor: '#006B68', color: 'white', borderRadius: 8, padding: '8px 14px', fontSize: 13, fontWeight: 600, textDecoration: 'none' }}>Reconnecter Google</a>
             <button
               onClick={() => setErreur(null)}
               style={{ backgroundColor: 'white', color: '#7a5c00', border: '1.5px solid #C8A23A', borderRadius: 8, padding: '8px 12px', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}
