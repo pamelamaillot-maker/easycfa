@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { COLORS } from '../../../lib/constants';
 import { creerApprenti } from '../../../data/apprentisSupabase';
 import { chargerEntreprises } from '../../../data/entreprisesSupabase';
+import { genererIdApprenant } from '../../../lib/identifiantApprenant';
 
 const SECTIONS = [
   { id: 'identite', label: '👤 Identité', description: 'Informations personnelles' },
@@ -227,8 +228,8 @@ export default function NouvelApprenant() {
       const liste: any[] = listeBrute ? JSON.parse(listeBrute) : [];
 
       // 3️⃣ Générer un ID unique
-      const idsExistants = liste.map(a => a.id);
-      const id = genererId(form.nom, form.prenom, idsExistants);
+      
+      const id = await genererIdApprenant(form.nom, form.prenom);
 
       // 4️⃣ Construire l'objet apprenant à sauvegarder
       const nouveau: any = {
@@ -261,7 +262,7 @@ export default function NouvelApprenant() {
       const res = await creerApprenti(pourSupabase);
       if (!res.success) {
         console.error('[NouvelApprenant] Erreur Supabase:', res.error);
-        alert(`⚠️ Erreur Supabase : ${res.error}\nL'apprenant a quand même été créé localement.`);
+        setErreurSauvegarde('Enregistrement refusé par la base. Rechargez la page et réessayez. Détail : ' + res.error); return;
       } else {
         console.log(`[NouvelApprenant] ${id} créé dans Supabase ✅`);
       }
