@@ -1,7 +1,22 @@
 'use client';
 
+// components/PdfConvocation.tsx
+// Convocation d'un candidat à une session d'examen de titre professionnel.
+//
+// ⚠️ PAS DE DATE DE NAISSANCE
+// Elle n'est d'aucune utilité le jour de l'examen : l'identité se vérifie sur
+// la pièce d'identité, et le candidat est identifié auprès du certificateur
+// par son numéro CERES. Une date de naissance imprimée sur un document qui
+// circule par courrier est une donnée personnelle de plus, sans contrepartie.
+//
+// ⚠️ DEUX TEMPS DISTINCTS DANS UNE SESSION
+// La mise en situation professionnelle démarre à la même heure pour tout le
+// groupe — d'où une heure de convocation unique, trente minutes avant.
+// Les entretiens technique et final, eux, sont individuels et peuvent
+// s'étaler sur plusieurs jours. Leurs horaires ne sont pas gérés par EasyCFA :
+// la convocation renvoie au planning de passage joint.
+
 import { Document, Page, Text, View, StyleSheet, Image } from '@react-pdf/renderer';
-import { formaterDateFR } from '../lib/dates';
 
 const S = StyleSheet.create({
   page: { paddingTop: 35, paddingBottom: 50, paddingHorizontal: 45, fontFamily: 'Helvetica', fontSize: 9, color: '#1a1a1a' },
@@ -9,6 +24,10 @@ const S = StyleSheet.create({
   logo: { width: 60, height: 44, objectFit: 'contain' },
   headerRight: { textAlign: 'right', fontSize: 7.5, color: '#555', lineHeight: 1.5 },
   headerTitle: { fontSize: 9.5, fontFamily: 'Helvetica-Bold', color: '#006B68', marginBottom: 2 },
+  // Bloc destinataire : aligné à droite, position d'une enveloppe à fenêtre.
+  destinataire: { alignSelf: 'flex-end', width: 230, marginBottom: 10 },
+  destNom: { fontSize: 9.5, fontFamily: 'Helvetica-Bold', marginBottom: 2 },
+  destLigne: { fontSize: 9, color: '#333', lineHeight: 1.4 },
   titleBlock: { alignItems: 'center', marginVertical: 14 },
   title: { fontSize: 14, fontFamily: 'Helvetica-Bold', color: '#006B68', textTransform: 'uppercase', letterSpacing: 1 },
   subtitle: { fontSize: 9, color: '#C8A23A', marginTop: 3 },
@@ -19,6 +38,7 @@ const S = StyleSheet.create({
   row: { flexDirection: 'row', marginBottom: 3 },
   lbl: { fontSize: 8.5, color: '#555', width: 140 },
   val: { fontSize: 8.5, fontFamily: 'Helvetica-Bold', flex: 1 },
+  note: { fontSize: 8, color: '#555', fontStyle: 'italic', marginTop: 4 },
   tableHeader: { flexDirection: 'row', backgroundColor: '#006B68', padding: '4 6' },
   tableHeaderCell: { fontSize: 8, color: 'white', fontFamily: 'Helvetica-Bold' },
   tableRow: { flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: '#e0e0e0', padding: '5 6' },
@@ -36,7 +56,18 @@ type Epreuve = { libelle: string; duree: string };
 type Jure = { nom: string; prenom: string; qualite: string };
 
 type Props = {
-  candidat: { nom: string; prenom: string; dateNaissance: string; email: string };
+  candidat: {
+    nom: string;
+    prenom: string;
+    /** Conservée pour compatibilité avec l'appelant — volontairement non imprimée. */
+    dateNaissance?: string;
+    email: string;
+    /** Numéro attribué par CERES, saisi sur la fiche examen du candidat. */
+    identifiant?: string;
+    adresse?: string;
+    codePostal?: string;
+    ville?: string;
+  };
   formation: string;
   formationId: string;
   typeCandidature: string;
@@ -54,6 +85,9 @@ export default function PdfConvocation({ candidat, formation, formationId, typeC
   const dateGeneration = new Date().toLocaleDateString('fr-FR');
   const epreuvesActives = epreuves.filter(e => e.duree !== 'Sans objet');
 
+  const ligneVille = [candidat.codePostal, candidat.ville].filter(Boolean).join(' ');
+  const aUneAdresse = Boolean(candidat.adresse || ligneVille);
+
   return (
     <Document>
       <Page size="A4" style={S.page}>
@@ -68,6 +102,15 @@ export default function PdfConvocation({ candidat, formation, formationId, typeC
           </View>
         </View>
 
+        {/* Bloc destinataire — n'apparaît que si l'adresse est connue */}
+        {aUneAdresse && (
+          <View style={S.destinataire}>
+            <Text style={S.destNom}>{candidat.prenom} {candidat.nom}</Text>
+            {candidat.adresse ? <Text style={S.destLigne}>{candidat.adresse}</Text> : null}
+            {ligneVille ? <Text style={S.destLigne}>{ligneVille}</Text> : null}
+          </View>
+        )}
+
         {/* Titre */}
         <View style={S.titleBlock}>
           <Text style={S.title}>Convocation à l'examen</Text>
@@ -77,7 +120,7 @@ export default function PdfConvocation({ candidat, formation, formationId, typeC
         {/* Alerte si numéro CERES manquant */}
         {(!numeroSession || numeroSession === 'En attente CERES') && (
           <View style={S.alertBox}>
-            <Text style={S.alertText}>⚠️ Numéro de session CERES en attente — À compléter avant envoi au candidat</Text>
+            <Text style={S.alertText}>Numéro de session CERES en attente — à compléter avant envoi au candidat</Text>
           </View>
         )}
 
@@ -85,7 +128,10 @@ export default function PdfConvocation({ candidat, formation, formationId, typeC
         <Text style={S.sectionBg}>Candidat(e)</Text>
         <View style={S.box}>
           <View style={S.row}><Text style={S.lbl}>Nom et prénom :</Text><Text style={S.val}>{candidat.prenom} {candidat.nom}</Text></View>
-          <View style={S.row}><Text style={S.lbl}>Date de naissance :</Text><Text style={S.val}>{formaterDateFR(candidat.dateNaissance)}</Text></View>
+          <View style={S.row}>
+            <Text style={S.lbl}>N° identifiant candidat :</Text>
+            <Text style={S.val}>{candidat.identifiant || '—'}</Text>
+          </View>
           <View style={S.row}><Text style={S.lbl}>Formation :</Text><Text style={S.val}>{formation} ({formationId})</Text></View>
           <View style={S.row}><Text style={S.lbl}>Type de candidature :</Text><Text style={S.val}>{typeCandidature}</Text></View>
           {ccpsPassés.length > 0 && ccpsPassés.length < 3 && (
@@ -101,6 +147,11 @@ export default function PdfConvocation({ candidat, formation, formationId, typeC
           <View style={S.row}><Text style={S.lbl}>Heure de convocation :</Text><Text style={S.val}>{heureConvocation}</Text></View>
           <View style={S.row}><Text style={S.lbl}>Lieu :</Text><Text style={S.val}>{lieu}</Text></View>
           <View style={S.row}><Text style={S.lbl}>Certificateur :</Text><Text style={S.val}>Ministère du Travail du Plein Emploi et de l'Insertion — DEETS La Réunion</Text></View>
+          <Text style={S.note}>
+            Présentez-vous 30 minutes avant l'heure de convocation. Les entretiens technique et
+            final se déroulent individuellement : reportez-vous au planning de passage joint à la
+            présente convocation.
+          </Text>
         </View>
 
         {/* Jury */}
@@ -139,7 +190,7 @@ export default function PdfConvocation({ candidat, formation, formationId, typeC
 
         {/* Note importante */}
         <View style={{ marginTop: 10, padding: '8 10', backgroundColor: '#fde8e8', borderRadius: 3 }}>
-          <Text style={{ fontSize: 8, fontFamily: 'Helvetica-Bold', color: '#c53030', marginBottom: 3 }}>⚠️ Important</Text>
+          <Text style={{ fontSize: 8, fontFamily: 'Helvetica-Bold', color: '#c53030', marginBottom: 3 }}>Important</Text>
           <Text style={{ fontSize: 8, color: '#c53030' }}>Tout candidat se présentant sans pièce d'identité valide ou sans dossier professionnel complet pourra être refusé à l'examen. En cas d'empêchement, contacter immédiatement pedagogie@pamoi.re.</Text>
         </View>
 

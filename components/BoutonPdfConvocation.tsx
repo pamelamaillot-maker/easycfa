@@ -7,7 +7,7 @@ type Epreuve = { libelle: string; duree: string };
 type Jure = { nom: string; prenom: string; qualite: string };
 
 type Props = {
-  candidat: { nom: string; prenom: string; dateNaissance: string; email: string };
+  candidat: { nom: string; prenom: string; dateNaissance?: string; email: string; identifiant?: string; adresse?: string; codePostal?: string; ville?: string };
   formation: string;
   formationId: string;
   typeCandidature: string;

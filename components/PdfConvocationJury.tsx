@@ -9,6 +9,17 @@
 //
 // Le délai de convocation de 31 jours est une RÈGLE INTERNE à PAM OI :
 // il n'est pas fixé par les textes consultés.
+//
+// ⚠️ PAS DE FLÈCHE « → » DANS LE TEXTE
+// La police Helvetica du générateur PDF ne possède pas ce caractère et le
+// remplace silencieusement par une apostrophe : « 18/11/2026 '24/11/2026 ».
+// Même précaution pour les autres signes typographiques hors jeu latin.
+//
+// ⚠️ HORAIRES INDIVIDUELS
+// La mise en situation démarre à la même heure pour tout le groupe, mais les
+// entretiens technique et final sont individuels et peuvent s'étaler sur
+// plusieurs jours. Ces horaires ne sont pas gérés par EasyCFA : à défaut
+// d'heure saisie, la convocation renvoie au planning de passage joint.
 
 import { Document, Page, Text, View, StyleSheet, Image } from '@react-pdf/renderer';
 import type { EpreuveEmargement } from '../lib/emargementsExamen';
@@ -120,8 +131,13 @@ export default function PdfConvocationJury({ donnees: d }: { donnees: DonneesCon
         <Text style={S.sectionBg}>Session d&apos;examen</Text>
         <View style={S.box}>
           <View style={S.row}><Text style={S.lbl}>Numéro de session CERES :</Text><Text style={[S.val, { color: cerisManquant ? '#e53e3e' : '#006B68' }]}>{d.numeroCeres || 'En attente CERES'}</Text></View>
-          <View style={S.row}><Text style={S.lbl}>Dates de la session :</Text><Text style={S.val}>{d.dateDebut}{d.dateFin ? ` → ${d.dateFin}` : ''}</Text></View>
-          <View style={S.row}><Text style={S.lbl}>Heure de présence :</Text><Text style={S.val}>{d.heureConvocation || 'À préciser'}</Text></View>
+          <View style={S.row}><Text style={S.lbl}>Dates de la session :</Text><Text style={S.val}>{d.dateDebut}{d.dateFin ? ` au ${d.dateFin}` : ''}</Text></View>
+          <View style={S.row}>
+            <Text style={S.lbl}>Heure de présence :</Text>
+            <Text style={S.val}>
+              {d.heureConvocation || 'Se reporter au planning de passage joint'}
+            </Text>
+          </View>
           <View style={S.row}><Text style={S.lbl}>Lieu :</Text><Text style={S.val}>{d.lieu}</Text></View>
           <View style={S.row}><Text style={S.lbl}>Candidats à évaluer :</Text><Text style={S.val}>{d.nbCandidats}</Text></View>
           <View style={S.row}><Text style={S.lbl}>Responsable de session :</Text><Text style={S.val}>{d.responsableSession || '—'}</Text></View>
@@ -142,7 +158,8 @@ export default function PdfConvocationJury({ donnees: d }: { donnees: DonneesCon
         ))}
         <Text style={{ fontSize: 8, color: '#555', marginTop: 5, fontStyle: 'italic' }}>
           Durée totale par candidat : {d.dureeTotale} — à multiplier par le nombre de candidats
-          pour les épreuves à passage individuel.
+          pour les épreuves à passage individuel. Le détail des horaires, candidat par candidat,
+          figure sur le planning de passage joint à la présente convocation.
         </Text>
 
         {/* Composition du jury */}

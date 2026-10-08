@@ -983,6 +983,7 @@ export default function Examens() {
                         <BoutonsConvocations
                           session={sessionSel}
                           situationsTitre={cfg.situations}
+                          apprenants={apprenantsDb}
                           avecJury={false}
                           onMajCandidats={majs => maj('candidats', majs)}
                         />

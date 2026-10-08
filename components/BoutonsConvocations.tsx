@@ -7,6 +7,11 @@
 //
 // Les épreuves proviennent du référentiel via epreuvesAEmarger : elles diffèrent
 // entre une session titre et une session CCP.
+//
+// L'identifiant imprimé sur la convocation est le numéro CERES saisi sur la
+// fiche candidat (`identifiantCandidat`), et non l'étiquette d'affichage
+// fabriquée par identifiantCandidat(sigle, rang) — qui ne sert qu'à la liste
+// à l'écran.
 
 import { PDFDownloadLink } from '@react-pdf/renderer';
 import PdfConvocation from './PdfConvocation';
@@ -43,6 +48,7 @@ function joursAvant(dateFr?: string): number | null {
 export default function BoutonsConvocations({
   session,
   situationsTitre,
+  apprenants = [],
   avecCandidats = true,
   avecJury = true,
   onMajJures,
@@ -50,6 +56,10 @@ export default function BoutonsConvocations({
 }: {
   session: any;
   situationsTitre?: { id: string; label: string; duree: string; applicable: boolean }[];
+  /** Fiches apprenants, pour y relire l'adresse postale du candidat.
+   *  Relue à la génération plutôt que recopiée sur le candidat de session :
+   *  un déménagement se répercute alors sans ressaisie. */
+  apprenants?: any[];
   avecCandidats?: boolean;
   avecJury?: boolean;
   /** Appelé après import d'une convocation signée, pour enregistrer la session. */
@@ -135,6 +145,9 @@ export default function BoutonsConvocations({
               const ccpsPasses = session?.typeSession === 'ccp'
                 ? (session?.ccpVises ?? [])
                 : ccpsDuTP(sigle).map(x => x.code);
+              // Candidat libre ou VAE : pas de fiche apprenant, donc pas d'adresse.
+              // Le bloc destinataire sera simplement absent de la convocation.
+              const fiche = apprenants.find((a: any) => a.id === c.apprenantId);
               return (
                 <div key={c.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '9px', padding: '6px 9px', borderRadius: '8px', backgroundColor: '#fafafa', border: '1px solid #e0e0e0', flexWrap: 'wrap' }}>
                   <div style={{ flex: '1 1 220px' }}>
@@ -152,8 +165,11 @@ export default function BoutonsConvocations({
                         candidat={{
                           nom: c.nom ?? '',
                           prenom: c.prenom ?? '',
-                          dateNaissance: c.dateNaissance ?? '',
+                          identifiant: c.identifiantCandidat ?? '',
                           email: c.email ?? '—',
+                          adresse: fiche?.adresse ?? '',
+                          codePostal: fiche?.codePostal ?? '',
+                          ville: fiche?.ville ?? '',
                         }}
                         formation={ref?.intitule ?? sigle}
                         formationId={sigle}
