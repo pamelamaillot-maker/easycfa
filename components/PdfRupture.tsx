@@ -3,11 +3,11 @@
 // components/PdfRupture.tsx
 // Formulaire de résiliation du contrat d'apprentissage.
 //
-// ⚠️ PAS D'EN-TÊTE PAM OI
+// ⚠️ NI EN-TÊTE NI PIED DE PAGE À L'ENSEIGNE DU CFA
 // La résiliation se conclut entre l'employeur et l'apprenti. Le CFA établit le
 // formulaire et le reçoit signé, mais il n'est pas partie à la rupture.
-// Un en-tête à l'enseigne du CFA laisserait croire que la rupture émane de lui.
-// Le document reste donc neutre.
+// Toute mention de PAM OI — logo, adresse, SIRET, RCS — laisserait croire que
+// la rupture émane de lui. Le document reste donc neutre de bout en bout.
 
 import { Document, Page, Text, View, StyleSheet } from '@react-pdf/renderer';
 import PdfCheckBox from './PdfCheckBox';
@@ -17,7 +17,8 @@ import { MOTIFS_RUPTURE_LISTE } from '../lib/donneesRupture';
 const A_COMPLETER = '_______________';
 
 const S = StyleSheet.create({
-  page: { paddingTop: 44, paddingBottom: 60, paddingHorizontal: 45, fontFamily: 'Helvetica', fontSize: 9.5, color: '#1a1a1a', backgroundColor: '#fff' },
+  // paddingBottom réduit : plus de pied de page à loger.
+  page: { paddingTop: 44, paddingBottom: 40, paddingHorizontal: 45, fontFamily: 'Helvetica', fontSize: 9.5, color: '#1a1a1a', backgroundColor: '#fff' },
   title: { fontSize: 13, fontFamily: 'Helvetica-Bold', color: '#006B68', textTransform: 'uppercase', textAlign: 'center', marginBottom: 14 },
   sectionTitle: { fontSize: 11, fontFamily: 'Helvetica-Bold', color: '#006B68', backgroundColor: '#EAF4F3', padding: '4 8', marginTop: 8, marginBottom: 5 },
   row: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 3, paddingHorizontal: 4 },
@@ -30,8 +31,6 @@ const S = StyleSheet.create({
   sigZone: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 14, paddingTop: 6 },
   sigBlock: { width: '32%', borderTopWidth: 1, borderTopColor: '#999', paddingTop: 4 },
   sigLbl: { fontSize: 9, fontFamily: 'Helvetica-Bold' },
-  footer: { position: 'absolute', bottom: 18, left: 45, right: 45, borderTopWidth: 1, borderTopColor: '#ddd', paddingTop: 5, fontSize: 7, color: '#888', textAlign: 'center', lineHeight: 1.4 },
-  mention: { marginTop: 8, fontSize: 7, color: '#aaa', textAlign: 'center', fontStyle: 'italic' },
 });
 
 type Props = { donnees: Record<string, string> };
@@ -113,11 +112,6 @@ export default function PdfRupture({ donnees: d }: Props) {
           <View style={S.sigBlock}><Text style={S.sigLbl}>Le représentant légal</Text></View>
         </View>
 
-        <Text style={S.mention}>Document généré avec EasyCFA — solution éditée par PAM GROUPE</Text>
-        <Text style={S.footer}>
-          PAM OI Formation – 1 Chemin Dubuisson 97436 Saint-Leu – SIRET : 881 279 392 00016 – APE : 8559A{'\n'}
-          SASU au capital de 500€ – RCS 881 279 392 Saint-Pierre de la Réunion – Tél : 0693 55 64 92 – contact@pamoi.re
-        </Text>
       </Page>
     </Document>
   );
