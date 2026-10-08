@@ -168,7 +168,7 @@ export async function creerApprenti(apprenti: Apprenti): Promise<{ success: bool
   try {
     const { error } = await supabase
       .from('apprenants')
-      .upsert([{ ...apprenti, dateModification: new Date().toISOString() }]);
+      .insert([{ ...apprenti, dateModification: new Date().toISOString() }]);
     if (error) {
       console.error('Erreur Supabase creerApprenti:', error);
       return { success: false, error: error.message };

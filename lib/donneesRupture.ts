@@ -17,6 +17,24 @@ const MOTIFS_RUPTURE: Record<string, { label: string; cle: string }> = {
   administratif: { cle: 'administratif', label: 'Décision administrative' },
 };
 
+/**
+ * Date de fin effective du contrat.
+ *
+ * ⚠️ ELLE RESTE VIDE TANT QUE L'EMPLOYEUR NE L'A PAS COMMUNIQUÉE.
+ * La fin effective ne se déduit pas de la date de rupture déclarée : l'employeur
+ * la calcule après solde des congés payés et autres droits. Imprimer une date
+ * supposée reviendrait à faire signer à l'employeur une date qu'il n'a pas
+ * arrêtée — et à figer dans un document signé une information fausse.
+ *
+ * Elle n'est donc reprise que si elle a été saisie dans EasyCFA, sur la fiche
+ * apprenant (champ « Fin effective du contrat »). Sinon le formulaire laisse
+ * une ligne à compléter à la main.
+ */
+function finEffective(apprenant: any): string {
+  if (!apprenant?.dateRuptureEffective) return '';
+  return formaterDateFR(apprenant.dateRuptureEffective);
+}
+
 export function assemblerDonneesRupture(
   apprenant: any,
   motifCle: string,
@@ -35,17 +53,23 @@ export function assemblerDonneesRupture(
     // Contrat
     DATE_DEBUT_CONTRAT: formaterDateFR(apprenant.dateDebutContrat),
     DATE_FIN_CONTRAT: formaterDateFR(apprenant.dateFinContrat),
-    NUMERO_OPCO: apprenant.numeroDossierOpco || apprenant.numeroDeca || '',
+
+    // ⚠️ NUMÉRO D'ENREGISTREMENT = NUMÉRO DECA, PAS LE NUMÉRO DE DOSSIER OPCO.
+    // Le DECA est le numéro d'enregistrement du contrat par l'administration ;
+    // à La Réunion il commence par 974. Le numéro de dossier OPCO (du type
+    // 26-34307) est une référence interne au financeur : il n'a aucune valeur
+    // d'enregistrement et n'a rien à faire sur un formulaire de résiliation.
+    NUMERO_OPCO: apprenant.numeroDeca || '',
 
     // Entreprise
     ENTREPRISE_RAISON_SOCIALE: entreprise?.raisonSociale || apprenant.entreprise || '',
     ENTREPRISE_SIRET: entreprise?.siret || '',
 
     // Rupture
-    DATE_RUPTURE: formaterDateFR(apprenant.dateRupture),
+    DATE_RUPTURE: finEffective(apprenant),
     MOTIF_CLE: motifCle || '',
     MAINTIEN: apprenant.maintienFormation === 'OUI' ? 'OUI' : apprenant.maintienFormation === 'NON' ? 'NON' : '',
-    DATE_SORTIE: apprenant.maintienFormation === 'NON' ? formaterDateFR(apprenant.dateRuptureEffective || apprenant.dateRupture) : '',
+    DATE_SORTIE: apprenant.maintienFormation === 'NON' ? finEffective(apprenant) : '',
 
     // Signature
     LIEU_SIGNATURE: 'Saint-Leu',

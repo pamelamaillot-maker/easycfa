@@ -1,20 +1,30 @@
 'use client';
 
-import { Document, Page, Text, View, StyleSheet, Image } from '@react-pdf/renderer';
+// components/PdfRupture.tsx
+// Formulaire de résiliation du contrat d'apprentissage.
+//
+// ⚠️ PAS D'EN-TÊTE PAM OI
+// La résiliation se conclut entre l'employeur et l'apprenti. Le CFA établit le
+// formulaire et le reçoit signé, mais il n'est pas partie à la rupture.
+// Un en-tête à l'enseigne du CFA laisserait croire que la rupture émane de lui.
+// Le document reste donc neutre.
+
+import { Document, Page, Text, View, StyleSheet } from '@react-pdf/renderer';
 import PdfCheckBox from './PdfCheckBox';
 import { MOTIFS_RUPTURE_LISTE } from '../lib/donneesRupture';
 
+/** Ligne à compléter à la main quand la donnée n'est pas connue du CFA. */
+const A_COMPLETER = '_______________';
+
 const S = StyleSheet.create({
-  page: { paddingTop: 36, paddingBottom: 60, paddingHorizontal: 45, fontFamily: 'Helvetica', fontSize: 9.5, color: '#1a1a1a', backgroundColor: '#fff' },
-  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 14, paddingBottom: 8, borderBottomWidth: 2, borderBottomColor: '#EAF4F3' },
-  logo: { width: 60, height: 48, objectFit: 'contain' },
-  headerRight: { textAlign: 'right', fontSize: 8, color: '#555', lineHeight: 1.5 },
-  headerTitle: { fontSize: 10, fontFamily: 'Helvetica-Bold', color: '#006B68', marginBottom: 2 },
-  title: { fontSize: 13, fontFamily: 'Helvetica-Bold', color: '#006B68', textTransform: 'uppercase', textAlign: 'center', marginVertical: 10 },
+  page: { paddingTop: 44, paddingBottom: 60, paddingHorizontal: 45, fontFamily: 'Helvetica', fontSize: 9.5, color: '#1a1a1a', backgroundColor: '#fff' },
+  title: { fontSize: 13, fontFamily: 'Helvetica-Bold', color: '#006B68', textTransform: 'uppercase', textAlign: 'center', marginBottom: 14 },
   sectionTitle: { fontSize: 11, fontFamily: 'Helvetica-Bold', color: '#006B68', backgroundColor: '#EAF4F3', padding: '4 8', marginTop: 8, marginBottom: 5 },
   row: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 3, paddingHorizontal: 4 },
   label: { fontFamily: 'Helvetica-Bold' },
   value: { fontFamily: 'Helvetica-Bold', color: '#006B68' },
+  // Valeur non renseignée : trait à compléter, en gris, pour qu'on voie qu'elle manque.
+  aRemplir: { color: '#777' },
   motifIntro: { fontSize: 10, fontFamily: 'Helvetica-Bold', marginTop: 8, marginBottom: 4 },
   motifRow: { marginBottom: 2, paddingLeft: 4 },
   sigZone: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 14, paddingTop: 6 },
@@ -32,16 +42,6 @@ export default function PdfRupture({ donnees: d }: Props) {
   return (
     <Document>
       <Page size="A4" style={S.page}>
-        {/* En-tête */}
-        <View style={S.header}>
-          <Image style={S.logo} src="/logo-pamoi.png" />
-          <View>
-            <Text style={S.headerTitle}>PAM OI Formation</Text>
-            <Text style={S.headerRight}>1 Chemin Dubuisson – 97436 Saint-Leu</Text>
-            <Text style={S.headerRight}>SIRET : 881 279 392 00016 – APE : 8559A</Text>
-            <Text style={S.headerRight}>Tél : 0693 55 64 92 – pamelamaillot@pamoi.re</Text>
-          </View>
-        </View>
 
         <Text style={S.title}>Formulaire de résiliation du contrat d'apprentissage</Text>
 
@@ -49,7 +49,12 @@ export default function PdfRupture({ donnees: d }: Props) {
         <Text style={S.sectionTitle}>Le contrat d'apprentissage</Text>
         <View style={S.row}><Text style={S.label}>Date de début de contrat</Text><Text style={S.value}>{d.DATE_DEBUT_CONTRAT || '—'}</Text></View>
         <View style={S.row}><Text style={S.label}>Date de fin de contrat prévue</Text><Text style={S.value}>{d.DATE_FIN_CONTRAT || '—'}</Text></View>
-        <View style={S.row}><Text style={S.label}>Enregistré par l'OPCO sous le numéro</Text><Text style={S.value}>{d.NUMERO_OPCO || '—'}</Text></View>
+        <View style={S.row}>
+          <Text style={S.label}>Enregistré sous le numéro (DECA)</Text>
+          {d.NUMERO_OPCO
+            ? <Text style={S.value}>{d.NUMERO_OPCO}</Text>
+            : <Text style={S.aRemplir}>{A_COMPLETER}</Text>}
+        </View>
 
         {/* === Employeur === */}
         <Text style={S.sectionTitle}>L'employeur</Text>
@@ -73,23 +78,27 @@ export default function PdfRupture({ donnees: d }: Props) {
           </View>
         ))}
 
+        {/* La date d'effet reste à compléter par l'employeur tant qu'elle n'est
+            pas connue du CFA — voir finEffective() dans lib/donneesRupture.ts. */}
         <Text style={{ marginTop: 8, fontSize: 10 }}>
           <Text style={S.label}>Date d'effet de la rupture : </Text>
-          <Text style={S.value}>{d.DATE_RUPTURE || '—'}</Text>
+          {d.DATE_RUPTURE
+            ? <Text style={S.value}>{d.DATE_RUPTURE}</Text>
+            : <Text style={S.aRemplir}>{A_COMPLETER}</Text>}
         </Text>
 
         {/* === Maintien === */}
         <Text style={[S.motifIntro, { marginTop: 8 }]}>L'apprenti poursuit-il sa formation en CFA après la rupture de son contrat d'apprentissage ?</Text>
         <View style={S.motifRow}><PdfCheckBox label="OUI" checked={d.MAINTIEN === 'OUI'} /></View>
         <View style={S.motifRow}>
-          <PdfCheckBox label={`NON → Date de sortie de la formation : ${d.DATE_SORTIE || '_______________'}`} checked={d.MAINTIEN === 'NON'} />
+          <PdfCheckBox label={`NON → Date de sortie de la formation : ${d.DATE_SORTIE || A_COMPLETER}`} checked={d.MAINTIEN === 'NON'} />
         </View>
 
         {/* === Nouveau contrat === */}
         <Text style={[S.motifIntro, { marginTop: 8 }]}>Si l'apprenti signe un nouveau contrat dans une autre entreprise, merci de nous fournir les informations suivantes :</Text>
-        <Text style={{ fontSize: 9.5, marginBottom: 3 }}>Signature d'un nouveau contrat d'apprentissage en date du : _______________</Text>
-        <Text style={{ fontSize: 9.5, marginBottom: 3 }}>Avec l'entreprise (Raison sociale) : _______________</Text>
-        <Text style={{ fontSize: 9.5, marginBottom: 3 }}>Siret et IDCC : _______________   Nouvel OPCO compétent : _______________</Text>
+        <Text style={{ fontSize: 9.5, marginBottom: 3 }}>Signature d'un nouveau contrat d'apprentissage en date du : {A_COMPLETER}</Text>
+        <Text style={{ fontSize: 9.5, marginBottom: 3 }}>Avec l'entreprise (Raison sociale) : {A_COMPLETER}</Text>
+        <Text style={{ fontSize: 9.5, marginBottom: 3 }}>Siret et IDCC : {A_COMPLETER}   Nouvel OPCO compétent : {A_COMPLETER}</Text>
 
         {/* === Lieu/Date === */}
         <Text style={{ marginTop: 12, fontSize: 10 }}>
