@@ -11,7 +11,7 @@ import {
   supprimerMandat as supprimerMandatSupabase,
 } from '../../data/mandatsSupabase';
 import Card from '../../components/Card';
-import BoutonMandatRecrutement from '../../components/BoutonMandatRecrutement';
+import BoutonMandatRecrutement, { telechargerMandat } from '../../components/BoutonMandatRecrutement';
 import { uploaderFichier, cheminStorage } from '../../lib/storage';
 
 const FORMATIONS = ['SC', 'GCF', 'AD', 'ARH', 'CATL', 'EC', 'CV', 'FPA'];
@@ -125,7 +125,16 @@ export default function Recrutement() {
     setModale(false);
     setForm({ statut: 'En attente', nbPostes: 1 });
 
-    // Le mandat pré-rempli se télécharge depuis la fiche du mandat (bouton « Télécharger mandat »)
+    // Générer et télécharger le mandat pré-rempli
+    try {
+      await telechargerMandat(
+        { entrepriseNom: nouveau.entrepriseNom, entrepriseAdresse: nouveau.entrepriseAdresse, entrepriseSiret: nouveau.entrepriseSiret },
+        'Mandat_' + (nouveau.entrepriseNom || '').replace(/\s/g, '_') + '.pdf'
+      );
+    } catch (e) {
+      console.error('[Mandats] Erreur génération PDF :', e);
+      alert("⚠️ Mandat créé, mais le PDF n'a pas pu être généré. Ouvrez la fiche et cliquez sur « Télécharger mandat ».");
+    }
 
     // Ouvrir Gmail
     setTimeout(() => {

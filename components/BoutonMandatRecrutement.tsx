@@ -207,6 +207,16 @@ function MandatDoc({ d }: { d: DonneesMandat }) {
   );
 }
 
+export async function telechargerMandat(donnees: DonneesMandat, nomFichier: string) {
+  const blob = await pdf(<MandatDoc d={donnees} />).toBlob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = nomFichier;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
 export default function BoutonMandatRecrutement({ donnees, nomFichier, style }: { donnees: DonneesMandat; nomFichier: string; style?: React.CSSProperties }) {
   const [enCours, setEnCours] = React.useState(false);
 
