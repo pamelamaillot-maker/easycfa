@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { COLORS } from '../../../lib/constants';
 import { creerApprenti } from '../../../data/apprentisSupabase';
@@ -79,6 +79,8 @@ export default function NouvelApprenant() {
   const isP2S = statutInitial === 'P2S';
   const [section, setSection] = useState('identite');
   const [sauvegarde, setSauvegarde] = useState(false);
+  const [enCours, setEnCours] = useState(false);
+  const enCoursRef = useRef(false);
   const [erreurSauvegarde, setErreurSauvegarde] = useState('');
   const [fichiers, setFichiers] = useState<Record<string, { nom: string; taille: string } | null>>({});
   const [entreprisesDisponibles, setEntreprisesDisponibles] = useState<string[]>([]);
@@ -222,6 +224,11 @@ export default function NouvelApprenant() {
       return;
     }
 
+    // Verrou anti double-clic : une seule création à la fois
+    if (enCoursRef.current) return;
+    enCoursRef.current = true;
+    setEnCours(true);
+
     try {
       // 2️⃣ Charger la liste actuelle des apprenants (pour générer un ID unique)
       const listeBrute = localStorage.getItem('easycfa_apprenants_v2');
@@ -262,7 +269,9 @@ export default function NouvelApprenant() {
       const res = await creerApprenti(pourSupabase);
       if (!res.success) {
         console.error('[NouvelApprenant] Erreur Supabase:', res.error);
-        setErreurSauvegarde('Enregistrement refusé par la base. Rechargez la page et réessayez. Détail : ' + res.error); return;
+        setErreurSauvegarde('Enregistrement refusé par la base. Rechargez la page et réessayez. Détail : ' + res.error);
+        enCoursRef.current = false; setEnCours(false);
+        return;
       } else {
         console.log(`[NouvelApprenant] ${id} créé dans Supabase ✅`);
       }
@@ -280,6 +289,7 @@ export default function NouvelApprenant() {
     } catch (err) {
       console.error('Erreur sauvegarde apprenant:', err);
       setErreurSauvegarde('❌ Erreur lors de la sauvegarde. Ouvrez la console (F12) pour les détails.');
+      enCoursRef.current = false; setEnCours(false);
     }
   }
 
@@ -333,9 +343,10 @@ export default function NouvelApprenant() {
           </div>
           <button
             onClick={sauvegarder}
-            style={{ backgroundColor: COLORS.primary, color: 'white', border: 'none', borderRadius: '8px', padding: '10px 20px', fontSize: '13px', fontWeight: '600', cursor: 'pointer' }}
+            disabled={enCours}
+            style={{ backgroundColor: COLORS.primary, color: 'white', border: 'none', borderRadius: '8px', padding: '10px 20px', fontSize: '13px', fontWeight: '600', cursor: enCours ? 'wait' : 'pointer', opacity: enCours ? 0.6 : 1 }}
           >
-            ✅ Enregistrer
+            {enCours ? '⏳ Enregistrement…' : '✅ Enregistrer'}
           </button>
         </div>
       </div>
@@ -975,7 +986,8 @@ export default function NouvelApprenant() {
                 </button>
                 <button
                   onClick={sauvegarder}
-                  style={{ backgroundColor: progression === 100 ? COLORS.primary : COLORS.secondary, color: 'white', border: 'none', borderRadius: '8px', padding: '10px 20px', fontSize: '13px', fontWeight: '600', cursor: 'pointer' }}
+                  disabled={enCours}
+                  style={{ backgroundColor: progression === 100 ? COLORS.primary : COLORS.secondary, color: 'white', border: 'none', borderRadius: '8px', padding: '10px 20px', fontSize: '13px', fontWeight: '600', cursor: enCours ? 'wait' : 'pointer', opacity: enCours ? 0.6 : 1 }}
                 >
                   {progression === 100 ? '✅ Enregistrer le dossier complet' : '💾 Enregistrer (dossier incomplet)'}
                 </button>

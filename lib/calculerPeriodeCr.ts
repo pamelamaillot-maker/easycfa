@@ -16,7 +16,8 @@ export function calculerPeriodeCr(
   echeanceCible: Echeance,
   dateDebutContrat: string,
   dateFinContrat: string,
-  dateRupture?: string
+  dateRupture?: string,
+  dateDebutFormation?: string
 ): { debut: string; fin: string } | null {
   // Trie les échéances pédagogiques par date d'échéance
   const pedago = echeances
@@ -32,8 +33,8 @@ export function calculerPeriodeCr(
   // sans décalage. Le champ "dateEcheance" en base correspond ici à l'échéancier APC officiel.
   let debut: string;
   if (index === 1) {
-    // Premier CR : on part de la date de début de contrat
-    debut = dateDebutContrat;
+    // Premier CR : date la plus ancienne entre entrée en formation et début de contrat
+    debut = datePlusAncienne(dateDebutFormation, dateDebutContrat);
   } else {
     const echPrec = pedago[index - 1];
     debut = echPrec.dateEcheance || '';
@@ -103,23 +104,65 @@ export function nbJoursEntre(debut: string, fin: string): number {
 export function calculerPeriodeCrFinal(
   dateDebutContrat: string,
   dateFinContrat: string,
-  dateRupture?: string
+  dateRupture?: string,
+  dateDebutFormation?: string
 ): { debut: string; fin: string } | null {
-  if (!dateDebutContrat) return null;
+  // Début : date la plus ancienne entre entrée en formation et début de contrat
+  const debut = datePlusAncienne(dateDebutFormation, dateDebutContrat);
+  if (!debut) return null;
   const fin = dateRupture || dateFinContrat;
   if (!fin) return null;
-  const tD = parseDate(dateDebutContrat);
+  const tD = parseDate(debut);
   const tF = parseDate(fin);
   if (!tD || !tF) return null;
   return { debut: toFr(new Date(tD)), fin: toFr(new Date(tF)) };
 }
 
 /**
- * Calcule le nombre de mois entre 2 dates JJ/MM/AAAA.
- * Méthode : (jours / 30.4) arrondi.
+ * Nombre de MOIS CIVILS COMPLETS entre 2 dates JJ/MM/AAAA (fin incluse).
+ * Ex. : 01/09/2026 → 28/02/2027 = 6 mois ; 01/09/2026 → 12/02/2027 = 5 mois.
  */
 export function nbMoisEntre(debut: string, fin: string): number {
-  const jours = nbJoursEntre(debut, fin);
-  if (jours === 0) return 0;
-  return Math.round(jours / 30.4);
+  const t1 = parseDate(debut), t2 = parseDate(fin);
+  if (!t1 || !t2 || t2 < t1) return 0;
+  const d = new Date(t1);
+  const finPlusUn = new Date(t2);
+  finPlusUn.setDate(finPlusUn.getDate() + 1);
+  let mois = 0;
+  while (ajouterMois(d, mois + 1).getTime() <= finPlusUn.getTime()) mois++;
+  return mois;
+}
+
+/** Ajoute n mois en restant sur le dernier jour du mois si besoin (31/01 + 1 mois = 28/02). */
+function ajouterMois(d: Date, n: number): Date {
+  const cible = new Date(d.getFullYear(), d.getMonth() + n, 1);
+  const dernierJour = new Date(cible.getFullYear(), cible.getMonth() + 1, 0).getDate();
+  cible.setDate(Math.min(d.getDate(), dernierJour));
+  return cible;
+}
+
+/** Libellé de durée affiché sur le CR : « 5 mois (163 jours) ». */
+export function libelleDureeCr(debut: string, fin: string): string {
+  return `${nbMoisEntre(debut, fin)} mois (${nbJoursEntre(debut, fin)} jours)`;
+}
+
+/** Date la plus ancienne des deux (JJ/MM/AAAA ou ISO), au format JJ/MM/AAAA. */
+export function datePlusAncienne(a?: string, b?: string): string {
+  const ta = parseDate(a), tb = parseDate(b);
+  if (ta && tb) return toFr(new Date(Math.min(ta, tb)));
+  if (ta) return toFr(new Date(ta));
+  if (tb) return toFr(new Date(tb));
+  return '';
+}
+
+/**
+ * Un CR ne peut être établi que si sa période est entièrement réalisée :
+ * on doit être au moins le lendemain de la date de fin.
+ */
+export function periodeRealisee(fin: string): boolean {
+  const t = parseDate(fin);
+  if (!t) return false;
+  const aujourdhui = new Date();
+  aujourdhui.setHours(0, 0, 0, 0);
+  return aujourdhui.getTime() > t;
 }

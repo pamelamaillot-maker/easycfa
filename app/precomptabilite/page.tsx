@@ -20,7 +20,7 @@ import {
 import { chargerApprentis } from '../../data/apprentisSupabase';
 import Card from '../../components/Card';
 import { uploaderFichier, cheminStorage } from '../../lib/storage';
-import { calculerPeriodeCr, calculerPeriodeCrFinal, nbJoursEntre, nbMoisEntre } from '../../lib/calculerPeriodeCr';
+import { calculerPeriodeCr, calculerPeriodeCrFinal, nbJoursEntre, nbMoisEntre, libelleDureeCr, periodeRealisee, lendemain } from '../../lib/calculerPeriodeCr';
 import dynamic from 'next/dynamic';
 import { APPRENANTS_REELS as APPS_REELS_LIB } from '../../data/mockApprenants_reels';
 import ChampEcheance from '../../components/ChampEcheance';
@@ -175,11 +175,10 @@ function donneesCrPourEcheance(apc: APC, echeance: Echeance, apprenant?: any): {
     echeance as any,
     apc.dateDebutContrat,
     apc.dateFinContrat,
-    (apprenant as any)?.dateRupture
+    (apprenant as any)?.dateRupture,
+    apc.dateDebutFormation
   );
   if (!periode) return null;
-  const nbJ = nbJoursEntre(periode.debut, periode.fin);
-  const nbMois = Math.round(nbJ / 30.4);
   // Formation libellée
   const fLibel: Record<string, string> = {
     'SC':'TP Secrétaire Comptable','GCF':'TP Gestionnaire Comptable et Fiscal',
@@ -199,7 +198,7 @@ function donneesCrPourEcheance(apc: APC, echeance: Echeance, apprenant?: any): {
     FORMATION_LIBELLE: formationLib,
     CR_DATE_DEBUT: periode.debut,
     CR_DATE_FIN: periode.fin,
-    CR_DUREE_HEURES: nbMois > 0 ? `${nbMois} mois (${nbJ} jours)` : `${nbJ} jours`,
+    CR_DUREE_HEURES: libelleDureeCr(periode.debut, periode.fin),
     CR_LIEU_SIGNATURE: 'Saint-Leu',
     CR_SIGNATAIRE_QUALITE: 'Directrice et référente handicap',
     DATE_SIGNATURE_DOC: new Date().toLocaleDateString('fr-FR'),
@@ -218,10 +217,10 @@ function donneesCrFinal(apc: APC, apprenant?: any): {
   const periode = calculerPeriodeCrFinal(
     apc.dateDebutContrat,
     apc.dateFinContrat,
-    (apprenant as any)?.dateRupture
+    (apprenant as any)?.dateRupture,
+    apc.dateDebutFormation
   );
   if (!periode) return null;
-  const nbJ = nbJoursEntre(periode.debut, periode.fin);
   const nbMoisTotal = nbMoisEntre(periode.debut, periode.fin);
   const fLibel: Record<string, string> = {
     'SC':'TP Secrétaire Comptable','GCF':'TP Gestionnaire Comptable et Fiscal',
@@ -241,7 +240,7 @@ function donneesCrFinal(apc: APC, apprenant?: any): {
     FORMATION_LIBELLE: formationLib,
     CR_DATE_DEBUT: periode.debut,
     CR_DATE_FIN: periode.fin,
-    CR_DUREE_HEURES: `${nbMoisTotal} mois (${nbJ} jours)`,
+    CR_DUREE_HEURES: libelleDureeCr(periode.debut, periode.fin),
     CR_LIEU_SIGNATURE: 'Saint-Leu',
     CR_SIGNATAIRE_QUALITE: 'Directrice et référente handicap',
     DATE_SIGNATURE_DOC: new Date().toLocaleDateString('fr-FR'),
@@ -474,13 +473,16 @@ export default function Facturation() {
       url = res.fichier.url;
       console.log(`[CR ${echeance.id}] PDF non signé uploadé vers Storage ✅`);
     }
-    const nbJ = nbJoursEntre(periode.debut, periode.fin);
+    if (!periodeRealisee(periode.fin)) {
+      alert(`⏳ Période non encore réalisée : ce CR pourra être établi à partir du ${lendemain(periode.fin)}.`);
+      return;
+    }
     const cr: CertificatRealisation = {
       statut: 'a_signer',
       periodeDebut: periode.debut,
       periodeFin: periode.fin,
       nbHeures: 0,
-      nbMois: Math.round(nbJ / 30.4),
+      nbMois: nbMoisEntre(periode.debut, periode.fin),
       fichierNonSigneNom: nomFichier,
       fichierNonSigneUrl: url,
       cheminStorageNonSigne: chemin,
@@ -1163,6 +1165,11 @@ export default function Facturation() {
                                     </div>
                                   </div>
 
+                                  {!cr && !periodeRealisee(data.periode.fin) ? (
+                                    <div style={{fontSize:'11px',color:'#888',fontStyle:'italic'}}>
+                                      ⏳ Période en cours — CR disponible à partir du {lendemain(data.periode.fin)}
+                                    </div>
+                                  ) : (
                                   <div style={{display:'flex',gap:'6px',flexWrap:'wrap',alignItems:'center'}}>
                                     {/* Toujours : bouton télécharger PDF (génération à la volée) */}
                                     <BoutonGenerationCR
@@ -1218,6 +1225,7 @@ export default function Facturation() {
                                       </button>
                                     )}
                                   </div>
+                                  )}
 
                                   {/* Alerte si facture suivante saisie mais CR manquant ou pas signé */}
                                   {(() => {
@@ -1313,6 +1321,11 @@ export default function Facturation() {
                               </div>
                             )}
 
+                            {!periodeRealisee(dataFinal.periode.fin) ? (
+                              <div style={{fontSize:11,color:'#666',fontStyle:'italic'}}>
+                                ⏳ Contrat en cours — CR final disponible à partir du {lendemain(dataFinal.periode.fin)}
+                              </div>
+                            ) : (
                             <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
                               <BoutonGenerationCR
                                 donnees={dataFinal.donnees}
@@ -1322,6 +1335,7 @@ export default function Facturation() {
                                 À conserver pour contrôle OPCO (preuve totale de réalisation)
                               </span>
                             </div>
+                            )}
                           </div>
                         );
                       })()}

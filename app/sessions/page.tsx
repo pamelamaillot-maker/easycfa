@@ -15,6 +15,7 @@ import Card from '../../components/Card';
 import CardEvaluationsChaud from '../../components/CardEvaluationsChaud';
 import CardEvaluationsFroid from '../../components/CardEvaluationsFroid';
 import CardEvaluationsEntreprise from '../../components/CardEvaluationsEntreprise';
+import BoutonPlanningSession from '../../components/BoutonPlanningSession';
 
 const inputStyle: React.CSSProperties = { border: '1.5px solid #e0e0e0', borderRadius: '8px', padding: '8px 12px', fontSize: '13px', width: '100%', boxSizing: 'border-box', backgroundColor: 'white' };
 const btnPrimary: React.CSSProperties = { backgroundColor: '#006B68', color: 'white', border: 'none', borderRadius: '8px', padding: '9px 16px', fontSize: '13px', fontWeight: '600', cursor: 'pointer' };
@@ -647,7 +648,10 @@ export default function Sessions() {
                           <button onClick={annulerEditionPlanning} style={btnSecondary}>Annuler</button>
                         </div>
                       ) : (
-                        <button onClick={entrerEditionPlanning} style={btnSecondary}>✏️ Modifier le planning</button>
+                        <div style={{ display: 'flex', gap: '6px' }}>
+                          <BoutonPlanningSession session={selectionne as any} libelleFormation={config.label} style={btnPrimary} />
+                          <button onClick={entrerEditionPlanning} style={btnSecondary}>✏️ Modifier le planning</button>
+                        </div>
                       )}
                     </div>
 
