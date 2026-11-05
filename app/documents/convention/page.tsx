@@ -9,6 +9,10 @@ import { chargerApprentis } from '../../../data/apprentisSupabase';
 import { chargerEntreprises, sauvegarderFinancementApprenant, marquerConventionEnAttente } from '../../../data/entreprisesSupabase';
 import { chargerNpec, type Npec } from '../../../data/npecSupabase';
 import { extractRncp } from '../../../lib/financementConvention';
+import { montantEquipementParDefaut } from '../../../lib/premierEquipement';
+
+const normRncp = (r?: string) => (r || '').toUpperCase().replace(/\s+/g, '').replace('RNCP', '');
+const normIdcc = (i?: any) => String(i ?? '').replace(/\D/g, '').replace(/^0+/, '');
 
 const BoutonPdfCF = dynamic(() => import('../../../components/BoutonPdfCF'), { ssr: false });
 
@@ -34,6 +38,7 @@ export default function ApercuCF() {
 
   // Données financières éditables
   const [finance, setFinance] = useState({
+    npecAnnuel: 0,
     coutPedagogiqueAnnee1: 0,
     coutPedagogiqueAnnee2: 0,
     coutTotalFraisPedagogiques: 0,
@@ -102,6 +107,27 @@ export default function ApercuCF() {
     return npecListe.find(n => n.codeRncp.toUpperCase().replace(/\s+/g, '').replace('RNCP', '').includes(norm)) || null;
   }, [npecListe, rncpCode]);
 
+  // NPEC déjà saisi sur une autre convention pour la même formation ET le même IDCC
+  // (le NPEC dépend de la branche de l'entreprise, pas seulement de la formation).
+  const npecMemorise = useMemo<{ montant: number; source: string } | null>(() => {
+    const idcc = normIdcc(entrepriseObj?.idcc);
+    const rncp = normRncp(rncpCode);
+    if (!idcc || !rncp) return null;
+    let meilleur: { montant: number; source: string; date: string } | null = null;
+    for (const ent of entreprises) {
+      if (normIdcc(ent.idcc) !== idcc) continue;
+      const fins = ent.financementsApprenants || {};
+      for (const [appId, f] of Object.entries<any>(fins)) {
+        if (ent.id === entrepriseObj?.id && appId === apprenantObj?.id) continue;
+        const montant = Number(f?.npecAnnuel);
+        if (!montant || normRncp(f?.codeRncpManuel) !== rncp) continue;
+        const date = f?.dateMaj || '';
+        if (!meilleur || date > meilleur.date) meilleur = { montant, source: ent.raisonSociale || ent.id, date };
+      }
+    }
+    return meilleur ? { montant: meilleur.montant, source: meilleur.source } : null;
+  }, [entreprises, entrepriseObj?.id, entrepriseObj?.idcc, apprenantObj?.id, rncpCode]);
+
   // Remplissage unifié du panneau financier :
   // priorité 1 = entreprise.financementsApprenants[apprenantId] (source officielle)
   // priorité 2 = apprenant.financement (legacy)
@@ -118,11 +144,14 @@ export default function ApercuCF() {
       }
       return npecVal || 0;
     };
+    const formationCode = (npecMatch?.codeInterne || apprenantObj.formation || '').trim();
     setFinance({
+      npecAnnuel: pick(fEnt.npecAnnuel, undefined, npecMemorise?.montant || npecMatch?.montantNpecAnnuel),
       coutPedagogiqueAnnee1: pick(fEnt.coutPedagogiqueAnnee1, fLegacy.coutPedagogiqueAnnee1),
       coutPedagogiqueAnnee2: pick(fEnt.coutPedagogiqueAnnee2, fLegacy.coutPedagogiqueAnnee2),
       coutTotalFraisPedagogiques: pick(fEnt.coutTotalFraisPedagogiques, fLegacy.coutTotalFraisPedagogiques),
-      fraisPremierEquipement: pick(fEnt.fraisPremierEquipement, fLegacy.fraisPremierEquipement, npecMatch?.fpe),
+      // 1er équipement : règle du niveau (500 € niv. 3-4, 300 € niv. 5+ dès le 01/09/2026)
+      fraisPremierEquipement: pick(fEnt.fraisPremierEquipement, fLegacy.fraisPremierEquipement, montantEquipementParDefaut(formationCode, apprenantObj.dateDebutContrat)),
       nbRepasAnnee1: pick(fEnt.nbRepasAnnee1, fLegacy.nbRepasAnnee1, npecMatch?.repasAnnee1),
       fraisAnnexesRepasAnnee1: pick(fEnt.fraisAnnexesRepasAnnee1, fLegacy.fraisAnnexesRepasAnnee1, npecMatch?.montantRepasAnnee1),
       nbRepasAnnee2: pick(fEnt.nbRepasAnnee2, fLegacy.nbRepasAnnee2, npecMatch?.repasAnnee2),
@@ -136,7 +165,7 @@ export default function ApercuCF() {
       npecTrouve: !!npecMatch,
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [apprenantObj?.id, entrepriseObj?.id, npecMatch?.id]);
+  }, [apprenantObj?.id, entrepriseObj?.id, npecMatch?.id, npecMemorise?.montant]);
 
   const donnees = useMemo(() => assemblerDonnees(
     apprenantObj,
@@ -347,6 +376,22 @@ export default function ApercuCF() {
             <h2 style={{ fontSize: '15px', fontWeight: '700', color: COLORS.primary, marginBottom: '12px' }}>
               Coûts apprenant <span style={{ fontSize: 11, color: COLORS.secondary, fontWeight: 500 }}>(édition manuelle)</span>
             </h2>
+            <div style={{ marginBottom: 12, padding: 10, borderRadius: 8, border: `1.5px solid ${COLORS.primary}`, backgroundColor: COLORS.background }}>
+              <label style={{ fontSize: '11px', color: COLORS.primary, textTransform: 'uppercase', fontWeight: 700, display: 'block', marginBottom: 4 }}>
+                NPEC annuel pour l'IDCC {entrepriseObj?.idcc || '—'} (€)
+              </label>
+              <input type="number" step="0.01" style={inputStyle} value={finance.npecAnnuel || ''} onChange={e => { setFinance({ ...finance, npecAnnuel: Number(e.target.value) }); setAfficher(false); }} />
+              <div style={{ marginTop: 4, fontSize: 10, color: COLORS.textMuted }}>
+                {Number(entrepriseObj?.financementsApprenants?.[apprenantObj?.id || '']?.npecAnnuel) > 0
+                  ? '✅ Montant enregistré pour cette convention'
+                  : npecMemorise
+                    ? `↩️ Repris de la convention ${npecMemorise.source} (même formation, même IDCC) — à vérifier`
+                    : '⚠️ Montant du référentiel par défaut — saisissez le NPEC de cet IDCC, il sera proposé ensuite pour ce couple formation + IDCC'}
+              </div>
+              <div style={{ marginTop: 4, fontSize: 10, color: COLORS.textMuted }}>
+                Les coûts Année 1 / Année 2 laissés à 0 sont calculés : NPEC × jours ÷ 365 ({donnees.MONTANT_OPCO_ANNEE_1 || '—'} / {donnees.MONTANT_OPCO_ANNEE_2 || '—'}).
+              </div>
+            </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
               <div>
                 <label style={{ fontSize: '11px', color: '#888', textTransform: 'uppercase', fontWeight: 600, display: 'block', marginBottom: 4 }}>Coût péda Année 1 (€)</label>

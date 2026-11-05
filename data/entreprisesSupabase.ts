@@ -71,6 +71,8 @@ export interface FinancementApprenant {
   fraisAnnexesRepasAnnee2?: number;
   totalFraisAnnexes?: number;
   codeRncpManuel?: string;
+  /** NPEC annuel retenu pour l'IDCC de l'entreprise (saisi sur la convention). */
+  npecAnnuel?: number;
   dateMaj?: string;
   convention?: ConventionStatut;
   contratApprentissage?: ContratStatut;

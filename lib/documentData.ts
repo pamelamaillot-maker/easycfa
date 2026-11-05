@@ -23,6 +23,8 @@ export interface FinancementApprenant {
   fraisAnnexesRepasAnnee2?: number;
   totalFraisAnnexes?: number;
   codeRncpManuel?: string;
+  /** NPEC annuel retenu pour l'IDCC de l'entreprise (saisi sur la convention). */
+  npecAnnuel?: number;
 }
 
 /**
@@ -65,7 +67,8 @@ export function assemblerDonnees(
     dateFinForm,
     npec || null,
     dateDebutContrat,
-    dateFinContrat
+    dateFinContrat,
+    Number(f.npecAnnuel) || 0
   );
 
   // Montants spécifiques apprenant (priorité) vs valeurs calculées par défaut
@@ -117,6 +120,8 @@ export function assemblerDonnees(
     DATE_DEBUT_CONTRAT: formatDateFr(a.dateDebutContrat ?? a.dateDebut),
     DATE_FIN_CONTRAT: formatDateFr(a.dateFinContrat ?? a.dateFin),
     DUREE_FORMATION: split.dureeFormation || a.dureeFormation || '',
+    DATE_DEBUT_FINANCEMENT: split.dateDebutFinancement || formatDateFr(dateDebutForm),
+    DATE_FIN_FINANCEMENT: split.dateFinFinancement || formatDateFr(dateFinForm),
     VOLUME_HORAIRE_TOTAL: String(split.nbHeuresFormation || a.volumeHoraire || ''),
     NB_HEURES_FORMATION: String(split.nbHeuresFormation || a.volumeHoraire || ''),
 

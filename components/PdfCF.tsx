@@ -283,16 +283,16 @@ export default function PdfCF({ donnees: d }: Props) {
 
         <Text style={S.articleTitle}>Article 4 : Dispositions financières</Text>
         <Text style={S.p}>Conformément à l'article L. 6211-1 du code du travail, la gratuité de la formation est garantie à l'apprenti et, le cas échéant, son représentant légal. Dès lors, aucune somme ne peut leur être demandée.</Text>
-        <Text style={S.p}>Le financement du contrat de professionnalisation sera fonction de la durée d'exécution du contrat, soit <Text style={{ fontFamily: 'Helvetica-Bold' }}>{d.DUREE_FORMATION}</Text> du <Text style={{ fontFamily: 'Helvetica-Bold' }}>{d.DATE_DEBUT_FORMATION}</Text> au <Text style={{ fontFamily: 'Helvetica-Bold' }}>{d.DATE_FIN_FORMATION}</Text>.</Text>
+        <Text style={S.p}>Le financement du contrat de professionnalisation sera fonction de la durée d'exécution du contrat, soit <Text style={{ fontFamily: 'Helvetica-Bold' }}>{d.DUREE_FORMATION}</Text> du <Text style={{ fontFamily: 'Helvetica-Bold' }}>{d.DATE_DEBUT_FINANCEMENT}</Text> au <Text style={{ fontFamily: 'Helvetica-Bold' }}>{d.DATE_FIN_FINANCEMENT}</Text>.</Text>
 
         <View style={S.box}>
           <Text style={{ fontSize: 8, fontFamily: 'Helvetica-Bold', marginBottom: 4 }}>Niveau de Prise En Charge :</Text>
           <Text style={S.p}>RNCP : <Text style={{ fontFamily: 'Helvetica-Bold' }}>{d.RNCP_CODE}</Text></Text>
-          <Text style={S.p}>Pour IDCC <Text style={{ fontFamily: 'Helvetica-Bold' }}>{d.IDCC_ENTREPRISE}</Text> : <Text style={{ fontFamily: 'Helvetica-Bold' }}>{d.COUT_PEDAGOGIQUE_ANNEE_1}</Text>/an</Text>
-          <Text style={S.p}>Durée du contrat : <Text style={{ fontFamily: 'Helvetica-Bold' }}>{d.DUREE_FORMATION}</Text> mois, du <Text style={{ fontFamily: 'Helvetica-Bold' }}>{d.DATE_DEBUT_FORMATION}</Text> au <Text style={{ fontFamily: 'Helvetica-Bold' }}>{d.DATE_FIN_FORMATION}</Text></Text>
-          <Text style={S.p}>Durée en jours la première année, du <Text style={{ fontFamily: 'Helvetica-Bold' }}>{d.DATE_DEBUT_FORMATION}</Text> au <Text style={{ fontFamily: 'Helvetica-Bold' }}>{d.DATE_FIN_PREMIERE_ANNEE}</Text> : <Text style={{ fontFamily: 'Helvetica-Bold' }}>{d.TOTAL_JOURS_PREMIERE_ANNEE}</Text> jours</Text>
+          <Text style={S.p}>Pour IDCC <Text style={{ fontFamily: 'Helvetica-Bold' }}>{d.IDCC_ENTREPRISE}</Text> : <Text style={{ fontFamily: 'Helvetica-Bold' }}>{d.MONTANT_NPEC}</Text>/an</Text>
+          <Text style={S.p}>Durée du contrat : <Text style={{ fontFamily: 'Helvetica-Bold' }}>{d.DUREE_FORMATION}</Text>, du <Text style={{ fontFamily: 'Helvetica-Bold' }}>{d.DATE_DEBUT_FINANCEMENT}</Text> au <Text style={{ fontFamily: 'Helvetica-Bold' }}>{d.DATE_FIN_FINANCEMENT}</Text></Text>
+          <Text style={S.p}>Durée en jours la première année, du <Text style={{ fontFamily: 'Helvetica-Bold' }}>{d.DATE_DEBUT_FINANCEMENT}</Text> au <Text style={{ fontFamily: 'Helvetica-Bold' }}>{d.DATE_FIN_PREMIERE_ANNEE}</Text> : <Text style={{ fontFamily: 'Helvetica-Bold' }}>{d.TOTAL_JOURS_PREMIERE_ANNEE}</Text> jours</Text>
           {deuxiemeAnnee && (
-            <Text style={S.p}>Durée en jours la deuxième année, du <Text style={{ fontFamily: 'Helvetica-Bold' }}>{d.DATE_DEBUT_DEUXIEME_ANNEE}</Text> au <Text style={{ fontFamily: 'Helvetica-Bold' }}>{d.DATE_FIN_FORMATION}</Text> : <Text style={{ fontFamily: 'Helvetica-Bold' }}>{d.TOTAL_JOURS_DEUXIEME_ANNEE}</Text> jours</Text>
+            <Text style={S.p}>Durée en jours la deuxième année, du <Text style={{ fontFamily: 'Helvetica-Bold' }}>{d.DATE_DEBUT_DEUXIEME_ANNEE}</Text> au <Text style={{ fontFamily: 'Helvetica-Bold' }}>{d.DATE_FIN_FINANCEMENT}</Text> : <Text style={{ fontFamily: 'Helvetica-Bold' }}>{d.TOTAL_JOURS_DEUXIEME_ANNEE}</Text> jours</Text>
           )}
         </View>
 

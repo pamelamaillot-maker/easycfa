@@ -2,6 +2,9 @@ import type { Npec } from '../data/npecSupabase';
 
 export interface FinanceSplit {
   dureeFormation: string;
+  /** Période de financement : date la plus ancienne (contrat/formation) → date la plus tardive. */
+  dateDebutFinancement: string;
+  dateFinFinancement: string;
   dateFinPremiereAnnee: string;
   dateDebutDeuxiemeAnnee: string;
   totalJoursPremiereAnnee: number | string;
@@ -57,10 +60,32 @@ function diffDaysInclusive(start: Date, end: Date): number {
   return Math.floor(ms / (1000 * 60 * 60 * 24)) + 1;
 }
 
-function buildDureeTexte(start: Date, end: Date): string {
-  const days = diffDaysInclusive(start, end);
-  const months = Math.round(days / 30);
-  return months > 0 ? `${months} mois` : `${days} jours`;
+/** Ajoute n mois en restant sur le dernier jour du mois si besoin (31/01 + 1 mois = 28/02). */
+function addMonths(date: Date, n: number): Date {
+  const cible = new Date(date.getFullYear(), date.getMonth() + n, 1);
+  const dernierJour = new Date(cible.getFullYear(), cible.getMonth() + 1, 0).getDate();
+  cible.setDate(Math.min(date.getDate(), dernierJour));
+  return cible;
+}
+
+/**
+ * Durée en mois civils complets + jours restants, fin incluse.
+ * Ex. : 15/10/2026 → 30/03/2028 = « 17 mois et 16 jours ».
+ */
+export function dureeMoisJours(start: Date, end: Date): string {
+  if (end < start) return '';
+  const finPlusUn = addDays(end, 1);
+  let mois = 0;
+  while (addMonths(start, mois + 1).getTime() <= finPlusUn.getTime()) mois++;
+  const jours = Math.round((finPlusUn.getTime() - addMonths(start, mois).getTime()) / 86400000);
+  if (mois === 0) return `${jours} jour${jours > 1 ? 's' : ''}`;
+  if (jours === 0) return `${mois} mois`;
+  return `${mois} mois et ${jours} jour${jours > 1 ? 's' : ''}`;
+}
+
+/** Arrondi au centime. */
+function auCentime(n: number): number {
+  return Math.round(n * 100) / 100;
 }
 
 /**
@@ -79,7 +104,8 @@ export function buildFinanceSplit(
   dateFinFormation: any,
   npec: Npec | null,
   dateDebutContrat?: any,
-  dateFinContrat?: any
+  dateFinContrat?: any,
+  npecAnnuelSaisi?: number
 ): FinanceSplit {
   const debutForm = parseDate(dateDebutFormation);
   const finForm = parseDate(dateFinFormation);
@@ -102,7 +128,8 @@ export function buildFinanceSplit(
     end = finForm || finContrat;
   }
 
-  const montantNpecAnnuel = npec?.montantNpecAnnuel || 0;
+  // NPEC : montant saisi pour l'IDCC de l'entreprise en priorité, sinon référentiel
+  const montantNpecAnnuel = (npecAnnuelSaisi && npecAnnuelSaisi > 0) ? npecAnnuelSaisi : (npec?.montantNpecAnnuel || 0);
   const coutMensuel = npec?.coutMensuel || 0;
   const nbHeures = npec?.nbHeuresFormation || 0;
   const coutHoraire = npec?.coutHoraire || 0;
@@ -115,6 +142,8 @@ export function buildFinanceSplit(
   if (!start || !end || end < start) {
     return {
       dureeFormation: dureeMois ? `${dureeMois} mois` : '',
+      dateDebutFinancement: start ? formatDateFr(start) : '',
+      dateFinFinancement: end ? formatDateFr(end) : '',
       dateFinPremiereAnnee: '',
       dateDebutDeuxiemeAnnee: '',
       totalJoursPremiereAnnee: '',
@@ -134,7 +163,8 @@ export function buildFinanceSplit(
     };
   }
 
-  let finPremiereAnnee = addDays(start, 364);
+  // Fin de 1re année = veille de la date anniversaire (365 ou 366 jours selon les années bissextiles)
+  let finPremiereAnnee = addDays(new Date(start.getFullYear() + 1, start.getMonth(), start.getDate()), -1);
   if (finPremiereAnnee > end) finPremiereAnnee = end;
 
   const totalJoursPremiereAnnee = diffDaysInclusive(start, finPremiereAnnee);
@@ -147,12 +177,15 @@ export function buildFinanceSplit(
     totalJoursDeuxiemeAnnee = diffDaysInclusive(debutDeuxiemeAnnee, end);
   }
 
-  const montantOpcoAnnee1 = montantNpecAnnuel ? (montantNpecAnnuel * totalJoursPremiereAnnee / 365) : 0;
-  const montantOpcoAnnee2 = montantNpecAnnuel ? (montantNpecAnnuel * totalJoursDeuxiemeAnnee / 365) : 0;
+  // Prorata exact : NPEC × jours ÷ 365, plafonné au NPEC annuel, arrondi au centime
+  const montantOpcoAnnee1 = montantNpecAnnuel ? auCentime(Math.min(montantNpecAnnuel, montantNpecAnnuel * totalJoursPremiereAnnee / 365)) : 0;
+  const montantOpcoAnnee2 = montantNpecAnnuel ? auCentime(montantNpecAnnuel * totalJoursDeuxiemeAnnee / 365) : 0;
   const montantTotalOpco = montantOpcoAnnee1 + montantOpcoAnnee2;
 
   return {
-    dureeFormation: dureeMois ? `${dureeMois} mois` : buildDureeTexte(start, end),
+    dureeFormation: dureeMoisJours(start, end),
+    dateDebutFinancement: formatDateFr(start),
+    dateFinFinancement: formatDateFr(end),
     dateFinPremiereAnnee: formatDateFr(finPremiereAnnee),
     dateDebutDeuxiemeAnnee: debutDeuxiemeAnnee ? formatDateFr(debutDeuxiemeAnnee) : '',
     totalJoursPremiereAnnee,

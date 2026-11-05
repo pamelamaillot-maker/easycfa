@@ -20,6 +20,7 @@ import {
 import { chargerApprentis } from '../../data/apprentisSupabase';
 import Card from '../../components/Card';
 import { uploaderFichier, cheminStorage } from '../../lib/storage';
+import { montantEquipementParDefaut } from '../../lib/premierEquipement';
 import { calculerPeriodeCr, calculerPeriodeCrFinal, nbJoursEntre, nbMoisEntre, libelleDureeCr, periodeRealisee, lendemain } from '../../lib/calculerPeriodeCr';
 import dynamic from 'next/dynamic';
 import { APPRENANTS_REELS as APPS_REELS_LIB } from '../../data/mockApprenants_reels';
@@ -92,25 +93,7 @@ function versFR(v?: string): string {
   return m ? `${m[3]}/${m[2]}/${m[1]}` : s;
 }
 
-/**
- * Montant du 1er équipement, selon la règle AKTO.
- *
- * RÈGLE (contrats débutant à compter du 01/09/2026) :
- *   - Titres de niveau 5 : 300 €
- *   - Titres de niveaux 3 et 4 : 500 €
- * Les contrats antérieurs restent à 500 €, montant historique.
- * La DATE DE DÉBUT DE CONTRAT fait foi, pas la date de saisie du dossier.
- */
-const NIVEAU_PAR_TP: Record<string, 3|4|5> = {
-  SC:4, GCF:5, AD:5, ARH:5, EC:3, CV:4, CATL:4, FPA:5,
-};
-
-function montantEquipementParDefaut(formation?: string, dateDebutContrat?: string): number {
-  const d = parseDate(dateDebutContrat || '');
-  if (!d || d < new Date(2026, 8, 1)) return 500;
-  const niveau = NIVEAU_PAR_TP[(formation || '').trim().toUpperCase()];
-  return niveau === 5 ? 300 : 500;
-}
+// Montant du 1er équipement : voir lib/premierEquipement.ts (règle partagée avec la convention)
 
 function genererEcheances(apc: Partial<APC>): Echeance[] {
   // Financeur hors OPCO : facturation mensuelle au réel, pas d'échéancier NPEC.
