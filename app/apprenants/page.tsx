@@ -6,9 +6,20 @@ import { COLORS } from '../../lib/constants';
 import { chargerApprentis, modifierApprenti } from '../../data/apprentisSupabase';
 import Card from '../../components/Card';
 import PageHeader from '../../components/PageHeader';
+import { estApprentissage } from '../../lib/financeurs';
+
+// Hors apprentissage (Transition Pro, CPF…) : action de formation, pas de contrat d'apprentissage
+const LIBELLE_HORS_APPRENTISSAGE: Record<string, string> = { formation_continue: 'AF', vae: 'VAE', libre: 'LIBRE' };
+function badgeHorsApprentissage(a: any) {
+  return { code: 'AF', label: LIBELLE_HORS_APPRENTISSAGE[a.typeFinancement] || 'AF', bg: '#e0f2fe', color: '#0369a1' };
+}
+function estCA(a: any): boolean {
+  return a.statut === 'En cours' && estApprentissage(a.typeFinancement);
+}
 
 function getStatut(a: any): { code: string; label: string; bg: string; color: string } {
   if (a.statut === 'P2S') return { code: 'P2S', label: 'P2S', bg: '#fef6e4', color: '#C8A23A' };
+  if (a.statut === 'En cours' && !estApprentissage(a.typeFinancement)) return badgeHorsApprentissage(a);
   if (a.statut === 'En cours') return { code: 'CA', label: 'CA', bg: '#e6f4f1', color: '#006B68' };
   if (a.statut === 'Terminé') return { code: 'Terminé', label: 'TERMINÉ', bg: '#dcfce7', color: '#16a34a' };
   if (a.statut === 'Rupture') {
@@ -109,7 +120,8 @@ export default function Apprenants() {
 
   const stats = [
     { label: 'Total actifs', value: actifs.length, bg: COLORS.primary },
-    { label: 'CA', value: actifs.filter(a => a.statut === 'En cours').length, bg: '#006B68' },
+    { label: 'CA', value: actifs.filter(estCA).length, bg: '#006B68' },
+    { label: 'AF', value: actifs.filter(a => a.statut === 'En cours' && !estApprentissage(a.typeFinancement)).length, bg: '#0369a1' },
     { label: 'P2S', value: actifs.filter(a => a.statut === 'P2S').length, bg: '#C8A23A' },
     { label: 'Rupture MEF', value: actifs.filter(a => a.statut === 'Rupture' && a.maintienFormation === 'OUI').length, bg: '#7c3aed' },
     { label: 'Rupture FMEF', value: actifs.filter(a => a.statut === 'Rupture' && a.maintienFormation !== 'OUI').length, bg: '#e53e3e' },
@@ -161,6 +173,7 @@ export default function Apprenants() {
           {[
             { code: 'Tous', label: 'Tous' },
             { code: 'CA', label: 'CA' },
+            { code: 'AF', label: 'AF' },
             { code: 'P2S', label: 'P2S' },
             { code: 'MEF', label: 'Rupture MEF' },
             { code: 'FMEF', label: 'Rupture FMEF' },
