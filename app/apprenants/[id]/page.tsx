@@ -1087,7 +1087,9 @@ export default function FicheApprenant({ params }: { params: Promise<{ id: strin
   const statutColor = enCours ? '#006B68' : p2s ? '#C8A23A' : '#e53e3e';
   const statutLabel = form.statut === 'Terminé' ? 'TERMINÉ' : estEnRupture ? (form.maintienFormation === 'OUI' ? 'RUPTURE MEF' : 'RUPTURE FMEF') : p2s ? 'P2S' : enCours ? 'CA' : '—';
 
-  const champsSifaManquants = verifierConformiteSifa(form);
+  // SIFA = apprentis uniquement : hors apprentissage (Transition Pro, CPF…), non concerné
+  const sifaConcerne = estApprentissage((form as any).typeFinancement);
+  const champsSifaManquants = sifaConcerne ? verifierConformiteSifa(form) : [];
   const estMineurApp = estMineur(form);
 
   const sessionsCompatibles = sessions.filter((s: any) => {
@@ -1303,7 +1305,11 @@ export default function FicheApprenant({ params }: { params: Promise<{ id: strin
                 📅 Session {sessionActuelle.id}
               </span>
             )}
-            {champsSifaManquants.length > 0 ? (
+            {!sifaConcerne ? (
+              <span title="Hors apprentissage : pas de déclaration SIFA" style={{ backgroundColor: '#f3f4f6', color: '#6b7280', padding: '4px 12px', borderRadius: '20px', fontSize: '12px', fontWeight: '700' }}>
+                SIFA : non concerné
+              </span>
+            ) : champsSifaManquants.length > 0 ? (
               <span title={`Champs SIFA manquants : ${champsSifaManquants.join(', ')}`} style={{ backgroundColor: '#fef6e4', color: '#7a5c00', padding: '4px 12px', borderRadius: '20px', fontSize: '12px', fontWeight: '700', cursor: 'help' }}>
                 ⚠️ SIFA : {champsSifaManquants.length} champ{champsSifaManquants.length > 1 ? 's' : ''} manquant{champsSifaManquants.length > 1 ? 's' : ''}
               </span>
@@ -2032,7 +2038,11 @@ export default function FicheApprenant({ params }: { params: Promise<{ id: strin
       <Card style={{ marginBottom: '24px' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
           <h2 style={{ fontSize: '15px', fontWeight: '700', color: COLORS.primary }}>📊 Déclarations administratives (SIFA)</h2>
-          {champsSifaManquants.length > 0 ? (
+          {!sifaConcerne ? (
+            <span style={{ backgroundColor: '#f3f4f6', color: '#6b7280', padding: '4px 12px', borderRadius: '20px', fontSize: '11px', fontWeight: '700' }}>
+              Non concerné (hors apprentissage)
+            </span>
+          ) : champsSifaManquants.length > 0 ? (
             <span style={{ backgroundColor: '#fef6e4', color: '#7a5c00', padding: '4px 12px', borderRadius: '20px', fontSize: '11px', fontWeight: '700' }}>
               ⚠️ {champsSifaManquants.length} champ{champsSifaManquants.length > 1 ? 's' : ''} obligatoire{champsSifaManquants.length > 1 ? 's' : ''} manquant{champsSifaManquants.length > 1 ? 's' : ''}
             </span>
@@ -2044,7 +2054,9 @@ export default function FicheApprenant({ params }: { params: Promise<{ id: strin
         </div>
 
         <div style={{ marginBottom: '14px', padding: '10px 14px', backgroundColor: COLORS.background, borderRadius: '8px', fontSize: '12px', color: '#555' }}>
-          💡 Ces informations sont nécessaires pour la déclaration annuelle <strong>SIFA</strong>.
+          {sifaConcerne
+            ? <>💡 Ces informations sont nécessaires pour la déclaration annuelle <strong>SIFA</strong>.</>
+            : <>💡 La déclaration <strong>SIFA</strong> ne concerne que les apprentis : cette personne n'y figurera pas. Les champs restent consultables.</>}
           {estMineurApp && <span> ⚠️ Cet apprenant est <strong>mineur</strong> : email d'un responsable légal obligatoire.</span>}
         </div>
 

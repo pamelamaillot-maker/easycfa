@@ -10,6 +10,7 @@ import { REFERENTIEL_FORMATIONS } from '../../data/mockData';
 import { getCfaIdentite, getReferentHandicap, CfaIdentite, ReferentHandicapCfa } from '../../lib/cfaConfig';
 import Card from '../../components/Card';
 import PageHeader from '../../components/PageHeader';
+import { estApprentissage } from '../../lib/financeurs';
 
 const btnPrimary: React.CSSProperties = { backgroundColor: COLORS.primary, color: 'white', border: 'none', borderRadius: '8px', padding: '9px 16px', fontSize: '13px', fontWeight: '600', cursor: 'pointer' };
 const btnSecondary: React.CSSProperties = { backgroundColor: 'white', color: COLORS.primary, border: `1.5px solid ${COLORS.primary}`, borderRadius: '8px', padding: '9px 16px', fontSize: '13px', fontWeight: '600', cursor: 'pointer' };
@@ -100,6 +101,8 @@ export default function SIFA() {
   const apprenantsFiltres = useMemo(() => {
     return apprenantsSupabase
       .filter(a => !((a as any).archive))
+      // SIFA = apprentis uniquement : Transition Pro, CPF, VAE… sont exclus
+      .filter(a => estApprentissage((a as any).typeFinancement))
       .filter(a => estInscritAu31Decembre(a, parseInt(anneeScolaire)))
       .map(a => ({
         ...a,
