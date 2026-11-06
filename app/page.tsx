@@ -8,6 +8,7 @@ import { chargerApcs } from '../data/apcsSupabase';
 import { chargerExamens } from '../data/examensSupabase';
 import { chargerEntretiens as chargerEntretiensSupabase } from '../data/entretiensSupabase';
 import { verifierConformiteSifa } from '../data/mockApprenants_reels';
+import { estApprentissage } from '../lib/financeurs';
 import { chargerOuCreerEntretiensApprenant, calculerDatePrevue, calculerStatut, STATUT_STYLE, LIBELLE_TYPE } from '../data/mockEntretiens';
 import {
   PieChart, Pie, Cell, ResponsiveContainer, Legend, Tooltip,
@@ -186,7 +187,8 @@ export default function Dashboard() {
     return false;
   });
 
-  const sifaManquants = enCours.filter(a => verifierConformiteSifa(a).length > 0);
+  // SIFA = apprentis uniquement (Transition Pro, CPF… exclus)
+  const sifaManquants = enCours.filter(a => estApprentissage((a as any).typeFinancement) && verifierConformiteSifa(a).length > 0);
 
   const donneesCamembert = [
     { name: 'En cours (CA)', value: enCours.length, color: '#006B68' },
