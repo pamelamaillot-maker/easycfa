@@ -292,6 +292,7 @@ export default function FicheEntreprise({ params }: { params: Promise<{ id: stri
           ) : (
             <>
               <button onClick={() => setModeEdition(true)} style={btnSecondary}>✏️ Modifier</button>
+              <a href="https://www.akto.fr/entreprise/recruter-alternance/calcul-cout-contrat-apprentissage/" target="_blank" rel="noreferrer" style={{ ...btnSecondary, textDecoration: 'none' }}>💶 Coût employeur (AKTO)</a>
               <BoutonMandatRecrutement
                 donnees={{
                   entrepriseNom: form.raisonSociale,
@@ -366,7 +367,7 @@ export default function FicheEntreprise({ params }: { params: Promise<{ id: stri
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '16px' }}>
-            {[{ label: 'OPCO', value: e.opco || '—' }, { label: 'IDCC', value: e.idcc || '—' }].map((s) => <StatCard key={s.label} {...s} />)}
+            {[{ label: 'OPCO', value: e.opco || '—', color: COLORS.primary }, { label: 'IDCC', value: e.idcc || '—', color: COLORS.primary }].map((s) => <StatCard key={s.label} {...s} />)}
           </div>
           <Card>
             <h2 style={{ fontSize: '15px', fontWeight: '700', color: COLORS.primary, marginBottom: '12px' }}>Récapitulatif apprentis</h2>

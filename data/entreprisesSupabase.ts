@@ -36,6 +36,8 @@ export interface Entreprise {
   dateCreation?: string;
   dateModification?: string;
   financementsApprenants?: Record<string, FinancementApprenant>;
+  /** Pièces jointes de la fiche entreprise (Kbis, mandat signé…) */
+  pieces?: Record<string, any>;
 }
 
 export interface ConventionStatut {

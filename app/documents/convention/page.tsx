@@ -381,6 +381,9 @@ export default function ApercuCF() {
                 NPEC annuel pour l'IDCC {entrepriseObj?.idcc || '—'} (€)
               </label>
               <input type="number" step="0.01" style={inputStyle} value={finance.npecAnnuel || ''} onChange={e => { setFinance({ ...finance, npecAnnuel: Number(e.target.value) }); setAfficher(false); }} />
+              <a href="https://www.akto.fr/entreprise/recruter-alternance/calcul-cout-contrat-apprentissage/" target="_blank" rel="noreferrer" style={{ display: 'inline-block', marginTop: 6, fontSize: 11, fontWeight: 600, color: COLORS.primary }}>
+                🔎 Vérifier le NPEC sur la calculette AKTO — reporter le « Coût CPNE annuel »
+              </a>
               <div style={{ marginTop: 4, fontSize: 10, color: COLORS.textMuted }}>
                 {Number(entrepriseObj?.financementsApprenants?.[apprenantObj?.id || '']?.npecAnnuel) > 0
                   ? '✅ Montant enregistré pour cette convention'

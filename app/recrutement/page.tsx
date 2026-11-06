@@ -237,7 +237,10 @@ export default function Recrutement() {
           <h1 style={{ fontSize: '24px', fontWeight: '800', color: '#006B68', marginBottom: '4px' }}>🎯 Recrutement</h1>
           <p style={{ color: '#888', fontSize: '14px' }}>{mandats.length} mandat(s) — {mandats.filter(m => m.statut === 'Actif').length} actif(s)</p>
         </div>
-        <button onClick={() => setModale(true)} style={btnPrimary}>+ Nouveau mandat</button>
+        <div style={{ display: 'flex', gap: '8px' }}>
+          <a href="https://www.akto.fr/entreprise/recruter-alternance/calcul-cout-contrat-apprentissage/" target="_blank" rel="noreferrer" style={{ ...btnSecondary, textDecoration: 'none' }}>💶 Coût pour l'employeur (AKTO)</a>
+          <button onClick={() => setModale(true)} style={btnPrimary}>+ Nouveau mandat</button>
+        </div>
       </div>
 
       {/* Stats */}
