@@ -544,7 +544,11 @@ export default function Facturation() {
   const anneeAffichee = filtreAnnee || new Date().getFullYear().toString();
   const apcsAnnee = apcs.filter(a => a.annee === anneeAffichee);
   const totalAccorde = apcsAnnee.reduce((s,a)=>s+a.coutPedagoAccorde+a.premierEquipement+a.fraisRepas,0);
-  const totalFacture = apcsAnnee.reduce((s,a)=>s+a.echeances.filter(e=>e.numeroFacture).reduce((se,e)=>se+e.montantPrevu,0),0);
+  // Exercice civil : facturé = factures DATÉES de l'année (tous dossiers), encaissé = paiements DATÉS de l'année.
+  // (Avant : le facturé suivait l'année du dossier APC → bases différentes, « reste à encaisser » négatif.)
+  const anneeDe = (d?: string): string => { const v=(d||'').trim(); if(!v) return ''; if(/^\d{4}-/.test(v)) return v.slice(0,4); const p=v.split('/'); return p.length===3?p[2].slice(0,4):''; };
+  const factureeDansAnnee = (e: any): boolean => !!e.numeroFacture && anneeDe(e.dateFacture || e.dateEcheance) === anneeAffichee;
+  const totalFacture = apcs.reduce((s,a)=>s+a.echeances.filter(factureeDansAnnee).reduce((se,e)=>se+e.montantPrevu,0),0);
   const totalEncaisse = apcs.reduce((s,a)=>s+a.echeances.filter(e=>{
     if (!e.datePaiement) return false;
     const p=e.datePaiement.split('/');
@@ -798,19 +802,21 @@ export default function Facturation() {
         const totalPeda = apcsAnnee.reduce((s,a)=>s+a.coutPedagoAccorde,0);
         const totalEquip = apcsAnnee.reduce((s,a)=>s+a.premierEquipement,0);
         const totalRepas = apcsAnnee.reduce((s,a)=>s+a.fraisRepas,0);
-        const factPeda = apcsAnnee.reduce((s,a)=>s+a.echeances.filter(e=>e.numeroFacture&&e.type==='pedago').reduce((se,e)=>se+e.montantPrevu,0),0);
-        const factEquip = apcsAnnee.reduce((s,a)=>s+a.echeances.filter(e=>e.numeroFacture&&e.type==='equipement').reduce((se,e)=>se+e.montantPrevu,0),0);
-        const factRepas = apcsAnnee.reduce((s,a)=>s+a.echeances.filter(e=>e.numeroFacture&&e.type==='repas').reduce((se,e)=>se+e.montantPrevu,0),0);
+        const factPeda = apcs.reduce((s,a)=>s+a.echeances.filter(e=>e.type==='pedago'&&factureeDansAnnee(e)).reduce((se,e)=>se+e.montantPrevu,0),0);
+        const factEquip = apcs.reduce((s,a)=>s+a.echeances.filter(e=>e.type==='equipement'&&factureeDansAnnee(e)).reduce((se,e)=>se+e.montantPrevu,0),0);
+        const factRepas = apcs.reduce((s,a)=>s+a.echeances.filter(e=>e.type==='repas'&&factureeDansAnnee(e)).reduce((se,e)=>se+e.montantPrevu,0),0);
         const matchPaiementAnnee = (e: any) => { if(!e.datePaiement) return false; const p=e.datePaiement.split('/'); return p.length===3 && p[2]===anneeAffichee; };
         const encPeda = apcs.reduce((s,a)=>s+a.echeances.filter(e=>e.type==='pedago'&&matchPaiementAnnee(e)).reduce((se,e)=>se+(e.montantPaye||0),0),0);
         const encEquip = apcs.reduce((s,a)=>s+a.echeances.filter(e=>e.type==='equipement'&&matchPaiementAnnee(e)).reduce((se,e)=>se+(e.montantPaye||0),0),0);
         const encRepas = apcs.reduce((s,a)=>s+a.echeances.filter(e=>e.type==='repas'&&matchPaiementAnnee(e)).reduce((se,e)=>se+(e.montantPaye||0),0),0);
+        // Reste à encaisser = factures de l'année pas encore (entièrement) payées — jamais négatif
+        const resteType = (t: string) => apcs.reduce((s,a)=>s+a.echeances.filter(e=>e.type===t&&factureeDansAnnee(e)).reduce((se,e)=>se+Math.max(0,e.montantPrevu-(e.montantPaye||0)),0),0);
         return (
           <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:'8px',marginBottom:'16px'}}>
             {[
-              {label:'Frais pédagogiques',accord:totalPeda,facture:factPeda,encaisse:encPeda,color:'#006B68',icon:'📚'},
-              {label:'1er équipement',accord:totalEquip,facture:factEquip,encaisse:encEquip,color:'#7c3aed',icon:'🎒'},
-              {label:'Frais de repas',accord:totalRepas,facture:factRepas,encaisse:encRepas,color:'#C8A23A',icon:'🍽'},
+              {label:'Frais pédagogiques',accord:totalPeda,facture:factPeda,encaisse:encPeda,reste:resteType('pedago'),color:'#006B68',icon:'📚'},
+              {label:'1er équipement',accord:totalEquip,facture:factEquip,encaisse:encEquip,reste:resteType('equipement'),color:'#7c3aed',icon:'🎒'},
+              {label:'Frais de repas',accord:totalRepas,facture:factRepas,encaisse:encRepas,reste:resteType('repas'),color:'#C8A23A',icon:'🍽'},
             ].map(s=>(
               <div key={s.label} style={{backgroundColor:'white',borderRadius:'10px',padding:'12px 14px',borderLeft:'4px solid '+s.color,boxShadow:'0 1px 4px rgba(0,0,0,0.06)',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
                 <div>
@@ -830,7 +836,7 @@ export default function Facturation() {
                     </div>
                     <div>
                       <div style={{fontSize:'9px',color:'#888',textTransform:'uppercase',fontWeight:'600'}}>Reste à enc.</div>
-                      <div style={{fontSize:'13px',fontWeight:'800',color:(s.facture-s.encaisse)>0?'#e53e3e':'#16a34a'}}>{(s.facture-s.encaisse).toLocaleString('fr-FR',{minimumFractionDigits:2})} €</div>
+                      <div title="Factures datées de l'année, non encore payées" style={{fontSize:'13px',fontWeight:'800',color:s.reste>0?'#e53e3e':'#16a34a'}}>{s.reste.toLocaleString('fr-FR',{minimumFractionDigits:2})} €</div>
                     </div>
                   </div>
                 </div>
