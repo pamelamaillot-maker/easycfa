@@ -12,7 +12,7 @@ import { COLORS } from '../../../lib/constants';
 import { chargerApprenti, creerApprenti, modifierApprenti, supprimerApprenti as supprimerApprentiSupabase, marquerDocApprenantEnAttente, marquerDocApprenantSignee, supprimerDocApprenant } from '../../../data/apprentisSupabase';
 import { chargerEntreprises as chargerEntreprisesSupabase } from '../../../data/entreprisesSupabase';
 import { chargerApcs } from '../../../data/apcsSupabase';
-import { calculerPeriodeCr, calculerPeriodeCrFinal, nbMoisEntre } from '../../../lib/calculerPeriodeCr';
+import { calculerPeriodeCr, estEcheancePedago, calculerPeriodeCrFinal, nbMoisEntre } from '../../../lib/calculerPeriodeCr';
 import { assemblerDonneesDMF } from '../../../lib/donneesDMF';
 import { assemblerDonneesDroitImage } from '../../../lib/donneesDroitImage';
 import { chercherNpecParRncp } from '../../../data/npecSupabase';
@@ -943,7 +943,7 @@ export default function FicheApprenant({ params }: { params: Promise<{ id: strin
         let crFinalTrouve: any = null;
         apcsApp.forEach((apc: any) => {
           // CR par échéance (sur les échéances pédago, sauf la 1ère)
-          const pedago = (apc.echeances || []).filter((e: any) => e.type === 'pedago').sort((a: any, b: any) => {
+          const pedago = (apc.echeances || []).filter((e: any) => estEcheancePedago(e)).sort((a: any, b: any) => {
             const pA = (a.dateEcheance || '').split('/'), pB = (b.dateEcheance || '').split('/');
             if (pA.length !== 3 || pB.length !== 3) return 0;
             return new Date(parseInt(pA[2]), parseInt(pA[1]) - 1, parseInt(pA[0])).getTime() - new Date(parseInt(pB[2]), parseInt(pB[1]) - 1, parseInt(pB[0])).getTime();

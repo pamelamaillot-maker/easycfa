@@ -19,9 +19,11 @@ export function calculerPeriodeCr(
   dateRupture?: string,
   dateDebutFormation?: string
 ): { debut: string; fin: string } | null {
-  // Trie les échéances pédagogiques par date d'échéance
+  // Trie les échéances pédagogiques par date d'échéance.
+  // Sécurité : une ligne « Frais repas » ou « 1er équipement » saisie à la main
+  // avec le type pédago par défaut ne doit jamais entrer dans le calcul des CR.
   const pedago = echeances
-    .filter(e => e.type === 'pedago')
+    .filter(e => estEcheancePedago(e))
     .sort((a, b) => parseDate(a.dateEcheance) - parseDate(b.dateEcheance));
 
   const index = pedago.findIndex(e => e.id === echeanceCible.id);
@@ -36,8 +38,11 @@ export function calculerPeriodeCr(
     // Premier CR : date la plus ancienne entre entrée en formation et début de contrat
     debut = datePlusAncienne(dateDebutFormation, dateDebutContrat);
   } else {
-    const echPrec = pedago[index - 1];
-    debut = echPrec.dateEcheance || '';
+    // Échéance précédente = dernière échéance pédago à une date STRICTEMENT antérieure
+    const tCible = parseDate(echeanceCible.dateEcheance);
+    const precedentes = pedago.slice(0, index).filter(e => parseDate(e.dateEcheance) < tCible);
+    const echPrec = precedentes[precedentes.length - 1];
+    debut = echPrec?.dateEcheance || datePlusAncienne(dateDebutFormation, dateDebutContrat);
   }
 
   // Date de fin = veille de l'échéance courante (échéancier)
@@ -48,6 +53,12 @@ export function calculerPeriodeCr(
   if (!debut || !fin) return null;
   const t = parseDate(debut);
   return { debut: t ? toFr(new Date(t)) : debut, fin };
+}
+
+/** Échéance pédagogique réelle (exclut repas / équipement mal typés). */
+export function estEcheancePedago(e: { type?: string; label?: string }): boolean {
+  if (e.type !== 'pedago') return false;
+  return !/repas|[ée]quipement/i.test(e.label || '');
 }
 
 function parseDate(s?: string): number {

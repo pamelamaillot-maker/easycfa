@@ -21,6 +21,7 @@ import { chargerApprentis } from '../../data/apprentisSupabase';
 import Card from '../../components/Card';
 import { uploaderFichier, cheminStorage } from '../../lib/storage';
 import { montantEquipementParDefaut } from '../../lib/premierEquipement';
+import { estEcheancePedago } from '../../lib/calculerPeriodeCr';
 import { calculerPeriodeCr, calculerPeriodeCrFinal, nbJoursEntre, nbMoisEntre, libelleDureeCr, periodeRealisee, lendemain } from '../../lib/calculerPeriodeCr';
 import dynamic from 'next/dynamic';
 import { APPRENANTS_REELS as APPS_REELS_LIB } from '../../data/mockApprenants_reels';
@@ -1088,6 +1089,11 @@ export default function Facturation() {
                                 })()}
                               </div>
                               <div style={{display:'flex',gap:'4px',alignItems:'center'}}>
+                                <select value={e.type} onChange={ev=>majEch(e.id,'type',ev.target.value)} title="Nature de l'échéance — seules les échéances pédagogiques portent un CR" style={{fontSize:'10px',borderRadius:'4px',border:'none',padding:'1px 3px',backgroundColor:'rgba(255,255,255,0.9)',color:'#333',cursor:'pointer'}}>
+                                  <option value="pedago">Pédago</option>
+                                  <option value="equipement">1er équip.</option>
+                                  <option value="repas">Repas</option>
+                                </select>
                                 <span style={{fontSize:'12px',fontWeight:'800',color:'white'}}>{e.montantPrevu.toLocaleString('fr-FR')} €</span>
                                 <button onClick={()=>supprimerEcheanceLocale(e.id)} style={{backgroundColor:'rgba(255,255,255,0.2)',color:'white',border:'none',borderRadius:'4px',padding:'1px 5px',fontSize:'10px',cursor:'pointer'}}>✕</button>
                               </div>
@@ -1113,7 +1119,7 @@ export default function Facturation() {
 
                             <LigneHtTva apc={apcSel} echeance={e} />
 {/* === SECTION CERTIFICAT DE RÉALISATION === */}
-                            {e.type === 'pedago' && (() => {
+                            {estEcheancePedago(e) && (() => {
                               const apprenant = APPS_REELS_LIB.find(a => a.id === apcSel.apprenantId);
                               // Hors apprentissage : CR MENSUEL, obligatoire dès le premier mois.
                               // En apprentissage : CR par échéance, aucun sur la première facture,
@@ -1212,7 +1218,7 @@ export default function Facturation() {
 
                                   {/* Alerte si facture suivante saisie mais CR manquant ou pas signé */}
                                   {(() => {
-                                    const pedago = (apcSel.echeances || []).filter(x => x.type === 'pedago').sort((a,b) => {
+                                    const pedago = (apcSel.echeances || []).filter(x => estEcheancePedago(x)).sort((a,b) => {
                                       const pA = (a.dateEcheance||'').split('/'), pB = (b.dateEcheance||'').split('/');
                                       if (pA.length !== 3 || pB.length !== 3) return 0;
                                       return new Date(parseInt(pA[2]),parseInt(pA[1])-1,parseInt(pA[0])).getTime() - new Date(parseInt(pB[2]),parseInt(pB[1])-1,parseInt(pB[0])).getTime();
@@ -1265,7 +1271,7 @@ export default function Facturation() {
                         if (!dataFinal) return null;
 
                         // Somme des mois des CR par échéance (pour contrôle cohérence)
-                        const pedago = (apcSel.echeances || []).filter(e => e.type === 'pedago').sort((a,b) => {
+                        const pedago = (apcSel.echeances || []).filter(e => estEcheancePedago(e)).sort((a,b) => {
                           const pA = (a.dateEcheance||'').split('/'), pB = (b.dateEcheance||'').split('/');
                           if (pA.length !== 3 || pB.length !== 3) return 0;
                           return new Date(parseInt(pA[2]),parseInt(pA[1])-1,parseInt(pA[0])).getTime() - new Date(parseInt(pB[2]),parseInt(pB[1])-1,parseInt(pB[0])).getTime();
