@@ -413,7 +413,7 @@ const CHAMPS_VALIDES = new Set<string>([
   'id', 'civilite', 'nom', 'prenom', 'sexe', 'nationalite',
   'dateNaissance', 'lieuNaissance', 'codePostalNaissance', 'departementNaissance', 'paysNaissance',
   'email', 'telephone', 'adresse', 'codePostal', 'ville',
-  'nir', 'rqth', 'sportifHautNiveau',
+  'nir', 'rqth', 'dateRqth', 'sportifHautNiveau',
   'formation', 'typeFinancement', 'sessionId', 'dateDebutFormation', 'dateFinFormation',
   'entreprise', 'dateDebutContrat', 'dateFinContrat', 'numeroDeca', 'numeroDossierOpco',
   'tuteurNom', 'tuteurPrenom', 'tuteurEmail', 'tuteurTelephone',
