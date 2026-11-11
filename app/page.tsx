@@ -360,15 +360,41 @@ export default function Dashboard() {
         <ChiffreCle icone="⚠️" label="SIFA" valeur={sifaManquants.length} sous="à compléter (en cours)" couleur={sifaManquants.length > 0 ? '#C8A23A' : '#16a34a'} href="/apprenants" />
       </div>
 
+      {/* ♿ Aménagements d'épreuves — affiché seulement s'il y a quelque chose à faire */}
+      {alertesAmenag.length > 0 && (
+        <div style={{ marginBottom: '16px' }}>
+          <CarteSection titre="Aménagements d'épreuves à transmettre à la DEETS (3 mois avant l'examen)" icone="♿" couleur="#e53e3e" href="/apprenants">
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+              {alertesAmenag.map(al => {
+                const c = { bg: '#fde8e8', bord: '#fecaca', txt: '#c53030' };
+                return (
+                  <Link key={al.apprenantId} href={`/apprenants/${al.apprenantId}`} style={{ textDecoration: 'none' }}>
+                    <div style={{ padding: '8px 10px', borderRadius: '8px', backgroundColor: c.bg, border: `1px solid ${c.bord}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <div>
+                        <div style={{ fontSize: '12px', fontWeight: '700', color: c.txt }}>{al.prenom} {al.nom} — {al.formation}</div>
+                        <div style={{ fontSize: '10px', color: '#666' }}>
+                          Examen le {al.dateExamen.toLocaleDateString('fr-FR')} · à transmettre avant le {al.dateLimite.toLocaleDateString('fr-FR')}
+                        </div>
+                      </div>
+                      <span style={{ fontSize: '11px', color: c.txt, fontWeight: '700', whiteSpace: 'nowrap' }}>
+                        {al.joursRestants < 0 ? `🔴 Dépassé de ${-al.joursRestants} j` : `⏳ J-${al.joursRestants}`}
+                      </span>
+                    </div>
+                  </Link>
+                );
+              })}
+            </div>
+          </CarteSection>
+        </div>
+      )}
+
       {/* PLANNING DES SESSIONS D'EXAMEN */}
       {(() => {
         const aujourdhui = new Date();
         aujourdhui.setHours(0, 0, 0, 0);
+        // Sessions non clôturées (Planifiée, En cours, Terminée), toutes années confondues
         const sessionsAnnee = examens
-          .filter((e: any) => {
-            const d = parseDateFr(e.dateDebut);
-            return d && d.getFullYear() === anneeNum;
-          })
+          .filter((e: any) => e.statut !== 'Clôturée' && !e.archive && parseDateFr(e.dateDebut))
           .map((e: any) => {
             const d = parseDateFr(e.dateDebut);
             const jours = d ? Math.ceil((d.getTime() - aujourdhui.getTime()) / 86400000) : null;
@@ -382,7 +408,7 @@ export default function Dashboard() {
 
         return (
           <div style={{ marginBottom: '24px' }}>
-            <CarteSection titre={`Sessions d'examen ${annee}`} icone="🎓" couleur="#006B68" href="/examens">
+            <CarteSection titre="Sessions d'examen non clôturées" icone="🎓" couleur="#006B68" href="/examens">
               <div style={{ fontSize: '11px', color: '#888', marginBottom: '10px', fontWeight: '600' }}>
                 {sessionsAnnee.length} session{sessionsAnnee.length > 1 ? 's' : ''} · {aVenir.length} à venir
               </div>
@@ -610,34 +636,6 @@ export default function Dashboard() {
           </div>
         )}
       </div>
-
-      {/* ♿ Aménagements d'épreuves — affiché seulement s'il y a quelque chose à faire */}
-      {alertesAmenag.length > 0 && (
-        <div style={{ marginBottom: '16px' }}>
-          <CarteSection titre="Aménagements d'épreuves à transmettre à la DEETS (3 mois avant l'examen)" icone="♿" couleur="#e53e3e" href="/apprenants">
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-              {alertesAmenag.map(al => {
-                const c = { bg: '#fde8e8', bord: '#fecaca', txt: '#c53030' };
-                return (
-                  <Link key={al.apprenantId} href={`/apprenants/${al.apprenantId}`} style={{ textDecoration: 'none' }}>
-                    <div style={{ padding: '8px 10px', borderRadius: '8px', backgroundColor: c.bg, border: `1px solid ${c.bord}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                      <div>
-                        <div style={{ fontSize: '12px', fontWeight: '700', color: c.txt }}>{al.prenom} {al.nom} — {al.formation}</div>
-                        <div style={{ fontSize: '10px', color: '#666' }}>
-                          Examen le {al.dateExamen.toLocaleDateString('fr-FR')} · à transmettre avant le {al.dateLimite.toLocaleDateString('fr-FR')}
-                        </div>
-                      </div>
-                      <span style={{ fontSize: '11px', color: c.txt, fontWeight: '700', whiteSpace: 'nowrap' }}>
-                        {al.joursRestants < 0 ? `🔴 Dépassé de ${-al.joursRestants} j` : `⏳ J-${al.joursRestants}`}
-                      </span>
-                    </div>
-                  </Link>
-                );
-              })}
-            </div>
-          </CarteSection>
-        </div>
-      )}
 
       {/* SECTIONS ALERTES */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '24px' }}>

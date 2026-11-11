@@ -635,7 +635,7 @@ export default function Examens() {
               <input style={{ ...inputStyle, fontSize: '11px', padding: '5px 7px', marginBottom: '8px' }} value={recherche} placeholder="🔍 CERES, candidat..." onChange={e => setRecherche(e.target.value)} />
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <span style={{ fontSize: '11px', color: '#888', fontWeight: '600' }}>
-                  {sessions.filter(s => !s.archive).length} active(s) · {sessions.filter(s => s.archive).length} archivée(s)
+                  {sessions.filter(s => !s.archive && s.statut !== 'Clôturée').length} active(s) · {sessions.filter(s => s.archive || s.statut === 'Clôturée').length} archivée(s)
                 </span>
                 <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
                   {(filtreTP || filtreAnnee || filtreType || recherche) && (
@@ -657,7 +657,8 @@ export default function Examens() {
                 {[...sessions].filter(s => {
                   // Une recherche par nom ou CERES doit trouver aussi dans les archives :
                   // masquer un résultat explicitement demandé serait déroutant.
-                  if (!afficherArchives && s.archive && !recherche.trim()) return false;
+                  // Une session clôturée part automatiquement dans les archives
+                  if (!afficherArchives && (s.archive || s.statut === 'Clôturée') && !recherche.trim()) return false;
                   if (filtreTP && s.formation !== filtreTP) return false;
                   if (filtreType && (s.typeSession ?? 'titre') !== filtreType) return false;
                   if (filtreAnnee) {
