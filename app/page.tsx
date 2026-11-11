@@ -190,7 +190,7 @@ export default function Dashboard() {
 
   // SIFA = apprentis uniquement (Transition Pro, CPF… exclus)
   // ♿ Demandes d'aménagement d'épreuves à transmettre à la DEETS (≥ 3 mois avant l'examen)
-  const alertesAmenag = alertesAmenagement(apprenants, examens);
+  const alertesAmenag = alertesAmenagement(apprenants, examens, Infinity);
   const sifaManquants = enCours.filter(a => estApprentissage((a as any).typeFinancement) && verifierConformiteSifa(a).length > 0);
 
   const donneesCamembert = [
@@ -614,10 +614,10 @@ export default function Dashboard() {
       {/* ♿ Aménagements d'épreuves — affiché seulement s'il y a quelque chose à faire */}
       {alertesAmenag.length > 0 && (
         <div style={{ marginBottom: '16px' }}>
-          <CarteSection titre="Aménagements d'épreuves à transmettre à la DEETS (3 mois avant l'examen)" icone="♿" couleur="#7c3aed" href="/apprenants">
+          <CarteSection titre="Aménagements d'épreuves à transmettre à la DEETS (3 mois avant l'examen)" icone="♿" couleur="#e53e3e" href="/apprenants">
             <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
               {alertesAmenag.map(al => {
-                const c = al.niveau === 'depasse' ? { bg: '#fde8e8', bord: '#fecaca', txt: '#c53030' } : al.niveau === 'urgent' ? { bg: '#fff7ed', bord: '#fed7aa', txt: '#c2410c' } : { bg: '#f5f3ff', bord: '#ddd6fe', txt: '#6d28d9' };
+                const c = { bg: '#fde8e8', bord: '#fecaca', txt: '#c53030' };
                 return (
                   <Link key={al.apprenantId} href={`/apprenants/${al.apprenantId}`} style={{ textDecoration: 'none' }}>
                     <div style={{ padding: '8px 10px', borderRadius: '8px', backgroundColor: c.bg, border: `1px solid ${c.bord}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
