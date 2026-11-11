@@ -92,6 +92,25 @@ export interface Apprenti {
     amenagementsFormationDetail?: string;
     adaptationSupports?: string;
     adaptationSupportsDetail?: string;
+    /** RQTH, BOETH_AAH, BOETH_INVALIDITE, BOETH_ATMP, BOETH_CMI, BOETH_AUTRE, TROUBLE_TEMPORAIRE — voir lib/handicap.ts */
+    typeReconnaissance?: string;
+    dateFinValidite?: string;
+    materielAdapte?: string;
+    materielAdapteDetail?: string;
+    aideTechnique?: string;
+    aideTechniqueDetail?: string;
+    autresInformations?: string;
+    dateEntretien?: string;
+    entretienRealisePar?: string;
+    /** Demande d'aménagement des épreuves d'examen (formulaire officiel, à transmettre à la DEETS ≥ 3 mois avant). */
+    demandeAmenagement?: {
+      amenagements?: string[];
+      precisions?: Record<string, string>;
+      difficultes?: string[];
+      difficultesAutres?: string;
+      dateEnvoiDeets?: string;
+      sansObjet?: boolean;
+    };
   };
   dmf?: any;
   rupture?: any;

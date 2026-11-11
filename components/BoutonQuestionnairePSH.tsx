@@ -92,6 +92,19 @@ function PSHDoc({ a }: { a: any }) {
         <Text style={{ marginTop: 6, marginLeft: 12 }}>Si oui, lesquels ?</Text>
         <View style={{ ...s.zoneTexte, minHeight: 38 }} />
 
+        <Text style={s.question}>Disposez-vous d'un matériel adapté à votre handicap qui vous permettra de suivre la formation ?</Text>
+        <Case>Oui</Case>
+        <Case>Non</Case>
+
+        <Text style={s.question}>Avez-vous besoin d'une aide technique ? (matériel spécialisé)</Text>
+        <Case>Oui</Case>
+        <Case>Non</Case>
+        <Text style={{ marginTop: 6, marginLeft: 12 }}>Si oui, laquelle ?</Text>
+        <View style={{ ...s.zoneTexte, minHeight: 34 }} />
+
+        <Text style={s.question}>Autres informations dont vous souhaitez nous faire part</Text>
+        <View style={{ ...s.zoneTexte, minHeight: 50 }} />
+
         {/* Consentement + RGPD — insécable */}
         <View style={s.consentement} wrap={false}>
           <Text>

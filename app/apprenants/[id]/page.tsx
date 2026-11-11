@@ -40,6 +40,7 @@ import {
 } from '../../../data/mockEntretiens';
 import { creerEntretien as creerEntretienSupabase, chargerOuCreerEntretiensSupabase } from '../../../data/entretiensSupabase';
 import { chargerEmargements } from '../../../data/emargementsSupabase';
+import { TYPES_RECONNAISSANCE, libelleCourtReconnaissance, AMENAGEMENTS_EPREUVES, DIFFICULTES_FORMATION } from '../../../lib/handicap';
 const BoutonPdfRupture = dynamic(() => import('../../../components/BoutonPdfRupture'), { ssr: false });
 const BoutonGenerationDMF = dynamic(() => import('../../../components/BoutonGenerationDMF'), { ssr: false });
 const BoutonRemplirLivret = dynamic(() => import('../../../components/BoutonRemplirLivret'), { ssr: false });
@@ -49,6 +50,7 @@ const SortiesAnticipeesManager = dynamic(() => import('../../../components/Sorti
 const BoutonCarteEtudiante = dynamic(() => import('../../../components/BoutonCarteEtudiante2627'), { ssr: false });
 const BoutonQuestionnairePSH = dynamic(() => import('../../../components/BoutonQuestionnairePSH'), { ssr: false });
 const BoutonFicheSyntheseRQTH = dynamic(() => import('../../../components/BoutonFicheSyntheseRQTH'), { ssr: false });
+const BoutonAmenagementEpreuves = dynamic(() => import('../../../components/BoutonAmenagementEpreuves'), { ssr: false });
 
 const btnPrimary: React.CSSProperties = { backgroundColor: COLORS.primary, color: 'white', border: 'none', borderRadius: '8px', padding: '9px 16px', fontSize: '13px', fontWeight: '600', cursor: 'pointer' };
 const btnSecondary: React.CSSProperties = { backgroundColor: 'white', color: COLORS.primary, border: `1.5px solid ${COLORS.primary}`, borderRadius: '8px', padding: '9px 16px', fontSize: '13px', fontWeight: '600', cursor: 'pointer' };
@@ -1914,7 +1916,7 @@ export default function FicheApprenant({ params }: { params: Promise<{ id: strin
               { value: 'TP CATL', label: 'TP CATL' },
               { value: 'Autre', label: 'Autre' },
             ]} />
-            <ChampSelect label="RQTH (OUI/NON)" champ="rqth" form={form} setForm={setForm} options={[
+            <ChampSelect label="Handicap — RQTH / BOETH / temporaire" champ="rqth" form={form} setForm={setForm} options={[
               { value: 'OUI', label: 'OUI' },
               { value: 'NON', label: 'NON' },
             ]} />
@@ -2065,8 +2067,8 @@ export default function FicheApprenant({ params }: { params: Promise<{ id: strin
             <ChampSelect label="Sexe" champ="sexe" form={form} setForm={setForm} options={[{ value: 'M', label: 'Masculin' }, { value: 'F', label: 'Féminin' }]} />
             <Champ label="CP de naissance" champ="codePostalNaissance" form={form} setForm={setForm} placeholder="ex: 97410" />
             <Champ label="INE" champ="ine" form={form} setForm={setForm} placeholder="11 caractères" />
-            <ChampSelect label="RQTH" champ="rqth" form={form} setForm={setForm} options={[{ value: 'OUI', label: 'OUI' }, { value: 'NON', label: 'NON' }]} />
-            <Champ label="Date RQTH" champ="dateRqth" form={form} setForm={setForm} placeholder="JJ/MM/AAAA" />
+            <ChampSelect label="Handicap (RQTH / BOETH / temporaire)" champ="rqth" form={form} setForm={setForm} options={[{ value: 'OUI', label: 'OUI' }, { value: 'NON', label: 'NON' }]} />
+            <Champ label="Date de reconnaissance" champ="dateRqth" form={form} setForm={setForm} placeholder="JJ/MM/AAAA" />
             <div></div>
             <Champ label="Email représentant légal" champ="representantEmail" form={form} setForm={setForm} type="email" />
             <Champ label="Email responsable légal 1" champ="responsableEmail1" form={form} setForm={setForm} type="email" />
@@ -2082,8 +2084,8 @@ export default function FicheApprenant({ params }: { params: Promise<{ id: strin
               <InfoRow label="Sexe" value={form.sexe === 'M' ? 'Masculin' : form.sexe === 'F' ? 'Féminin' : ''} />
               <InfoRow label="CP de naissance" value={form.codePostalNaissance} />
               <InfoRow label="INE" value={form.ine} />
-              <InfoRow label="RQTH" value={form.rqth} />
-              <InfoRow label="Date RQTH" value={form.dateRqth} />
+              <InfoRow label="Handicap" value={form.rqth === 'OUI' ? 'OUI — ' + libelleCourtReconnaissance(form.amenagementRqth?.typeReconnaissance) : form.rqth} />
+              <InfoRow label="Date de reconnaissance" value={form.dateRqth} />
             </div>
             <div>
               <h3 style={{ fontSize: '13px', fontWeight: '700', color: COLORS.secondary, textTransform: 'uppercase', marginBottom: '12px' }}>
@@ -2120,7 +2122,7 @@ export default function FicheApprenant({ params }: { params: Promise<{ id: strin
         return (
           <Card style={{ marginBottom: '24px', borderTop: `4px solid ${COLORS.secondary}` }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', gap: '12px', flexWrap: 'wrap' }}>
-              <h2 style={{ fontSize: '15px', fontWeight: '700', color: COLORS.primary }}>♿ Situation de handicap (RQTH)</h2>
+              <h2 style={{ fontSize: '15px', fontWeight: '700', color: COLORS.primary }}>♿ Situation de handicap — {libelleCourtReconnaissance(am.typeReconnaissance)}</h2>
               <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
                 <span style={{ fontSize: '12px', color: '#888' }}>Évaluation des besoins particuliers — Référent Handicap</span>
                 <BoutonQuestionnairePSH
@@ -2136,8 +2138,31 @@ export default function FicheApprenant({ params }: { params: Promise<{ id: strin
               </div>
             </div>
             <p style={{ fontSize: 12, color: '#666', marginBottom: 16, marginTop: 0, fontStyle: 'italic' }}>
-              Renseigné à partir du questionnaire d'accueil d'une personne en situation de handicap. L'attestation RQTH s'importe dans la section « Pièces justificatives ».
+              À remplir pendant l'entretien d'entrée avec l'apprenant(e). La « Fiche de synthèse remplie » reprend ses réponses : il ou elle la relit et la signe. Le justificatif (RQTH, notification MDPH, attestation AAH…) s'importe dans « Pièces justificatives ».
             </p>
+
+            {/* Reconnaissance + entretien */}
+            <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 1fr', gap: '10px', marginBottom: '16px' }}>
+              <div>
+                <label style={{ fontSize: '12px', color: '#555', fontWeight: '700', display: 'block', marginBottom: '6px' }}>Type de reconnaissance</label>
+                <select value={am.typeReconnaissance || 'RQTH'} onChange={e => setChamp('typeReconnaissance', e.target.value)} style={{ width: '100%', border: '1.5px solid #e0e0e0', borderRadius: '8px', padding: '8px 10px', fontSize: '13px' }}>
+                  {TYPES_RECONNAISSANCE.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+                </select>
+              </div>
+              <div>
+                <label style={{ fontSize: '12px', color: '#555', fontWeight: '700', display: 'block', marginBottom: '6px' }}>Valable jusqu'au</label>
+                <input type="date" value={am.dateFinValidite || ''} onChange={e => setChamp('dateFinValidite', e.target.value)} style={{ width: '100%', boxSizing: 'border-box', border: `1.5px solid ${am.dateFinValidite && am.dateFinValidite < new Date().toISOString().slice(0, 10) ? '#e53e3e' : '#e0e0e0'}`, borderRadius: '8px', padding: '7px 10px', fontSize: '13px' }} />
+                {am.dateFinValidite && am.dateFinValidite < new Date().toISOString().slice(0, 10) && <div style={{ fontSize: 10, color: '#e53e3e', marginTop: 3 }}>⚠️ Reconnaissance expirée</div>}
+              </div>
+              <div>
+                <label style={{ fontSize: '12px', color: '#555', fontWeight: '700', display: 'block', marginBottom: '6px' }}>Date de l'entretien</label>
+                <input type="date" value={am.dateEntretien || ''} onChange={e => setChamp('dateEntretien', e.target.value)} style={{ width: '100%', boxSizing: 'border-box', border: '1.5px solid #e0e0e0', borderRadius: '8px', padding: '7px 10px', fontSize: '13px' }} />
+              </div>
+              <div>
+                <label style={{ fontSize: '12px', color: '#555', fontWeight: '700', display: 'block', marginBottom: '6px' }}>Réalisé par</label>
+                <input type="text" value={am.entretienRealisePar || ''} placeholder="Référent handicap" onChange={e => setChamp('entretienRealisePar', e.target.value)} style={{ width: '100%', boxSizing: 'border-box', border: '1.5px solid #e0e0e0', borderRadius: '8px', padding: '7px 10px', fontSize: '13px' }} />
+              </div>
+            </div>
 
             {/* Accompagnement humain */}
             <div style={{ marginBottom: '16px' }}>
@@ -2208,6 +2233,111 @@ export default function FicheApprenant({ params }: { params: Promise<{ id: strin
                 />
               )}
             </div>
+
+            {/* Matériel adapté personnel + aide technique */}
+            {([
+              { cle: 'materielAdapte', question: "Dispose-t-il/elle d'un matériel adapté à son handicap pour suivre la formation ?", detail: 'materielAdapteDetail', placeholder: 'Lequel ? (ex : ordinateur avec logiciel de synthèse vocale, loupe électronique…)' },
+              { cle: 'aideTechnique', question: "Besoin d'une aide technique (matériel spécialisé) ?", detail: 'aideTechniqueDetail', placeholder: 'Si oui, laquelle ? (ex : siège ergonomique, clavier adapté, boucle magnétique…)' },
+            ] as const).map(q => (
+              <div key={q.cle} style={{ marginBottom: '12px' }}>
+                <label style={{ fontSize: '12px', color: '#555', fontWeight: '700', display: 'block', marginBottom: '8px' }}>{q.question}</label>
+                <div style={{ display: 'flex', gap: '8px', marginBottom: '8px' }}>
+                  {['Oui', 'Non'].map(v => (
+                    <button key={v} type="button" onClick={() => setChamp(q.cle, v)} style={{ padding: '7px 18px', borderRadius: '8px', fontSize: '13px', fontWeight: '600', cursor: 'pointer', border: `1.5px solid ${am[q.cle] === v ? COLORS.primary : '#e0e0e0'}`, backgroundColor: am[q.cle] === v ? COLORS.primary : 'white', color: am[q.cle] === v ? 'white' : '#555' }}>{v}</button>
+                  ))}
+                </div>
+                {am[q.cle] === 'Oui' && (
+                  <textarea
+                    style={{ border: '1.5px solid #e0e0e0', borderRadius: '8px', padding: '8px 12px', fontSize: '13px', width: '100%', boxSizing: 'border-box', minHeight: '50px', resize: 'vertical' }}
+                    value={am[q.detail] ?? ''}
+                    placeholder={q.placeholder}
+                    onChange={e => setChamp(q.detail, e.target.value)}
+                  />
+                )}
+              </div>
+            ))}
+
+            {/* Autres informations */}
+            <div style={{ marginBottom: '4px' }}>
+              <label style={{ fontSize: '12px', color: '#555', fontWeight: '700', display: 'block', marginBottom: '8px' }}>Autres informations dont il/elle souhaite nous faire part</label>
+              <textarea
+                style={{ border: '1.5px solid #e0e0e0', borderRadius: '8px', padding: '8px 12px', fontSize: '13px', width: '100%', boxSizing: 'border-box', minHeight: '60px', resize: 'vertical' }}
+                value={am.autresInformations ?? ''}
+                onChange={e => setChamp('autresInformations', e.target.value)}
+              />
+            </div>
+
+            {/* 📝 Demande d'aménagement des épreuves d'examen */}
+            {(() => {
+              const dem = am.demandeAmenagement || {};
+              const majDem = (cle: string, valeur: any) => setChamp('demandeAmenagement', { ...dem, [cle]: valeur });
+              const basculer = (cle: 'amenagements' | 'difficultes', v: string) => {
+                const liste: string[] = Array.isArray(dem[cle]) ? dem[cle] : [];
+                majDem(cle, liste.includes(v) ? liste.filter((x: string) => x !== v) : [...liste, v]);
+              };
+              const coche = (cle: 'amenagements' | 'difficultes', v: string) => Array.isArray(dem[cle]) && dem[cle].includes(v);
+              return (
+                <div style={{ marginTop: '20px', paddingTop: '16px', borderTop: `2px dashed ${COLORS.secondary}` }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', flexWrap: 'wrap', marginBottom: '6px' }}>
+                    <h3 style={{ fontSize: '14px', fontWeight: '700', color: COLORS.primary, margin: 0 }}>📝 Demande d'aménagement des épreuves d'examen</h3>
+                    <BoutonAmenagementEpreuves
+                      apprenant={{ ...form, id }}
+                      style={{ backgroundColor: COLORS.primary, color: 'white', border: 'none', borderRadius: 8, padding: '8px 14px', fontSize: 12, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' }}
+                    />
+                  </div>
+                  <p style={{ fontSize: 12, color: '#666', margin: '0 0 12px', fontStyle: 'italic' }}>
+                    Formulaire officiel pré-rempli (parties candidat et centre de formation). À faire signer, à compléter par le médecin, puis à transmettre à la DEETS <strong>au moins 3 mois avant les épreuves</strong>. Joindre le justificatif de reconnaissance et le référentiel d'évaluation.
+                  </p>
+
+                  <label style={{ ...labelCase, display: 'inline-flex', marginBottom: '12px', borderColor: dem.sansObjet ? COLORS.primary : '#e0e0e0' }}>
+                    <input type="checkbox" checked={!!dem.sansObjet} onChange={() => majDem('sansObjet', !dem.sansObjet)} />
+                    Aucun aménagement d'épreuves demandé (pas de formulaire à envoyer)
+                  </label>
+
+                  {!dem.sansObjet && (
+                    <>
+                      <label style={{ fontSize: '12px', color: '#555', fontWeight: '700', display: 'block', marginBottom: '8px' }}>Aménagements demandés</label>
+                      <div style={{ display: 'grid', gap: '6px', marginBottom: '14px' }}>
+                        {AMENAGEMENTS_EPREUVES.map(x => (
+                          <div key={x.value}>
+                            <label style={{ ...labelCase, borderColor: coche('amenagements', x.value) ? COLORS.primary : '#e0e0e0' }}>
+                              <input type="checkbox" checked={coche('amenagements', x.value)} onChange={() => basculer('amenagements', x.value)} />
+                              {x.label}
+                            </label>
+                            {coche('amenagements', x.value) && (
+                              <input type="text" value={(dem.precisions || {})[x.value] || ''} placeholder={x.aide}
+                                onChange={e => majDem('precisions', { ...(dem.precisions || {}), [x.value]: e.target.value })}
+                                style={{ width: '100%', boxSizing: 'border-box', border: '1.5px solid #e0e0e0', borderRadius: '8px', padding: '7px 10px', fontSize: '13px', marginTop: '4px' }} />
+                            )}
+                          </div>
+                        ))}
+                      </div>
+
+                      <label style={{ fontSize: '12px', color: '#555', fontWeight: '700', display: 'block', marginBottom: '8px' }}>Difficultés rencontrées pendant la formation (observations du centre)</label>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px', marginBottom: '8px' }}>
+                        {DIFFICULTES_FORMATION.map(x => (
+                          <label key={x.value} style={{ ...labelCase, borderColor: coche('difficultes', x.value) ? COLORS.primary : '#e0e0e0' }}>
+                            <input type="checkbox" checked={coche('difficultes', x.value)} onChange={() => basculer('difficultes', x.value)} />
+                            {x.label}
+                          </label>
+                        ))}
+                      </div>
+                      {coche('difficultes', 'autres') && (
+                        <input type="text" value={dem.difficultesAutres || ''} placeholder="Autres difficultés (préciser)" onChange={e => majDem('difficultesAutres', e.target.value)}
+                          style={{ width: '100%', boxSizing: 'border-box', border: '1.5px solid #e0e0e0', borderRadius: '8px', padding: '7px 10px', fontSize: '13px', marginBottom: '8px' }} />
+                      )}
+
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginTop: '8px' }}>
+                        <label style={{ fontSize: '12px', color: '#555', fontWeight: '700' }}>Envoyé à la DEETS le</label>
+                        <input type="date" value={dem.dateEnvoiDeets || ''} onChange={e => majDem('dateEnvoiDeets', e.target.value)}
+                          style={{ border: `1.5px solid ${dem.dateEnvoiDeets ? COLORS.primary : '#e0e0e0'}`, borderRadius: '8px', padding: '6px 10px', fontSize: '13px' }} />
+                        {dem.dateEnvoiDeets ? <span style={{ fontSize: 12, color: COLORS.primary, fontWeight: 600 }}>✅ Transmis</span> : <span style={{ fontSize: 12, color: '#C8A23A', fontWeight: 600 }}>⏳ À transmettre</span>}
+                      </div>
+                    </>
+                  )}
+                </div>
+              );
+            })()}
           </Card>
         );
       })()}

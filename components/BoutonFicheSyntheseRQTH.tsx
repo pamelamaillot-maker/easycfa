@@ -2,6 +2,7 @@
 
 import React from 'react';
 import { Document, Page, View, Text, Image as PdfImage, pdf } from '@react-pdf/renderer';
+import { libelleCourtReconnaissance } from '../lib/handicap';
 
 const LIBELLES_FORMATION: Record<string, string> = {
   'SC': 'Titre professionnel Secrétaire Comptable',
@@ -35,6 +36,8 @@ const s = {
   rgpd: { fontSize: 7.5, color: '#555', fontStyle: 'italic' as const, marginTop: 6, lineHeight: 1.35 },
 };
 
+const dateFr = (v?: string) => { const t = String(v || ''); const m = t.match(/^(\d{4})-(\d{2})-(\d{2})/); return m ? `${m[3]}/${m[2]}/${m[1]}` : t; };
+
 // Case cochée (✓) ou vide selon l'état
 function CaseEtat({ children, cochee }: { children: string; cochee: boolean }) {
   return (
@@ -62,8 +65,8 @@ function SyntheseDoc({ a }: { a: any }) {
       <Page size="A4" style={s.page}>
         <PdfImage src="/logo-pamoi.png" style={{ width: 66, marginBottom: 10 }} />
 
-        <Text style={s.titre}>FICHE DE SYNTHÈSE — SITUATION DE HANDICAP (RQTH)</Text>
-        <Text style={s.sousTitre}>Synthèse des besoins particuliers recueillis — Document interne PAM OI Formation</Text>
+        <Text style={s.titre}>QUESTIONNAIRE D'ACCUEIL — SITUATION DE HANDICAP</Text>
+        <Text style={s.sousTitre}>Besoins particuliers recueillis lors de l'entretien d'entrée en formation — à relire et signer</Text>
 
         {/* En-tête */}
         <View style={s.ligneChamp}><Text style={s.labelChamp}>Date d'édition</Text><Text style={s.valeurChamp}>{dateEdition}</Text></View>
@@ -71,7 +74,9 @@ function SyntheseDoc({ a }: { a: any }) {
         <View style={s.ligneChamp}><Text style={s.labelChamp}>Lieu de la formation</Text><Text style={s.valeurChamp}>PAM OI Formation — 1 Chemin Dubuisson, 97436 Saint-Leu</Text></View>
         <View style={s.ligneChamp}><Text style={s.labelChamp}>Dates début et fin de formation</Text><Text style={s.valeurChamp}>{dates}</Text></View>
         <View style={s.ligneChamp}><Text style={s.labelChamp}>Nom et Prénom</Text><Text style={s.valeurChamp}>{nomComplet}</Text></View>
-        <View style={s.ligneChamp}><Text style={s.labelChamp}>RQTH</Text><Text style={s.valeurChamp}>{champ(a.rqth) === 'EN_COURS' ? 'En cours de démarche' : champ(a.rqth)}</Text></View>
+        <View style={s.ligneChamp}><Text style={s.labelChamp}>Email / téléphone</Text><Text style={s.valeurChamp}>{[champ(a.email), champ(a.telephone)].filter(Boolean).join('  —  ')}</Text></View>
+        <View style={s.ligneChamp}><Text style={s.labelChamp}>Reconnaissance</Text><Text style={s.valeurChamp}>{champ(a.rqth) === 'EN_COURS' ? 'En cours de démarche' : libelleCourtReconnaissance(am.typeReconnaissance)}{am.dateFinValidite ? `  (valable jusqu'au ${dateFr(am.dateFinValidite)})` : ''}</Text></View>
+        <View style={s.ligneChamp}><Text style={s.labelChamp}>Entretien</Text><Text style={s.valeurChamp}>{[am.dateEntretien ? 'le ' + dateFr(am.dateEntretien) : '', champ(am.entretienRealisePar) ? 'par ' + am.entretienRealisePar : ''].filter(Boolean).join(' ')}</Text></View>
 
         {/* Accompagnement humain */}
         <Text style={s.question}>Besoin d'un accompagnement humain ?</Text>
@@ -109,6 +114,30 @@ function SyntheseDoc({ a }: { a: any }) {
           <Text style={s.precision}>Précisions : {am.adaptationSupportsDetail}</Text>
         )}
 
+        {/* Matériel adapté */}
+        <Text style={s.question}>Dispose d'un matériel adapté à son handicap pour suivre la formation ?</Text>
+        <CaseEtat cochee={am.materielAdapte === 'Oui'}>Oui</CaseEtat>
+        <CaseEtat cochee={am.materielAdapte === 'Non'}>Non</CaseEtat>
+        {am.materielAdapte === 'Oui' && champ(am.materielAdapteDetail) !== '' && (
+          <Text style={s.precision}>Précisions : {am.materielAdapteDetail}</Text>
+        )}
+
+        {/* Aide technique */}
+        <Text style={s.question}>Besoin d'une aide technique (matériel spécialisé) ?</Text>
+        <CaseEtat cochee={am.aideTechnique === 'Oui'}>Oui</CaseEtat>
+        <CaseEtat cochee={am.aideTechnique === 'Non'}>Non</CaseEtat>
+        {am.aideTechnique === 'Oui' && champ(am.aideTechniqueDetail) !== '' && (
+          <Text style={s.precision}>Laquelle : {am.aideTechniqueDetail}</Text>
+        )}
+
+        {/* Autres informations */}
+        {champ(am.autresInformations) !== '' && (
+          <>
+            <Text style={s.question}>Autres informations</Text>
+            <Text style={s.precision}>{am.autresInformations}</Text>
+          </>
+        )}
+
         {/* Consentement + RGPD — insécable */}
         <View style={s.consentement} wrap={false}>
           <Text>
@@ -118,8 +147,8 @@ function SyntheseDoc({ a }: { a: any }) {
             Mention RGPD : les données recueillies sont traitées par PAM OI Formation aux seules fins d'adaptation pédagogique liée à la situation de handicap. Elles sont confidentielles, conservées pour la durée de la formation et accessibles uniquement au Référent Handicap. Conformément au RGPD, vous disposez d'un droit d'accès, de rectification et de suppression en contactant pedagogie@pamoi.re.
           </Text>
           <View style={{ flexDirection: 'row', marginTop: 12, justifyContent: 'space-between' }}>
-            <Text>Fait à : ............................</Text>
-            <Text>Le : ....................</Text>
+            <Text>Fait à : Saint-Leu</Text>
+            <Text>Le : {am.dateEntretien ? dateFr(am.dateEntretien) : '....................'}</Text>
           </View>
           <Text style={{ marginTop: 12 }}>Signature :</Text>
           <View style={{ height: 50, border: `1px solid ${VERT}`, marginTop: 4 }} />
@@ -152,7 +181,7 @@ export default function BoutonFicheSyntheseRQTH({ apprenant, nomFichier, style }
 
   return (
     <button onClick={generer} disabled={enCours} style={style ?? { backgroundColor: OR, color: 'white', border: 'none', borderRadius: 8, padding: '9px 16px', fontSize: 13, fontWeight: 600, cursor: enCours ? 'wait' : 'pointer' }}>
-      {enCours ? '⏳ Génération…' : '📋 Fiche de synthèse remplie'}
+      {enCours ? '⏳ Génération…' : '📋 Questionnaire rempli (à signer)'}
     </button>
   );
 }

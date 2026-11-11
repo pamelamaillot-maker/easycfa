@@ -14,6 +14,7 @@ import {
   uploaderPvIndividuel,
 } from '../../data/examensSupabase';
 import { chargerApprentis } from '../../data/apprentisSupabase';
+import { DELAI_DEMANDE_AMENAGEMENT_MOIS, libelleCourtReconnaissance } from '../../lib/handicap';
 import { ccpsDuTP, dateLimiteRepresentation, joursAvantLimite } from '../../lib/referentielsTP';
 import {
   METHODE_PAR_DEFAUT,
@@ -988,6 +989,37 @@ export default function Examens() {
                           onMajCandidats={majs => maj('candidats', majs)}
                         />
                       </div>
+                      {/* ♿ Candidats en situation de handicap : demande d'aménagement à transmettre à la DEETS */}
+                      {(() => {
+                        const lire = (v?: string) => { const t = String(v || ''); let m = t.match(/^(\d{4})-(\d{2})-(\d{2})/); if (m) return new Date(+m[1], +m[2] - 1, +m[3]); m = t.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/); return m ? new Date(+m[3], +m[2] - 1, +m[1]) : null; };
+                        const dExam = lire(sessionSel.dateDebut);
+                        const limite = dExam ? new Date(dExam.getFullYear(), dExam.getMonth() - DELAI_DEMANDE_AMENAGEMENT_MOIS, dExam.getDate()) : null;
+                        const psh = sessionSel.candidats
+                          .map(c => apprenantsDb.find((a: any) => a.id === (c as any).apprenantId))
+                          .filter((a: any) => a && a.rqth === 'OUI');
+                        if (!psh.length) return null;
+                        const aujourdhui = new Date(); aujourdhui.setHours(0, 0, 0, 0);
+                        return (
+                          <div style={{ marginBottom: '10px', padding: '10px 12px', borderRadius: '8px', backgroundColor: '#f5f3ff', border: '1px solid #ddd6fe' }}>
+                            <div style={{ fontSize: '12px', fontWeight: '700', color: '#6d28d9', marginBottom: '6px' }}>
+                              ♿ Aménagements d'épreuves — à transmettre à la DEETS {limite ? `avant le ${limite.toLocaleDateString('fr-FR')}` : '(date d\'examen à renseigner)'}
+                            </div>
+                            {psh.map((a: any) => {
+                              const dem = a.amenagementRqth?.demandeAmenagement || {};
+                              const etat = dem.sansObjet ? { t: 'Aucun aménagement demandé', c: '#666' }
+                                : dem.dateEnvoiDeets ? { t: `✅ Transmis le ${new Date(dem.dateEnvoiDeets).toLocaleDateString('fr-FR')}`, c: '#006B68' }
+                                : limite && aujourdhui > limite ? { t: '🔴 Délai dépassé — à transmettre au plus vite', c: '#c53030' }
+                                : { t: '⏳ À transmettre', c: '#c2410c' };
+                              return (
+                                <div key={a.id} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', padding: '3px 0' }}>
+                                  <a href={`/apprenants/${a.id}`} style={{ color: '#333', fontWeight: 600 }}>{a.prenom} {a.nom} <span style={{ color: '#888', fontWeight: 400 }}>({libelleCourtReconnaissance(a.amenagementRqth?.typeReconnaissance)})</span></a>
+                                  <span style={{ color: etat.c, fontWeight: 700 }}>{etat.t}</span>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        );
+                      })()}
                       {sessionSel.candidats.length === 0 ? (
                         <div style={{ padding: '20px', textAlign: 'center', color: '#888', fontStyle: 'italic', fontSize: '12px' }}>Aucun candidat inscrit</div>
                       ) : (

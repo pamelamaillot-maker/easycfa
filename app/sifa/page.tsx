@@ -11,6 +11,7 @@ import { getCfaIdentite, getReferentHandicap, CfaIdentite, ReferentHandicapCfa }
 import Card from '../../components/Card';
 import PageHeader from '../../components/PageHeader';
 import { estApprentissage } from '../../lib/financeurs';
+import { estRqthPourSifa } from '../../lib/handicap';
 
 const btnPrimary: React.CSSProperties = { backgroundColor: COLORS.primary, color: 'white', border: 'none', borderRadius: '8px', padding: '9px 16px', fontSize: '13px', fontWeight: '600', cursor: 'pointer' };
 const btnSecondary: React.CSSProperties = { backgroundColor: 'white', color: COLORS.primary, border: `1.5px solid ${COLORS.primary}`, borderRadius: '8px', padding: '9px 16px', fontSize: '13px', fontWeight: '600', cursor: 'pointer' };
@@ -199,8 +200,8 @@ export default function SIFA() {
         a.codePostal ?? '',
         a.ine ?? '',
         a.telephone ?? '',
-        a.rqth === 'OUI' ? 'OUI' : 'NON',
-        a.dateRqth ? dateVersIso(a.dateRqth) : '',
+        estRqthPourSifa(a as any) ? 'OUI' : 'NON',
+        estRqthPourSifa(a as any) && a.dateRqth ? dateVersIso(a.dateRqth) : '',
         a.responsableEmail1 ?? a.representantEmail ?? '',
         a.responsableEmail2 ?? '',
         a.dernierOrganismeUai ?? '',
