@@ -1887,71 +1887,94 @@ export default function Emargement() {
           <p style={{ fontSize: '12px', color: COLORS.textMuted, marginBottom: '14px' }}>
             Feuilles d'émargement signées et archivées (les deux demi-journées importées). Consultables pour audit Qualiopi.
           </p>
-          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-            <thead>
-              <tr style={{ borderBottom: `2px solid ${COLORS.background}` }}>
-                {['Date', 'Formation', 'Formateur', 'Émargements signés', 'Consulter', 'Actions'].map(col => (
-                  <th key={col} style={{ textAlign: 'left', padding: '8px 10px', fontSize: '11px', color: '#999', fontWeight: '600', textTransform: 'uppercase' }}>{col}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {feuillesPassees.map(f => {
-                const matin = f.demiJournees.find(d => d.type === 'Matin');
-                const aprem = f.demiJournees.find(d => d.type === 'Après-midi');
-                const formateurFeuille = f.demiJournees[0]?.formateur || 'À définir';
-                return (
-                  <tr key={f.id} style={{ borderBottom: `1px solid ${COLORS.border}` }}>
-                    <td style={{ padding: '12px 10px', fontSize: '13px', fontWeight: '700', color: COLORS.primary }}>{f.jour} {f.date}</td>
-                    <td style={{ padding: '12px 10px', fontSize: '12px', color: COLORS.text }}>
-                      {(f as any).sessionNumero ? `${(f as any).sessionNumero} — ` : ''}{f.formation}
-                    </td>
-                    <td style={{ padding: '12px 10px', fontSize: '12px' }}>
-                      {formateurFeuille === 'À définir' ? (
-                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
-                          <span style={{ color: '#C8A23A', fontWeight: '600' }}>⚠️ À définir</span>
+          {(() => {
+            // Classement par mois (le plus récent en premier, ouvert ; les autres repliés)
+            const MOIS = ['Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin', 'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre'];
+            const cle = (d: string) => { const p = (d || '').split('/'); return p.length === 3 ? `${p[2]}-${p[1].padStart(2, '0')}` : '0000-00'; };
+            const valeur = (d: string) => { const p = (d || '').split('/'); return p.length === 3 ? new Date(+p[2], +p[1] - 1, +p[0]).getTime() : 0; };
+            const groupes = new Map<string, typeof feuillesPassees>();
+            [...feuillesPassees].sort((x, y) => valeur(y.date) - valeur(x.date)).forEach(f => {
+              const k = cle(f.date);
+              groupes.set(k, [...(groupes.get(k) || []), f]);
+            });
+            return [...groupes.entries()].sort((x, y) => y[0].localeCompare(x[0])).map(([k, feuillesDuMois], i) => {
+              const [an, mo] = k.split('-');
+              const libelle = an === '0000' ? 'Date inconnue' : `${MOIS[parseInt(mo) - 1]} ${an}`;
+              return (
+                <details key={k} open={i === 0} style={{ marginBottom: '10px', border: `1px solid ${COLORS.border}`, borderRadius: '8px', padding: '0 10px' }}>
+                  <summary style={{ cursor: 'pointer', padding: '10px 4px', fontSize: '14px', fontWeight: '700', color: COLORS.primary }}>
+                    <span>📅 {libelle}</span>
+                    <span style={{ marginLeft: '10px', backgroundColor: '#EAF4F3', color: COLORS.primary, padding: '2px 10px', borderRadius: '10px', fontSize: '11px', fontWeight: '700' }}>{feuillesDuMois.length} journée{feuillesDuMois.length > 1 ? 's' : ''}</span>
+                  </summary>
+              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                <thead>
+                  <tr style={{ borderBottom: `2px solid ${COLORS.background}` }}>
+                    {['Date', 'Formation', 'Formateur', 'Émargements signés', 'Consulter', 'Actions'].map(col => (
+                      <th key={col} style={{ textAlign: 'left', padding: '8px 10px', fontSize: '11px', color: '#999', fontWeight: '600', textTransform: 'uppercase' }}>{col}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {feuillesDuMois.map(f => {
+                    const matin = f.demiJournees.find(d => d.type === 'Matin');
+                    const aprem = f.demiJournees.find(d => d.type === 'Après-midi');
+                    const formateurFeuille = f.demiJournees[0]?.formateur || 'À définir';
+                    return (
+                      <tr key={f.id} style={{ borderBottom: `1px solid ${COLORS.border}` }}>
+                        <td style={{ padding: '12px 10px', fontSize: '13px', fontWeight: '700', color: COLORS.primary }}>{f.jour} {f.date}</td>
+                        <td style={{ padding: '12px 10px', fontSize: '12px', color: COLORS.text }}>
+                          {(f as any).sessionNumero ? `${(f as any).sessionNumero} — ` : ''}{f.formation}
+                        </td>
+                        <td style={{ padding: '12px 10px', fontSize: '12px' }}>
+                          {formateurFeuille === 'À définir' ? (
+                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                              <span style={{ color: '#C8A23A', fontWeight: '600' }}>⚠️ À définir</span>
+                              {estAdmin && (
+                                <button
+                                  onClick={() => rafraichirFormateurDepuisPlanning(f)}
+                                  style={{ backgroundColor: '#C8A23A', color: 'white', border: 'none', borderRadius: '6px', padding: '2px 8px', fontSize: '10px', fontWeight: '600', cursor: 'pointer' }}
+                                  title="Récupérer le formateur depuis le planning"
+                                >🔄 Récupérer</button>
+                              )}
+                            </span>
+                          ) : (
+                            <span style={{ color: COLORS.text, fontWeight: '600' }}>{formateurFeuille}</span>
+                          )}
+                        </td>
+                        <td style={{ padding: '12px 10px' }}>
+                          <span style={{ display: 'inline-flex', gap: '6px', flexWrap: 'wrap' }}>
+                            <span style={{ backgroundColor: '#dcfce7', color: '#15803d', padding: '2px 8px', borderRadius: '4px', fontSize: '11px', fontWeight: '600' }}>🌅 Matin ✅</span>
+                            <span style={{ backgroundColor: '#dcfce7', color: '#15803d', padding: '2px 8px', borderRadius: '4px', fontSize: '11px', fontWeight: '600' }}>🌇 Après-midi ✅</span>
+                          </span>
+                        </td>
+                        <td style={{ padding: '12px 10px' }}>
+                          <span style={{ display: 'inline-flex', gap: '10px', flexWrap: 'wrap' }}>
+                            {matin && (matin as any).pdfSigneUrl && (
+                              <a href={(matin as any).pdfSigneUrl} target="_blank" rel="noopener noreferrer" style={{ color: COLORS.primary, fontSize: '12px', fontWeight: '600', textDecoration: 'underline' }}>📄 Matin</a>
+                            )}
+                            {aprem && (aprem as any).pdfSigneUrl && (
+                              <a href={(aprem as any).pdfSigneUrl} target="_blank" rel="noopener noreferrer" style={{ color: COLORS.primary, fontSize: '12px', fontWeight: '600', textDecoration: 'underline' }}>📄 Après-midi</a>
+                            )}
+                          </span>
+                        </td>
+                        <td style={{ padding: '12px 10px' }}>
                           {estAdmin && (
                             <button
-                              onClick={() => rafraichirFormateurDepuisPlanning(f)}
-                              style={{ backgroundColor: '#C8A23A', color: 'white', border: 'none', borderRadius: '6px', padding: '2px 8px', fontSize: '10px', fontWeight: '600', cursor: 'pointer' }}
-                              title="Récupérer le formateur depuis le planning"
-                            >🔄 Récupérer</button>
+                              onClick={() => supprimerFeuilleLocale(f.id)}
+                              style={{ backgroundColor: '#fde8e8', color: '#e53e3e', border: 'none', borderRadius: '6px', padding: '3px 10px', fontSize: '11px', fontWeight: '600', cursor: 'pointer' }}
+                              title="Supprimer cette feuille (réservé direction)"
+                            >🗑️ Supprimer</button>
                           )}
-                        </span>
-                      ) : (
-                        <span style={{ color: COLORS.text, fontWeight: '600' }}>{formateurFeuille}</span>
-                      )}
-                    </td>
-                    <td style={{ padding: '12px 10px' }}>
-                      <span style={{ display: 'inline-flex', gap: '6px', flexWrap: 'wrap' }}>
-                        <span style={{ backgroundColor: '#dcfce7', color: '#15803d', padding: '2px 8px', borderRadius: '4px', fontSize: '11px', fontWeight: '600' }}>🌅 Matin ✅</span>
-                        <span style={{ backgroundColor: '#dcfce7', color: '#15803d', padding: '2px 8px', borderRadius: '4px', fontSize: '11px', fontWeight: '600' }}>🌇 Après-midi ✅</span>
-                      </span>
-                    </td>
-                    <td style={{ padding: '12px 10px' }}>
-                      <span style={{ display: 'inline-flex', gap: '10px', flexWrap: 'wrap' }}>
-                        {matin && (matin as any).pdfSigneUrl && (
-                          <a href={(matin as any).pdfSigneUrl} target="_blank" rel="noopener noreferrer" style={{ color: COLORS.primary, fontSize: '12px', fontWeight: '600', textDecoration: 'underline' }}>📄 Matin</a>
-                        )}
-                        {aprem && (aprem as any).pdfSigneUrl && (
-                          <a href={(aprem as any).pdfSigneUrl} target="_blank" rel="noopener noreferrer" style={{ color: COLORS.primary, fontSize: '12px', fontWeight: '600', textDecoration: 'underline' }}>📄 Après-midi</a>
-                        )}
-                      </span>
-                    </td>
-                    <td style={{ padding: '12px 10px' }}>
-                      {estAdmin && (
-                        <button
-                          onClick={() => supprimerFeuilleLocale(f.id)}
-                          style={{ backgroundColor: '#fde8e8', color: '#e53e3e', border: 'none', borderRadius: '6px', padding: '3px 10px', fontSize: '11px', fontWeight: '600', cursor: 'pointer' }}
-                          title="Supprimer cette feuille (réservé direction)"
-                        >🗑️ Supprimer</button>
-                      )}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+                </details>
+              );
+            });
+          })()}
         </Card>
       )}
 
