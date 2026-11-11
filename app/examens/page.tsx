@@ -13,7 +13,9 @@ import {
   uploaderPieceExamen,
   uploaderPvIndividuel,
 } from '../../data/examensSupabase';
-import { chargerApprentis } from '../../data/apprentisSupabase';
+import { chargerApprentis, modifierApprenti } from '../../data/apprentisSupabase';
+import dynamic from 'next/dynamic';
+const BoutonAmenagementEpreuves = dynamic(() => import('../../components/BoutonAmenagementEpreuves'), { ssr: false });
 import { DELAI_DEMANDE_AMENAGEMENT_MOIS, libelleCourtReconnaissance } from '../../lib/handicap';
 import { ccpsDuTP, dateLimiteRepresentation, joursAvantLimite } from '../../lib/referentielsTP';
 import {
@@ -999,21 +1001,42 @@ export default function Examens() {
                           .filter((a: any) => a && a.rqth === 'OUI');
                         if (!psh.length) return null;
                         const aujourdhui = new Date(); aujourdhui.setHours(0, 0, 0, 0);
+                        const majDemande = async (a: any, mods: Record<string, any>) => {
+                          const am = a.amenagementRqth || {};
+                          const nouv = { ...am, demandeAmenagement: { ...(am.demandeAmenagement || {}), ...mods } };
+                          setApprenantsDb(prev => prev.map((x: any) => x.id === a.id ? { ...x, amenagementRqth: nouv } : x));
+                          const res = await modifierApprenti(a.id, { amenagementRqth: nouv } as any);
+                          if (!res.success) alert('⚠️ Enregistrement impossible : ' + (res.error || 'erreur inconnue'));
+                        };
                         return (
-                          <div style={{ marginBottom: '10px', padding: '10px 12px', borderRadius: '8px', backgroundColor: '#f5f3ff', border: '1px solid #ddd6fe' }}>
-                            <div style={{ fontSize: '12px', fontWeight: '700', color: '#6d28d9', marginBottom: '6px' }}>
-                              ♿ Aménagements d'épreuves — à transmettre à la DEETS {limite ? `avant le ${limite.toLocaleDateString('fr-FR')}` : '(date d\'examen à renseigner)'}
+                          <div style={{ marginBottom: '12px', padding: '10px 12px', borderRadius: '8px', backgroundColor: '#f5f3ff', border: '1px solid #ddd6fe' }}>
+                            <div style={{ fontSize: '12px', fontWeight: '700', color: '#6d28d9', marginBottom: '2px' }}>
+                              ♿ Aménagements d'épreuves — à transmettre à la DEETS {limite ? `avant le ${limite.toLocaleDateString('fr-FR')}` : "(renseignez la date de l'examen)"}
                             </div>
+                            <div style={{ fontSize: '10px', color: '#777', marginBottom: '8px' }}>Candidats dont la fiche indique « Handicap = OUI ». Le détail des aménagements se saisit sur la fiche apprenant (section ♿).</div>
                             {psh.map((a: any) => {
                               const dem = a.amenagementRqth?.demandeAmenagement || {};
                               const etat = dem.sansObjet ? { t: 'Aucun aménagement demandé', c: '#666' }
-                                : dem.dateEnvoiDeets ? { t: `✅ Transmis le ${new Date(dem.dateEnvoiDeets).toLocaleDateString('fr-FR')}`, c: '#006B68' }
-                                : limite && aujourdhui > limite ? { t: '🔴 Délai dépassé — à transmettre au plus vite', c: '#c53030' }
+                                : dem.dateEnvoiDeets ? { t: '✅ Transmis', c: '#006B68' }
+                                : limite && aujourdhui > limite ? { t: '🔴 Délai dépassé', c: '#c53030' }
                                 : { t: '⏳ À transmettre', c: '#c2410c' };
                               return (
-                                <div key={a.id} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11px', padding: '3px 0' }}>
-                                  <a href={`/apprenants/${a.id}`} style={{ color: '#333', fontWeight: 600 }}>{a.prenom} {a.nom} <span style={{ color: '#888', fontWeight: 400 }}>({libelleCourtReconnaissance(a.amenagementRqth?.typeReconnaissance)})</span></a>
-                                  <span style={{ color: etat.c, fontWeight: 700 }}>{etat.t}</span>
+                                <div key={a.id} style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap', fontSize: '11px', padding: '6px 0', borderTop: '1px solid #ede9fe' }}>
+                                  <a href={`/apprenants/${a.id}`} style={{ color: '#333', fontWeight: 700, minWidth: '170px' }}>{a.prenom} {a.nom} <span style={{ color: '#888', fontWeight: 400 }}>({libelleCourtReconnaissance(a.amenagementRqth?.typeReconnaissance)})</span></a>
+                                  <span style={{ color: etat.c, fontWeight: 700, minWidth: '120px' }}>{etat.t}</span>
+                                  {!dem.sansObjet && (
+                                    <>
+                                      <BoutonAmenagementEpreuves apprenant={a} style={{ backgroundColor: '#6d28d9', color: 'white', border: 'none', borderRadius: 6, padding: '4px 10px', fontSize: 11, fontWeight: 600, cursor: 'pointer' }} />
+                                      <label style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#555' }}>
+                                        Envoyé DEETS le
+                                        <input type="date" value={dem.dateEnvoiDeets || ''} onChange={e => majDemande(a, { dateEnvoiDeets: e.target.value })} style={{ ...inputStyle, fontSize: '11px', padding: '3px 6px', width: 'auto' }} />
+                                      </label>
+                                    </>
+                                  )}
+                                  <label style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#555' }}>
+                                    <input type="checkbox" checked={!!dem.sansObjet} onChange={() => majDemande(a, { sansObjet: !dem.sansObjet })} />
+                                    Aucun aménagement
+                                  </label>
                                 </div>
                               );
                             })}

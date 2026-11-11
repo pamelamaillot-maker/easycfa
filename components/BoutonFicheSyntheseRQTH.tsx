@@ -52,7 +52,7 @@ function SyntheseDoc({ a }: { a: any }) {
   const champ = (v?: string) => (v && String(v).trim()) ? String(v) : '';
   const nomComplet = `${champ(a.prenom)} ${champ(a.nom)}`.trim();
   const formation = LIBELLES_FORMATION[a.formation] || champ(a.formation);
-  const dates = [champ(a.dateDebutFormation), champ(a.dateFinFormation)].filter(Boolean).join('  au  ');
+  const dates = [dateFr(a.dateDebutFormation), dateFr(a.dateFinFormation)].filter(Boolean).join('  au  ');
   const dateEdition = new Date().toLocaleDateString('fr-FR');
 
   const am = a.amenagementRqth || {};
@@ -79,7 +79,7 @@ function SyntheseDoc({ a }: { a: any }) {
         <View style={s.ligneChamp}><Text style={s.labelChamp}>Entretien</Text><Text style={s.valeurChamp}>{[am.dateEntretien ? 'le ' + dateFr(am.dateEntretien) : '', champ(am.entretienRealisePar) ? 'par ' + am.entretienRealisePar : ''].filter(Boolean).join(' ')}</Text></View>
 
         {/* Accompagnement humain */}
-        <Text style={s.question}>Besoin d'un accompagnement humain ?</Text>
+        <Text style={s.question} minPresenceAhead={50}>Besoin d'un accompagnement humain ?</Text>
         <CaseEtat cochee={am.accompagnementHumain === 'Oui'}>Oui</CaseEtat>
         <CaseEtat cochee={am.accompagnementHumain === 'Non'}>Non</CaseEtat>
 
@@ -97,7 +97,7 @@ function SyntheseDoc({ a }: { a: any }) {
         )}
 
         {/* Aménagement formation */}
-        <Text style={s.question}>Besoin d'un aménagement de la formation ?</Text>
+        <Text style={s.question} minPresenceAhead={50}>Besoin d'un aménagement de la formation ?</Text>
         <CaseEtat cochee={coche(amenagements, 'Fractionnement')}>Fractionnement</CaseEtat>
         <CaseEtat cochee={coche(amenagements, 'Pauses')}>Pauses</CaseEtat>
         <CaseEtat cochee={coche(amenagements, 'Horaires aménagés')}>Horaires aménagés</CaseEtat>
@@ -107,7 +107,7 @@ function SyntheseDoc({ a }: { a: any }) {
         )}
 
         {/* Adaptation supports */}
-        <Text style={s.question}>Besoin d'adaptation des supports de cours ?</Text>
+        <Text style={s.question} minPresenceAhead={50}>Besoin d'adaptation des supports de cours ?</Text>
         <CaseEtat cochee={am.adaptationSupports === 'Oui'}>Oui</CaseEtat>
         <CaseEtat cochee={am.adaptationSupports === 'Non'}>Non</CaseEtat>
         {am.adaptationSupports === 'Oui' && champ(am.adaptationSupportsDetail) !== '' && (
@@ -115,7 +115,7 @@ function SyntheseDoc({ a }: { a: any }) {
         )}
 
         {/* Matériel adapté */}
-        <Text style={s.question}>Dispose d'un matériel adapté à son handicap pour suivre la formation ?</Text>
+        <Text style={s.question} minPresenceAhead={50}>Dispose d'un matériel adapté à son handicap pour suivre la formation ?</Text>
         <CaseEtat cochee={am.materielAdapte === 'Oui'}>Oui</CaseEtat>
         <CaseEtat cochee={am.materielAdapte === 'Non'}>Non</CaseEtat>
         {am.materielAdapte === 'Oui' && champ(am.materielAdapteDetail) !== '' && (
@@ -123,7 +123,7 @@ function SyntheseDoc({ a }: { a: any }) {
         )}
 
         {/* Aide technique */}
-        <Text style={s.question}>Besoin d'une aide technique (matériel spécialisé) ?</Text>
+        <Text style={s.question} minPresenceAhead={50}>Besoin d'une aide technique (matériel spécialisé) ?</Text>
         <CaseEtat cochee={am.aideTechnique === 'Oui'}>Oui</CaseEtat>
         <CaseEtat cochee={am.aideTechnique === 'Non'}>Non</CaseEtat>
         {am.aideTechnique === 'Oui' && champ(am.aideTechniqueDetail) !== '' && (
@@ -133,7 +133,7 @@ function SyntheseDoc({ a }: { a: any }) {
         {/* Autres informations */}
         {champ(am.autresInformations) !== '' && (
           <>
-            <Text style={s.question}>Autres informations</Text>
+            <Text style={s.question} minPresenceAhead={50}>Autres informations</Text>
             <Text style={s.precision}>{am.autresInformations}</Text>
           </>
         )}

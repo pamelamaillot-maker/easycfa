@@ -21,13 +21,17 @@ const s = {
   page: { paddingTop: 28, paddingBottom: 40, paddingHorizontal: 38, fontSize: 9.5, color: '#1a1a1a', fontFamily: 'Helvetica' as const, lineHeight: 1.4 },
   titre: { fontSize: 14, fontFamily: 'Helvetica-Bold' as const, textAlign: 'center' as const, marginBottom: 4 },
   sousTitre: { fontSize: 9.5, textAlign: 'center' as const, color: '#555', marginBottom: 16, fontStyle: 'italic' as const },
-  ligneChamp: { flexDirection: 'row' as const, marginBottom: 9, alignItems: 'flex-start' as const },
+  ligneChamp: { flexDirection: 'row' as const, marginBottom: 7, alignItems: 'flex-start' as const },
   labelChamp: { width: 175, fontFamily: 'Helvetica-Bold' as const },
   valeurChamp: { flex: 1, borderBottom: `1px solid ${GRIS_BORD}`, paddingBottom: 2, minHeight: 12 },
-  question: { fontFamily: 'Helvetica-Bold' as const, marginTop: 12, marginBottom: 6 },
-  ligneCase: { flexDirection: 'row' as const, alignItems: 'center' as const, marginBottom: 4, marginLeft: 12 },
+  question: { fontFamily: 'Helvetica-Bold' as const, marginTop: 10, marginBottom: 5 },
+  ligneCase: { flexDirection: 'row' as const, alignItems: 'center' as const, marginBottom: 4, marginLeft: 12, width: 230 },
   caseCarre: { width: 10, height: 10, border: `1.2px solid #333`, marginRight: 7 },
   zoneTexte: { border: `1px solid ${GRIS_BORD}`, minHeight: 50, marginTop: 4, marginLeft: 12 },
+  ligneHoriz: { flexDirection: 'row' as const, gap: 30 },
+  grille: { flexDirection: 'row' as const, flexWrap: 'wrap' as const },
+  sousQuestion: { marginTop: 6, marginBottom: 4, marginLeft: 12, fontStyle: 'italic' as const },
+  precisez: { marginTop: 6, marginLeft: 12, color: '#555' },
   consentement: { marginTop: 14, padding: 9, border: `1.5px solid ${VERT}`, backgroundColor: '#EAF4F3' },
   rgpd: { fontSize: 7.5, color: '#555', fontStyle: 'italic' as const, marginTop: 6, lineHeight: 1.35 },
 };
@@ -45,7 +49,8 @@ function PSHDoc({ a }: { a: any }) {
   const champ = (v?: string) => (v && String(v).trim()) ? String(v) : '';
   const nomComplet = `${champ(a.prenom)} ${champ(a.nom)}`.trim();
   const formation = LIBELLES_FORMATION[a.formation] || champ(a.formation);
-  const dates = [champ(a.dateDebutFormation), champ(a.dateFinFormation)].filter(Boolean).join('  au  ');
+  const fr = (v?: string) => { const t = champ(v); const m = t.match(/^(\d{4})-(\d{2})-(\d{2})/); return m ? `${m[3]}/${m[2]}/${m[1]}` : t; };
+  const dates = [fr(a.dateDebutFormation), fr(a.dateFinFormation)].filter(Boolean).join('  au  ');
   const dateEnvoi = new Date().toLocaleDateString('fr-FR');
 
   return (
@@ -65,45 +70,56 @@ function PSHDoc({ a }: { a: any }) {
         <View style={s.ligneChamp}><Text style={s.labelChamp}>Email</Text><Text style={s.valeurChamp}>{champ(a.email)}</Text></View>
         <View style={s.ligneChamp}><Text style={s.labelChamp}>Numéro de téléphone</Text><Text style={s.valeurChamp}>{champ(a.telephone)}</Text></View>
 
-        {/* Corps vierge */}
-        <Text style={s.question}>Avez-vous besoin d'un accompagnement humain ?</Text>
-        <Case>Oui</Case>
-        <Case>Non</Case>
+        {/* Corps vierge — chaque question reste entière sur une page */}
+        <View wrap={false}>
+          <Text style={s.question}>Avez-vous besoin d'un accompagnement humain ?</Text>
+          <View style={s.ligneHoriz}><Case>Oui</Case><Case>Non</Case></View>
+          <Text style={{ ...s.sousQuestion }}>Si oui, quelle aide vous est nécessaire ?</Text>
+          <View style={s.grille}>
+            <Case>Interprète en langue des signes</Case>
+            <Case>Interface de communication</Case>
+            <Case>Auxiliaire de vie</Case>
+            <Case>Tierce personne</Case>
+          </View>
+          <Text style={s.precisez}>Précisez si besoin :</Text>
+          <View style={{ ...s.zoneTexte, minHeight: 28 }} />
+        </View>
 
-        <Text style={s.question}>Si oui, quelle aide vous est nécessaire ?</Text>
-        <Case>Interprète en langue des signes</Case>
-        <Case>Interface de communication</Case>
-        <Case>Auxiliaire de vie</Case>
-        <Case>Tierce personne</Case>
-        <Text style={{ marginTop: 6, marginLeft: 12 }}>Précisez si besoin :</Text>
-        <View style={{ ...s.zoneTexte, minHeight: 34 }} />
+        <View wrap={false}>
+          <Text style={s.question}>Avez-vous besoin d'un aménagement de la formation ?</Text>
+          <View style={s.grille}>
+            <Case>Fractionnement</Case>
+            <Case>Pauses</Case>
+            <Case>Horaires aménagés</Case>
+            <Case>Autre</Case>
+          </View>
+          <Text style={s.precisez}>Si « Autre », précisez :</Text>
+          <View style={{ ...s.zoneTexte, minHeight: 28 }} />
+        </View>
 
-        <Text style={s.question}>Avez-vous besoin d'un aménagement de la formation ?</Text>
-        <Case>Fractionnement</Case>
-        <Case>Pauses</Case>
-        <Case>Horaires aménagés</Case>
-        <Case>Autre</Case>
-        <Text style={{ marginTop: 6, marginLeft: 12 }}>Si « Autre », précisez :</Text>
-        <View style={{ ...s.zoneTexte, minHeight: 34 }} />
+        <View wrap={false}>
+          <Text style={s.question}>Avez-vous besoin d'adaptation des supports de cours ?</Text>
+          <View style={s.ligneHoriz}><Case>Oui</Case><Case>Non</Case></View>
+          <Text style={s.precisez}>Si oui, lesquels ?</Text>
+          <View style={{ ...s.zoneTexte, minHeight: 28 }} />
+        </View>
 
-        <Text style={s.question}>Avez-vous besoin d'adaptation des supports de cours ?</Text>
-        <Case>Oui</Case>
-        <Case>Non</Case>
-        <Text style={{ marginTop: 6, marginLeft: 12 }}>Si oui, lesquels ?</Text>
-        <View style={{ ...s.zoneTexte, minHeight: 38 }} />
+        <View wrap={false}>
+          <Text style={s.question}>Disposez-vous d'un matériel adapté à votre handicap qui vous permettra de suivre la formation ?</Text>
+          <View style={s.ligneHoriz}><Case>Oui</Case><Case>Non</Case></View>
+        </View>
 
-        <Text style={s.question}>Disposez-vous d'un matériel adapté à votre handicap qui vous permettra de suivre la formation ?</Text>
-        <Case>Oui</Case>
-        <Case>Non</Case>
+        <View wrap={false}>
+          <Text style={s.question}>Avez-vous besoin d'une aide technique ? (matériel spécialisé)</Text>
+          <View style={s.ligneHoriz}><Case>Oui</Case><Case>Non</Case></View>
+          <Text style={s.precisez}>Si oui, laquelle ?</Text>
+          <View style={{ ...s.zoneTexte, minHeight: 28 }} />
+        </View>
 
-        <Text style={s.question}>Avez-vous besoin d'une aide technique ? (matériel spécialisé)</Text>
-        <Case>Oui</Case>
-        <Case>Non</Case>
-        <Text style={{ marginTop: 6, marginLeft: 12 }}>Si oui, laquelle ?</Text>
-        <View style={{ ...s.zoneTexte, minHeight: 34 }} />
-
-        <Text style={s.question}>Autres informations dont vous souhaitez nous faire part</Text>
-        <View style={{ ...s.zoneTexte, minHeight: 50 }} />
+        <View wrap={false}>
+          <Text style={s.question}>Autres informations dont vous souhaitez nous faire part</Text>
+          <View style={{ ...s.zoneTexte, minHeight: 45 }} />
+        </View>
 
         {/* Consentement + RGPD — insécable */}
         <View style={s.consentement} wrap={false}>
