@@ -276,8 +276,17 @@ function alerteCouleur(jours: number | null, seuil: number): string {
   return '#16a34a';
 }
 
+
+const CLE_NON_SYNCHRO = 'easycfa_examens_non_synchro';
+function lireLocal(cle: string): any[] {
+  try { const v = JSON.parse(localStorage.getItem(cle) || '[]'); return Array.isArray(v) ? v : []; } catch { return []; }
+}
+
 export default function Examens() {
   const [sessions, setSessions] = useState<SessionExamen[]>([]);
+  // Sessions présentes sur ce poste mais absentes de la base (enregistrement échoué)
+  const [nonSynchro, setNonSynchro] = useState<SessionExamen[]>([]);
+  const [envoiEnCours, setEnvoiEnCours] = useState(false);
   const [sessionSel, setSessionSel] = useState<SessionExamen | null>(null);
   const [onglet, setOnglet] = useState<'sessions' | 'agrement' | 'jures' | 'taux'>('sessions');
   const [ongletFiche, setOngletFiche] = useState<'infos' | 'dte' | 'jury' | 'candidats' | 'documents' | 'pv' | 'emargement'>('infos');
@@ -311,6 +320,13 @@ export default function Examens() {
         if (fromSupabase && fromSupabase.length > 0) {
           console.log(`[Examens] ${fromSupabase.length} examens chargés depuis Supabase ✅`);
           setSessions(fromSupabase as any[]);
+          // Avant d'écraser la copie locale : on met de côté les sessions
+          // qui n'existent que sur ce poste (enregistrement en base échoué).
+          const ids = new Set(fromSupabase.map(e => e.id));
+          const orphelins = [...lireLocal('easycfa_examens'), ...lireLocal(CLE_NON_SYNCHRO)]
+            .filter((e: any, i: number, t: any[]) => e && e.id && !ids.has(e.id) && t.findIndex(x => x?.id === e.id) === i);
+          localStorage.setItem(CLE_NON_SYNCHRO, JSON.stringify(orphelins));
+          setNonSynchro(orphelins);
           // Sync local pour fallback hors-ligne
           localStorage.setItem('easycfa_examens', JSON.stringify(fromSupabase));
         } else {
@@ -361,11 +377,41 @@ export default function Examens() {
       sauvegarderExamenSupabase(examenModifie as any).then(res => {
         if (!res.success) {
           console.error(`[Examens ${examenModifie.id}] Erreur Supabase :`, res.error);
+          const liste = [...lireLocal(CLE_NON_SYNCHRO).filter((x: any) => x?.id !== examenModifie.id), examenModifie];
+          localStorage.setItem(CLE_NON_SYNCHRO, JSON.stringify(liste));
+          setNonSynchro(liste as any);
+          alert(`⚠️ La session ${examenModifie.formation} du ${examenModifie.dateDebut || '?'} n'a PAS été enregistrée dans EasyCFA : les autres utilisateurs ne la verront pas.\n\nElle est conservée sur ce poste. Prévenez la direction.\n\nDétail : ${res.error || 'inconnu'}`);
         } else {
           console.log(`[Examens ${examenModifie.id}] Sauvegardé dans Supabase ✅`);
         }
       });
     }
+  }
+
+  async function envoyerNonSynchro() {
+    setEnvoiEnCours(true);
+    const restants: SessionExamen[] = [];
+    const erreurs: string[] = [];
+    const envoyees: SessionExamen[] = [];
+    for (const e of nonSynchro) {
+      const res = await sauvegarderExamenSupabase(e as any);
+      if (res.success) envoyees.push(e); else { restants.push(e); erreurs.push(`${e.formation} ${e.dateDebut || ''} : ${res.error || 'erreur'}`); }
+    }
+    const liste = [...sessions.filter(s => !envoyees.some(x => x.id === s.id)), ...envoyees];
+    setSessions(liste);
+    localStorage.setItem('easycfa_examens', JSON.stringify(liste));
+    localStorage.setItem(CLE_NON_SYNCHRO, JSON.stringify(restants));
+    setNonSynchro(restants);
+    setEnvoiEnCours(false);
+    alert(erreurs.length
+      ? `⚠️ ${envoyees.length} session(s) envoyée(s), ${erreurs.length} en échec :\n\n${erreurs.join('\n')}`
+      : `✅ ${envoyees.length} session(s) enregistrée(s) dans EasyCFA.`);
+  }
+
+  function ignorerNonSynchro() {
+    if (!confirm('Retirer définitivement ces sessions de ce poste ? Elles ne sont PAS dans EasyCFA.')) return;
+    localStorage.setItem(CLE_NON_SYNCHRO, '[]');
+    setNonSynchro([]);
   }
 
   function maj(champ: string, val: any) {
@@ -608,6 +654,27 @@ export default function Examens() {
       )}
 
       {/* ── SESSIONS ── */}
+      {nonSynchro.length > 0 && (
+        <div style={{ backgroundColor: '#fde8e8', border: '2px solid #e53e3e', borderRadius: '10px', padding: '12px 16px', marginBottom: '16px' }}>
+          <div style={{ fontWeight: '700', color: '#c53030', marginBottom: '6px' }}>
+            ⚠️ {nonSynchro.length} session(s) d'examen enregistrée(s) uniquement sur ce poste — invisibles pour les autres utilisateurs
+          </div>
+          <ul style={{ margin: '0 0 10px 18px', fontSize: '13px', color: '#333' }}>
+            {nonSynchro.map(e => (
+              <li key={e.id}>{e.formation} — {e.dateDebut || '?'} → {e.dateFin || '?'}{e.numeroCERES ? ` — CERES ${e.numeroCERES}` : ''} — {(e.candidats || []).length} candidat(s)</li>
+            ))}
+          </ul>
+          <div style={{ display: 'flex', gap: '8px' }}>
+            <button onClick={envoyerNonSynchro} disabled={envoiEnCours} style={{ backgroundColor: '#006B68', color: 'white', border: 'none', borderRadius: '6px', padding: '7px 14px', fontWeight: '600', cursor: 'pointer' }}>
+              {envoiEnCours ? '⏳ Envoi…' : '☁️ Enregistrer dans EasyCFA'}
+            </button>
+            <button onClick={ignorerNonSynchro} style={{ backgroundColor: 'white', color: '#888', border: '1px solid #ccc', borderRadius: '6px', padding: '7px 14px', cursor: 'pointer' }}>
+              Ignorer
+            </button>
+          </div>
+        </div>
+      )}
+
       {onglet === 'sessions' && (
         <div style={{ display: 'grid', gridTemplateColumns: sessionSel ? '340px 1fr' : '1fr', gap: '20px' }}>
           {/* Liste sessions */}
