@@ -16,7 +16,7 @@ import { calculerPeriodeCr, estEcheancePedago, calculerPeriodeCrFinal, nbMoisEnt
 import { assemblerDonneesDMF } from '../../../lib/donneesDMF';
 import { assemblerDonneesDroitImage } from '../../../lib/donneesDroitImage';
 import { chercherNpecParRncp } from '../../../data/npecSupabase';
-import { uploaderFichier, supprimerFichier, cheminStorage, type FichierStocke } from '../../../lib/storage';
+import { uploaderFichier, supprimerFichier, cheminStorage, ouvrirPiece, type FichierStocke } from '../../../lib/storage';
 import { formaterDateFR, isoDepuisFR } from '../../../lib/dates';
 import Card from '../../../components/Card';
 import { useAcces } from '../../../lib/useAcces';
@@ -453,7 +453,7 @@ function CardEntretien({
                       <div style={{ fontSize: '12px', color: COLORS.primary, marginTop: '4px', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
                         <span>📄 {entretien.supportUtilise.livretSigne.nom} ({entretien.supportUtilise.livretSigne.taille})</span>
                         {(entretien.supportUtilise.livretSigne as any).url && (
-                          <a href={(entretien.supportUtilise.livretSigne as any).url} target="_blank" rel="noopener noreferrer" style={{ color: COLORS.primary, textDecoration: 'underline', fontSize: '11px' }}>⬇ Télécharger</a>
+                          <a href={(entretien.supportUtilise.livretSigne as any).url} onClick={e => { e.preventDefault(); ouvrirPiece((entretien.supportUtilise.livretSigne as any).url); }} target="_blank" rel="noopener noreferrer" style={{ color: COLORS.primary, textDecoration: 'underline', fontSize: '11px' }}>⬇ Télécharger</a>
                         )}
                         <span style={{ fontWeight: '400', fontStyle: 'italic' }}>
                           — Importé le {new Date(entretien.supportUtilise.livretSigne.dateImport).toLocaleDateString('fr-FR')}
@@ -2391,7 +2391,7 @@ export default function FicheApprenant({ params }: { params: Promise<{ id: strin
                   {diStatut === 'signee' && di.dateSignature && (
                     <div style={{ fontSize: 12, color: '#006B68', marginTop: 6, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
                       <span>📄 {di.fichierSigneNom}</span>
-                      <a href={di.fichierSigneUrl} target="_blank" rel="noreferrer" style={{ color: '#006B68', textDecoration: 'underline', fontSize: 11 }}>⬇ Télécharger</a>
+                      <a href={di.fichierSigneUrl} onClick={e => { e.preventDefault(); ouvrirPiece(di.fichierSigneUrl); }} target="_blank" rel="noreferrer" style={{ color: '#006B68', textDecoration: 'underline', fontSize: 11 }}>⬇ Télécharger</a>
                       <span style={{ color: '#888', fontStyle: 'italic', fontSize: 11 }}>— Importé le {new Date(di.dateSignature).toLocaleDateString('fr-FR')}</span>
                     </div>
                   )}
@@ -2488,7 +2488,7 @@ export default function FicheApprenant({ params }: { params: Promise<{ id: strin
                   {cStatut === 'signee' && c.dateSignature && (
                     <div style={{ fontSize: 11, color: '#006B68', marginTop: 4, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                       <span>📄 {c.fichierSigneNom}</span>
-                      <a href={c.fichierSigneUrl} target="_blank" rel="noreferrer" style={{ color: '#006B68', textDecoration: 'underline', fontSize: 11 }}>⬇ Télécharger</a>
+                      <a href={c.fichierSigneUrl} onClick={e => { e.preventDefault(); ouvrirPiece(c.fichierSigneUrl); }} target="_blank" rel="noreferrer" style={{ color: '#006B68', textDecoration: 'underline', fontSize: 11 }}>⬇ Télécharger</a>
                       <span style={{ color: '#888', fontStyle: 'italic' }}>— Importée le {new Date(c.dateSignature).toLocaleDateString('fr-FR')}</span>
                     </div>
                   )}
@@ -2617,7 +2617,7 @@ export default function FicheApprenant({ params }: { params: Promise<{ id: strin
                     {fichier.source && <span style={{ fontStyle: 'italic' }}>— {fichier.source}</span>}
                     {fichier.url && (
                       <a
-                        href={fichier.url}
+                        href={fichier.url} onClick={e => { e.preventDefault(); ouvrirPiece(fichier.url); }}
                         target="_blank"
                         rel="noopener noreferrer"
                         style={{ backgroundColor: '#e6f4f1', color: COLORS.primary, padding: '2px 8px', borderRadius: '4px', fontSize: '11px', textDecoration: 'none', fontWeight: '600' }}
@@ -2756,7 +2756,7 @@ export default function FicheApprenant({ params }: { params: Promise<{ id: strin
                         </td>
                         <td style={{ padding: '10px' }}>
                           {ligne.cr?.statut === 'signe' && ligne.cr.fichierSigneUrl ? (
-                            <a href={ligne.cr.fichierSigneUrl} target="_blank" rel="noopener noreferrer" style={{ backgroundColor: '#e6f4f1', color: COLORS.primary, padding: '3px 10px', borderRadius: 6, fontSize: 11, textDecoration: 'none', fontWeight: 600 }}>
+                            <a href={ligne.cr.fichierSigneUrl} onClick={e => { e.preventDefault(); ouvrirPiece(ligne.cr.fichierSigneUrl); }} target="_blank" rel="noopener noreferrer" style={{ backgroundColor: '#e6f4f1', color: COLORS.primary, padding: '3px 10px', borderRadius: 6, fontSize: 11, textDecoration: 'none', fontWeight: 600 }}>
                               📄 Voir
                             </a>
                           ) : (
@@ -2867,7 +2867,7 @@ export default function FicheApprenant({ params }: { params: Promise<{ id: strin
                       </td>
                       <td style={{ padding: '10px' }}>
                         {i.justificatifUrl ? (
-                          <a href={i.justificatifUrl} target="_blank" rel="noopener noreferrer" style={{ backgroundColor: '#e6f4f1', color: COLORS.primary, padding: '3px 10px', borderRadius: '6px', fontSize: '11px', textDecoration: 'none', fontWeight: '600', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                          <a href={i.justificatifUrl} onClick={e => { e.preventDefault(); ouvrirPiece(i.justificatifUrl); }} target="_blank" rel="noopener noreferrer" style={{ backgroundColor: '#e6f4f1', color: COLORS.primary, padding: '3px 10px', borderRadius: '6px', fontSize: '11px', textDecoration: 'none', fontWeight: '600', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
                             📄 {i.justificatifNom || 'Voir'}
                           </a>
                         ) : (
@@ -2982,7 +2982,7 @@ export default function FicheApprenant({ params }: { params: Promise<{ id: strin
                       {rStatut === 'signee' && r.dateSignature && (
                         <div style={{ fontSize: 11, color: '#006B68', marginTop: 4, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                           <span>📄 {r.fichierSigneNom}</span>
-                          <a href={r.fichierSigneUrl} target="_blank" rel="noreferrer" style={{ color: '#006B68', textDecoration: 'underline', fontSize: 11 }}>⬇ Télécharger</a>
+                          <a href={r.fichierSigneUrl} onClick={e => { e.preventDefault(); ouvrirPiece(r.fichierSigneUrl); }} target="_blank" rel="noreferrer" style={{ color: '#006B68', textDecoration: 'underline', fontSize: 11 }}>⬇ Télécharger</a>
                           <span style={{ color: '#888', fontStyle: 'italic' }}>— Importé le {new Date(r.dateSignature).toLocaleDateString('fr-FR')}</span>
                         </div>
                       )}
@@ -3063,7 +3063,7 @@ export default function FicheApprenant({ params }: { params: Promise<{ id: strin
                       {dStatut === 'signee' && d.dateSignature && (
                         <div style={{ fontSize: 11, color: '#3a5bc7', marginTop: 4, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                           <span>📄 {d.fichierSigneNom}</span>
-                          <a href={d.fichierSigneUrl} target="_blank" rel="noreferrer" style={{ color: '#3a5bc7', textDecoration: 'underline', fontSize: 11 }}>⬇ Télécharger</a>
+                          <a href={d.fichierSigneUrl} onClick={e => { e.preventDefault(); ouvrirPiece(d.fichierSigneUrl); }} target="_blank" rel="noreferrer" style={{ color: '#3a5bc7', textDecoration: 'underline', fontSize: 11 }}>⬇ Télécharger</a>
                           <span style={{ color: '#888', fontStyle: 'italic' }}>— Importé le {new Date(d.dateSignature).toLocaleDateString('fr-FR')}</span>
                         </div>
                       )}
@@ -3144,7 +3144,7 @@ export default function FicheApprenant({ params }: { params: Promise<{ id: strin
                       {fdStatut === 'signee' && fd.dateSignature && (
                         <div style={{ fontSize: 11, color: '#006B68', marginTop: 4, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                           <span>📄 {fd.fichierSigneNom}</span>
-                          <a href={fd.fichierSigneUrl} target="_blank" rel="noreferrer" style={{ color: '#006B68', textDecoration: 'underline', fontSize: 11 }}>⬇ Télécharger</a>
+                          <a href={fd.fichierSigneUrl} onClick={e => { e.preventDefault(); ouvrirPiece(fd.fichierSigneUrl); }} target="_blank" rel="noreferrer" style={{ color: '#006B68', textDecoration: 'underline', fontSize: 11 }}>⬇ Télécharger</a>
                           <span style={{ color: '#888', fontStyle: 'italic' }}>— Importé le {new Date(fd.dateSignature).toLocaleDateString('fr-FR')}</span>
                         </div>
                       )}
@@ -3197,7 +3197,7 @@ export default function FicheApprenant({ params }: { params: Promise<{ id: strin
                   {form.ruptureSignee?.url ? (
                     <div style={{ fontSize: 12, color: '#006B68', marginTop: 4, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                       <span>📄 {form.ruptureSignee.nom}</span>
-                      <a href={form.ruptureSignee.url} target="_blank" rel="noopener noreferrer" style={{ color: '#006B68', textDecoration: 'underline', fontSize: 11 }}>⬇ Télécharger</a>
+                      <a href={form.ruptureSignee.url} onClick={e => { e.preventDefault(); ouvrirPiece(form.ruptureSignee.url); }} target="_blank" rel="noopener noreferrer" style={{ color: '#006B68', textDecoration: 'underline', fontSize: 11 }}>⬇ Télécharger</a>
                       <span style={{ fontWeight: 400, fontStyle: 'italic', color: '#888' }}>
                         — Importé le {new Date(form.ruptureSignee.dateImport).toLocaleDateString('fr-FR')}
                       </span>

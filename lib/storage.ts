@@ -102,3 +102,50 @@ export function getUrlPublique(cheminStorage: string): string {
   const { data } = supabase.storage.from(BUCKET).getPublicUrl(cheminStorage);
   return data.publicUrl;
 }
+
+// ────────────────────────────────────────────────────────────────
+// LIENS TEMPORAIRES — préparation du passage du bucket en privé
+// Les URL publiques déjà enregistrées en base restent utilisables :
+// on en extrait le chemin, puis on crée un lien signé valable 1 h.
+// ────────────────────────────────────────────────────────────────
+
+/** Extrait le chemin Storage d'une URL publique enregistrée en base */
+export function cheminDepuisUrl(url: string): string | null {
+  const marqueur = `/object/public/${BUCKET}/`;
+  const i = url.indexOf(marqueur);
+  if (i === -1) return null;
+  return decodeURIComponent(url.slice(i + marqueur.length).split('?')[0]);
+}
+
+/** Lien temporaire (1 h par défaut), à partir d'une URL publique ou d'un chemin */
+export async function lienTemporaire(urlOuChemin: string | null | undefined, dureeSecondes = 3600): Promise<string | null> {
+  if (!urlOuChemin) return null;
+  const estUrl = urlOuChemin.startsWith('http');
+  const chemin = estUrl ? cheminDepuisUrl(urlOuChemin) : urlOuChemin;
+  // URL externe (autre bucket, Google Drive…) : renvoyée telle quelle
+  if (!chemin) return estUrl ? urlOuChemin : null;
+  const { data, error } = await supabase.storage.from(BUCKET).createSignedUrl(chemin, dureeSecondes);
+  if (error || !data) {
+    console.error('Erreur lien temporaire :', error);
+    return null;
+  }
+  return data.signedUrl;
+}
+
+/** Ouvre une pièce dans un nouvel onglet via un lien temporaire */
+export async function ouvrirPiece(urlOuChemin: string | null | undefined): Promise<void> {
+  // L'onglet est ouvert tout de suite pour ne pas être bloqué par le navigateur
+  const onglet = window.open('', '_blank');
+  const lien = await lienTemporaire(urlOuChemin);
+  if (!lien) {
+    onglet?.close();
+    alert('Fichier introuvable ou accès refusé.');
+    return;
+  }
+  if (onglet) {
+    onglet.opener = null;
+    onglet.location.href = lien;
+  } else {
+    window.location.href = lien;
+  }
+}
