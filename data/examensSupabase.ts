@@ -142,6 +142,10 @@ export type Examen = {
   // Archivage explicite — jamais déduit du statut
   archive?: boolean;
 
+  // Conservation — destruction 5 ans après réception des PV validés DEETS
+  dateDestructionDossier?: string;   // dossier papier détruit le
+  dateSuppressionFichiers?: string;  // fichiers Storage supprimés le
+
   // Sous-données
   jures?: Jure[];
   candidats?: Candidat[];
@@ -433,5 +437,37 @@ export async function uploaderConvocationCandidat(
   } catch (e: any) {
     console.error('[examensSupabase] Exception upload convocation candidat :', e);
     return { success: false, error: e?.message || String(e) };
+  }
+}
+
+// ────────────────────────────────────────────────────────────────
+// CONSERVATION — suppression des fichiers d'une session
+// Efface tout le dossier {examenId}/ du bucket examens, sous-dossiers
+// compris (pv-individuels, convocations-jury, convocations-candidats).
+// ────────────────────────────────────────────────────────────────
+
+export async function supprimerFichiersExamen(
+  examenId: string,
+): Promise<{ success: boolean; nombre: number; error?: string }> {
+  try {
+    const chemins: string[] = [];
+    async function parcourir(dossier: string) {
+      const { data, error } = await supabase.storage.from('examens').list(dossier, { limit: 1000 });
+      if (error) throw error;
+      for (const o of data ?? []) {
+        const chemin = `${dossier}/${o.name}`;
+        if (o.id === null) await parcourir(chemin); // sous-dossier
+        else chemins.push(chemin);
+      }
+    }
+    await parcourir(examenId);
+    for (let i = 0; i < chemins.length; i += 100) {
+      const { error } = await supabase.storage.from('examens').remove(chemins.slice(i, i + 100));
+      if (error) throw error;
+    }
+    return { success: true, nombre: chemins.length };
+  } catch (e: any) {
+    console.error('[examensSupabase] Erreur suppression fichiers session :', e);
+    return { success: false, nombre: 0, error: e?.message || String(e) };
   }
 }
