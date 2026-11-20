@@ -19,7 +19,7 @@ import {
 } from '../../data/apcsSupabase';
 import { chargerApprentis } from '../../data/apprentisSupabase';
 import Card from '../../components/Card';
-import { uploaderFichier, cheminStorage } from '../../lib/storage';
+import { uploaderFichier, cheminStorage, ouvrirPiece } from '../../lib/storage';
 import { montantEquipementParDefaut } from '../../lib/premierEquipement';
 import { estEcheancePedago } from '../../lib/calculerPeriodeCr';
 import { calculerPeriodeCr, calculerPeriodeCrFinal, nbJoursEntre, nbMoisEntre, libelleDureeCr, periodeRealisee, lendemain } from '../../lib/calculerPeriodeCr';
@@ -970,7 +970,7 @@ export default function Facturation() {
                     </label>
                     {apcSel.apcRecu&&<span style={{fontSize:'11px',color:'#006B68',fontWeight:'600',display:'inline-flex',alignItems:'center',gap:'6px'}}>
                       ✅ {apcSel.apcRecu}
-                      {(apcSel as any).apcRecuUrl && <a href={(apcSel as any).apcRecuUrl} target="_blank" rel="noopener noreferrer" style={{color:'#006B68',textDecoration:'underline'}}>⬇</a>}
+                      {(apcSel as any).apcRecuUrl && <a href={(apcSel as any).apcRecuUrl} onClick={e => { e.preventDefault(); ouvrirPiece((apcSel as any).apcRecuUrl); }} target="_blank" rel="noopener noreferrer" style={{color:'#006B68',textDecoration:'underline'}}>⬇</a>}
                     </span>}
                   </div>
                   <div style={{backgroundColor:'#EAF4F3',borderRadius:'8px',padding:'12px'}}>
@@ -1060,7 +1060,7 @@ export default function Facturation() {
                             )}
                             {e.fichierFacture&&(
                               <div style={{backgroundColor:'#e6f4f1',padding:'4px 10px',fontSize:'10px',color:'#006B68',fontWeight:'600',display:'flex',justifyContent:'space-between'}}>
-                                <span>✅ {e.fichierFacture} {(e as any).fichierFactureUrl && <a href={(e as any).fichierFactureUrl} target="_blank" rel="noopener noreferrer" style={{color:'#006B68',textDecoration:'underline',marginLeft:'6px'}}>⬇</a>}</span>
+                                <span>✅ {e.fichierFacture} {(e as any).fichierFactureUrl && <a href={(e as any).fichierFactureUrl} onClick={e => { e.preventDefault(); ouvrirPiece((e as any).fichierFactureUrl); }} target="_blank" rel="noopener noreferrer" style={{color:'#006B68',textDecoration:'underline',marginLeft:'6px'}}>⬇</a>}</span>
                                 <label style={{backgroundColor:'#006B68',color:'white',borderRadius:'4px',padding:'2px 8px',fontSize:'10px',cursor:'pointer'}}>
                                   🔄 Remplacer<input type="file" accept=".pdf,.jpg" style={{display:'none'}} onChange={async ev=>{
                                     const f=ev.target.files?.[0];
@@ -1196,7 +1196,7 @@ export default function Facturation() {
                                     {/* Si signé : voir le PDF + bouton remplacer */}
                                     {cr?.statut === 'signe' && cr.fichierSigneUrl && (
                                       <>
-                                        <a href={cr.fichierSigneUrl} target="_blank" rel="noopener noreferrer" style={{backgroundColor:'white',color:'#16a34a',border:'1.5px solid #16a34a',borderRadius:6,padding:'5px 10px',fontSize:11,fontWeight:600,textDecoration:'none'}}>
+                                        <a href={cr.fichierSigneUrl} onClick={e => { e.preventDefault(); ouvrirPiece(cr.fichierSigneUrl); }} target="_blank" rel="noopener noreferrer" style={{backgroundColor:'white',color:'#16a34a',border:'1.5px solid #16a34a',borderRadius:6,padding:'5px 10px',fontSize:11,fontWeight:600,textDecoration:'none'}}>
                                           📄 Voir le CR signé
                                         </a>
                                         <label style={{backgroundColor:'white',color:'#666',border:'1px solid #ccc',borderRadius:6,padding:'5px 10px',fontSize:11,fontWeight:600,cursor:'pointer'}}>

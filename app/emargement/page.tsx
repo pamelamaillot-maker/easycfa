@@ -22,7 +22,7 @@ import {
   sauvegarderFicheSupabase as sauvegarderFiche,
 } from '../../data/interventionsSupabase';
 import { COLORS } from '../../lib/constants';
-import { uploaderFichier, cheminStorage } from '../../lib/storage';
+import { uploaderFichier, cheminStorage, ouvrirPiece } from '../../lib/storage';
 import { pdf } from '@react-pdf/renderer';
 import PdfEmargement from '../../components/PdfEmargement';
 import PdfFicheIntervention from '../../components/PdfFicheIntervention';
@@ -1293,7 +1293,7 @@ export default function Emargement() {
                         (dj as any).pdfSigneUrl ? (
                           <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
                             <span style={{ backgroundColor: '#dcfce7', color: '#15803d', padding: '5px 10px', borderRadius: '8px', fontSize: '12px', fontWeight: '600' }}>📄 Émargement signé</span>
-                            <a href={(dj as any).pdfSigneUrl} target="_blank" rel="noopener noreferrer" style={{ color: COLORS.primary, fontSize: '12px', fontWeight: '600', textDecoration: 'underline' }}>Consulter</a>
+                            <a href={(dj as any).pdfSigneUrl} onClick={e => { e.preventDefault(); ouvrirPiece((dj as any).pdfSigneUrl); }} target="_blank" rel="noopener noreferrer" style={{ color: COLORS.primary, fontSize: '12px', fontWeight: '600', textDecoration: 'underline' }}>Consulter</a>
                             <label style={{ color: '#888', fontSize: '11px', cursor: 'pointer', textDecoration: 'underline' }}>
                               Remplacer
                               <input type="file" accept="application/pdf" style={{ display: 'none' }} onChange={(e) => { const file = e.target.files?.[0]; if (file) importerPdfSigne(feuille, dj, file); e.target.value = ''; }} />
@@ -1705,7 +1705,7 @@ export default function Emargement() {
                               ressource.valeur ? (
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '12px' }}>
                                   <span style={{ color: '#15803d', fontWeight: '600' }}>📄 {ressource.nomFichier || 'Fichier importé'}</span>
-                                  <a href={ressource.valeur} target="_blank" rel="noopener noreferrer" style={{ color: COLORS.primary, fontWeight: '600', textDecoration: 'underline' }}>Consulter</a>
+                                  <a href={ressource.valeur} onClick={e => { e.preventDefault(); ouvrirPiece(ressource.valeur); }} target="_blank" rel="noopener noreferrer" style={{ color: COLORS.primary, fontWeight: '600', textDecoration: 'underline' }}>Consulter</a>
                                 </div>
                               ) : (
                                 <label style={{ backgroundColor: '#006B68', color: 'white', borderRadius: '6px', padding: '6px 12px', fontSize: '12px', fontWeight: '600', cursor: ficheSignee ? 'default' : 'pointer', display: 'inline-block' }}>
@@ -1950,10 +1950,10 @@ export default function Emargement() {
                         <td style={{ padding: '12px 10px' }}>
                           <span style={{ display: 'inline-flex', gap: '10px', flexWrap: 'wrap' }}>
                             {matin && (matin as any).pdfSigneUrl && (
-                              <a href={(matin as any).pdfSigneUrl} target="_blank" rel="noopener noreferrer" style={{ color: COLORS.primary, fontSize: '12px', fontWeight: '600', textDecoration: 'underline' }}>📄 Matin</a>
+                              <a href={(matin as any).pdfSigneUrl} onClick={e => { e.preventDefault(); ouvrirPiece((matin as any).pdfSigneUrl); }} target="_blank" rel="noopener noreferrer" style={{ color: COLORS.primary, fontSize: '12px', fontWeight: '600', textDecoration: 'underline' }}>📄 Matin</a>
                             )}
                             {aprem && (aprem as any).pdfSigneUrl && (
-                              <a href={(aprem as any).pdfSigneUrl} target="_blank" rel="noopener noreferrer" style={{ color: COLORS.primary, fontSize: '12px', fontWeight: '600', textDecoration: 'underline' }}>📄 Après-midi</a>
+                              <a href={(aprem as any).pdfSigneUrl} onClick={e => { e.preventDefault(); ouvrirPiece((aprem as any).pdfSigneUrl); }} target="_blank" rel="noopener noreferrer" style={{ color: COLORS.primary, fontSize: '12px', fontWeight: '600', textDecoration: 'underline' }}>📄 Après-midi</a>
                             )}
                           </span>
                         </td>

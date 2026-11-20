@@ -12,7 +12,7 @@ import {
 } from '../../data/mandatsSupabase';
 import Card from '../../components/Card';
 import BoutonMandatRecrutement, { telechargerMandat } from '../../components/BoutonMandatRecrutement';
-import { uploaderFichier, cheminStorage } from '../../lib/storage';
+import { uploaderFichier, cheminStorage, ouvrirPiece } from '../../lib/storage';
 
 const FORMATIONS = ['SC', 'GCF', 'AD', 'ARH', 'CATL', 'EC', 'CV', 'FPA'];
 const STATUTS = ["En attente", "Actif", "En cours d'entretiens", "Pourvu", "Annulé"];
@@ -460,7 +460,7 @@ export default function Recrutement() {
                 <div style={{ marginTop: '8px', padding: '8px 12px', backgroundColor: '#e6f4f1', borderRadius: '8px', fontSize: '12px', color: '#006B68', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
                   <span>✅ Mandat signé : {ficheOuverte.mandatSigne}</span>
                   {ficheOuverte.mandatSigneUrl && (
-                    <a href={ficheOuverte.mandatSigneUrl} target="_blank" rel="noopener noreferrer" style={{ color: '#006B68', textDecoration: 'underline', fontSize: '11px' }}>⬇ Télécharger</a>
+                    <a href={ficheOuverte.mandatSigneUrl} onClick={e => { e.preventDefault(); ouvrirPiece(ficheOuverte.mandatSigneUrl); }} target="_blank" rel="noopener noreferrer" style={{ color: '#006B68', textDecoration: 'underline', fontSize: '11px' }}>⬇ Télécharger</a>
                   )}
                 </div>
               )}

@@ -10,7 +10,7 @@ import Card from '../../../components/Card';
 import StatCard from '../../../components/StatCard';
 import BoutonSupprimer from '../../../components/BoutonSupprimer';
 import BoutonMandatRecrutement from '../../../components/BoutonMandatRecrutement';
-import { uploaderFichier, cheminStorage } from '../../../lib/storage';
+import { uploaderFichier, cheminStorage, ouvrirPiece } from '../../../lib/storage';
 
 const DOC_STATUT: Record<string, { bg: string; color: string }> = {
   'Disponible': { bg: '#e6f4f1', color: '#006B68' },
@@ -653,7 +653,7 @@ export default function FicheEntreprise({ params }: { params: Promise<{ id: stri
                     <div style={{ fontSize: 11, color: '#2e7d32', marginTop: 4, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
                       <span>✅ Signée le {new Date(conv.dateSignature).toLocaleDateString('fr-FR')}</span>
                       {conv.fichierSigneUrl && (
-                        <a href={conv.fichierSigneUrl} target="_blank" rel="noreferrer" style={{ color: COLORS.primary, textDecoration: 'underline', fontWeight: 600 }}>
+                        <a href={conv.fichierSigneUrl} onClick={e => { e.preventDefault(); ouvrirPiece(conv.fichierSigneUrl); }} target="_blank" rel="noreferrer" style={{ color: COLORS.primary, textDecoration: 'underline', fontWeight: 600 }}>
                           📄 Voir le PDF signé
                         </a>
                       )}
@@ -843,7 +843,7 @@ export default function FicheEntreprise({ params }: { params: Promise<{ id: stri
                     <div style={{ fontSize: 11, color: '#2e7d32', marginTop: 4, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
                       <span>✅ Signé le {new Date(contrat.dateSignature).toLocaleDateString('fr-FR')}</span>
                       {contrat.fichierSigneUrl && (
-                        <a href={contrat.fichierSigneUrl} target="_blank" rel="noreferrer" style={{ color: COLORS.primary, textDecoration: 'underline', fontWeight: 600 }}>
+                        <a href={contrat.fichierSigneUrl} onClick={e => { e.preventDefault(); ouvrirPiece(contrat.fichierSigneUrl); }} target="_blank" rel="noreferrer" style={{ color: COLORS.primary, textDecoration: 'underline', fontWeight: 600 }}>
                           📄 Voir le PDF signé
                         </a>
                       )}
@@ -987,7 +987,7 @@ export default function FicheEntreprise({ params }: { params: Promise<{ id: stri
                   {hasSigned && (
                     <div style={{ fontSize: 11, color: '#2e7d32', marginTop: 4, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
                       <span>📄 {sig.nom}</span>
-                      <a href={sig.url} target="_blank" rel="noreferrer" style={{ color: COLORS.primary, textDecoration: 'underline', fontWeight: 600 }}>
+                      <a href={sig.url} onClick={e => { e.preventDefault(); ouvrirPiece(sig.url); }} target="_blank" rel="noreferrer" style={{ color: COLORS.primary, textDecoration: 'underline', fontWeight: 600 }}>
                         ⬇ Voir le PDF signé
                       </a>
                       <span style={{ color: '#888', fontStyle: 'italic' }}>
@@ -1029,7 +1029,7 @@ export default function FicheEntreprise({ params }: { params: Promise<{ id: stri
                 {fichier && <div style={{ fontSize: '12px', color: COLORS.primary, marginTop: '4px', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
                   <span>📄 {fichier.nom} ({fichier.taille})</span>
                   {form.pieces?.[piece.id]?.url && (
-                    <a href={form.pieces[piece.id].url} target="_blank" rel="noopener noreferrer" style={{ color: COLORS.primary, textDecoration: 'underline', fontSize: '11px' }}>⬇ Télécharger</a>
+                    <a href={form.pieces[piece.id].url} onClick={e => { e.preventDefault(); ouvrirPiece(form.pieces[piece.id].url); }} target="_blank" rel="noopener noreferrer" style={{ color: COLORS.primary, textDecoration: 'underline', fontSize: '11px' }}>⬇ Télécharger</a>
                   )}
                 </div>}
               </div>

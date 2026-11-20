@@ -5,7 +5,7 @@ import { pdf } from '@react-pdf/renderer';
 import PdfSortieAnticipee from './PdfSortieAnticipee';
 import { assemblerDonneesSortieAnticipee, MOTIFS_SORTIE_ANTICIPEE, type MotifSortie, type SortieAnticipee } from '../lib/donneesSortieAnticipee';
 import { ajouterSortieAnticipee, modifierSortieAnticipee, supprimerSortieAnticipee } from '../data/apprentisSupabase';
-import { uploaderFichier, cheminStorage } from '../lib/storage';
+import { uploaderFichier, cheminStorage, ouvrirPiece } from '../lib/storage';
 
 type Props = {
   apprenant: any;
@@ -160,7 +160,7 @@ export default function SortiesAnticipeesManager({ apprenant, entreprise, onChan
                     {s.statut === 'signee' && s.dateSignature && (
                       <div style={{ fontSize: 11, color: '#006B68', marginTop: 4, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                         <span>📄 {s.fichierSigneNom}</span>
-                        <a href={s.fichierSigneUrl} target="_blank" rel="noreferrer" style={{ color: '#006B68', textDecoration: 'underline' }}>⬇ Télécharger</a>
+                        <a href={s.fichierSigneUrl} onClick={e => { e.preventDefault(); ouvrirPiece(s.fichierSigneUrl); }} target="_blank" rel="noreferrer" style={{ color: '#006B68', textDecoration: 'underline' }}>⬇ Télécharger</a>
                       </div>
                     )}
                   </div>
