@@ -113,7 +113,7 @@ y -= 6*mm
 y = tableau_ligne("Adresse :", "1 Chemin Dubuisson 97436 St Leu", "Siret :", "881 279 392 00016", y)
 y = tableau_ligne("Mail :", "pedagogie@pamoi.re", "Tel :", "0693 55 64 97", y)
 y = tableau_ligne("N UAI", "9741871R", "N NDA", "04973425197", y)
-y = tableau_ligne("Represente par :", "MAILLOT Pamela", "", "", y)
+y = tableau_ligne("Represente par :", "MAILLOT Gaelle", "", "", y)
 y -= 8*mm
 
 c.setFillColor(VERT)

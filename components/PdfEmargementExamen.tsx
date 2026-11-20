@@ -264,7 +264,7 @@ export default function PdfEmargementExamen({ donnees: d }: { donnees: DonneesEm
           </View>
           <View style={S.sigZone}>
             <Text style={S.sigLbl}>Visa de la directrice</Text>
-            <Text style={{ fontSize: 8, fontFamily: 'Helvetica-Bold' }}>Paméla MAILLOT</Text>
+            <Text style={{ fontSize: 8, fontFamily: 'Helvetica-Bold' }}>Gaëlle MAILLOT</Text>
             <View style={S.sigLine} />
           </View>
         </View>

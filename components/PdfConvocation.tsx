@@ -198,7 +198,7 @@ export default function PdfConvocation({ candidat, formation, formationId, typeC
         <View style={S.sigBlock}>
           <View style={S.sigZone}>
             <Text style={S.sigLbl}>Signature et cachet du CFA</Text>
-            <Text style={{ fontSize: 8, fontFamily: 'Helvetica-Bold' }}>Paméla MAILLOT — Directrice PAM OI</Text>
+            <Text style={{ fontSize: 8, fontFamily: 'Helvetica-Bold' }}>Gaëlle MAILLOT — Directrice PAM OI</Text>
             <View style={S.sigLine} />
           </View>
           <View style={S.sigZone}>

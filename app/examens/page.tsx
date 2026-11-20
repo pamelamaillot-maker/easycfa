@@ -301,7 +301,7 @@ export default function Examens() {
   const [selecteurJure, setSelecteurJure] = useState(false);
   const [form, setForm] = useState<Partial<SessionExamen>>({
     lieu: '1 Chemin Dubuisson 97436 Saint-Leu',
-    responsableNom: 'MAILLOT', responsablePrenom: 'Paméla',
+    responsableNom: 'MAILLOT', responsablePrenom: 'Gaëlle',
     responsableTel: '0693 55 64 92', responsableEmail: 'pamelamaillot@pamoi.re',
     statut: 'Planifiée', jures: [], candidats: [],
     resultats: {}, emargementsCandidats: {},
@@ -431,7 +431,7 @@ export default function Examens() {
       dateFin: form.dateFin ?? '',
       lieu: form.lieu ?? '1 Chemin Dubuisson 97436 Saint-Leu',
       responsableNom: form.responsableNom ?? 'MAILLOT',
-      responsablePrenom: form.responsablePrenom ?? 'Paméla',
+      responsablePrenom: form.responsablePrenom ?? 'Gaëlle',
       responsableTel: form.responsableTel ?? '0693 55 64 92',
       responsableEmail: form.responsableEmail ?? 'pamelamaillot@pamoi.re',
       dateCreationCERES: form.dateCreationCERES ?? '',
@@ -454,7 +454,7 @@ export default function Examens() {
     };
     save([...sessions, n], n);
     setModale(false);
-    setForm({ lieu: '1 Chemin Dubuisson 97436 Saint-Leu', responsableNom: 'MAILLOT', responsablePrenom: 'Paméla', responsableTel: '0693 55 64 92', responsableEmail: 'pamelamaillot@pamoi.re', statut: 'Planifiée', jures: [], candidats: [], affichageReglement: false, affichagePlanning: false, affichageConditions: false });
+    setForm({ lieu: '1 Chemin Dubuisson 97436 Saint-Leu', responsableNom: 'MAILLOT', responsablePrenom: 'Gaëlle', responsableTel: '0693 55 64 92', responsableEmail: 'pamelamaillot@pamoi.re', statut: 'Planifiée', jures: [], candidats: [], affichageReglement: false, affichagePlanning: false, affichageConditions: false });
     setSessionSel(n);
     setOngletFiche('infos');
   }

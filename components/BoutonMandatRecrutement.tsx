@@ -68,7 +68,7 @@ function MandatDoc({ d }: { d: DonneesMandat }) {
           </View>
           <View style={{ ...s.row, ...s.rowLast }}>
             <Text style={s.cellLabel}>Représenté par :</Text>
-            <Text style={s.cellValue}>MAILLOT Paméla</Text>
+            <Text style={s.cellValue}>MAILLOT Gaëlle</Text>
           </View>
         </View>
 
