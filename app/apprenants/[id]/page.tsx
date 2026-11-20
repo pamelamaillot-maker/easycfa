@@ -19,6 +19,7 @@ import { chercherNpecParRncp } from '../../../data/npecSupabase';
 import { uploaderFichier, supprimerFichier, cheminStorage, ouvrirPiece, type FichierStocke } from '../../../lib/storage';
 import { formaterDateFR, isoDepuisFR } from '../../../lib/dates';
 import Card from '../../../components/Card';
+import ImagePiece from '../../../components/ImagePiece';
 import { useAcces } from '../../../lib/useAcces';
 import dynamic from 'next/dynamic';
 import BoutonSupprimer from '../../../components/BoutonSupprimer';
@@ -1665,7 +1666,7 @@ export default function FicheApprenant({ params }: { params: Promise<{ id: strin
                   display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
                 }}>
                   {photo?.url ? (
-                    <img src={photo.url} alt={`Photo de ${form.prenom} ${form.nom}`} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                    <ImagePiece url={photo.url} alt={`Photo de ${form.prenom} ${form.nom}`} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                   ) : (
                     <span style={{ fontSize: '32px', opacity: 0.35 }}>👤</span>
                   )}

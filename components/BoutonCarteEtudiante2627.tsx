@@ -29,6 +29,7 @@
 
 import { useState } from 'react';
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
+import { lienTemporaire } from '../lib/storage';
 
 const CHEMIN_MODELE = '/modeles/carte-etudiant-26-27.pdf';
 const CHEMIN_LOGO = '/modeles/logo-pam-oi.png';
@@ -231,7 +232,9 @@ export default function BoutonCarteEtudiante2627({
       const photo = apprenant?.piece_photo_identite ?? apprenant?.pieces?.photo_identite;
       if (photo?.url) {
         try {
-          const rep = await fetch(photo.url);
+          const lien = await lienTemporaire(photo.url);
+          if (!lien) throw new Error('lien temporaire indisponible');
+          const rep = await fetch(lien);
           if (!rep.ok) throw new Error(`statut ${rep.status}`);
           const octets = await rep.arrayBuffer();
           const nom = String(photo.nom ?? '').toLowerCase();
