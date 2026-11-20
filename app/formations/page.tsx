@@ -218,7 +218,7 @@ export default function Formations() {
 
   function ouvrirModaleDesarchive() {
     if (!estAdmin) {
-      alert("⛔ Action réservée à l'administrateur.\n\nSeule Paméla MAILLOT (Directrice) peut désarchiver une formation.");
+      alert("⛔ Action réservée à l'administrateur.\n\nSeule Gaëlle MAILLOT (Directrice) peut désarchiver une formation.");
       return;
     }
     setMotifDesarchive('');
@@ -452,7 +452,7 @@ export default function Formations() {
                       <button
                         onClick={ouvrirModaleDesarchive}
                         disabled={!estAdmin}
-                        title={estAdmin ? 'Désarchiver cette formation' : "Réservé à l'administrateur (Paméla MAILLOT)"}
+                        title={estAdmin ? 'Désarchiver cette formation' : "Réservé à l'administrateur (Gaëlle MAILLOT)"}
                         style={{
                           backgroundColor: estAdmin ? '#C8A23A' : '#e0e0e0',
                           color: estAdmin ? 'white' : '#999',

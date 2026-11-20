@@ -177,7 +177,7 @@ function FormulaireEvaluation({
         </div>
         <div>
           <label style={{ fontSize: '10px', color: '#888', textTransform: 'uppercase', fontWeight: '600', display: 'block', marginBottom: '4px' }}>👤 Saisi par</label>
-          <input style={{ ...inputStyle, fontSize: '12px' }} value={form.evaluateur} onChange={e => setForm(p => ({ ...p, evaluateur: e.target.value }))} placeholder="Paméla MAILLOT" />
+          <input style={{ ...inputStyle, fontSize: '12px' }} value={form.evaluateur} onChange={e => setForm(p => ({ ...p, evaluateur: e.target.value }))} placeholder="Gaëlle MAILLOT" />
         </div>
       </div>
 

@@ -8,7 +8,7 @@ export const CFA_INFO = {
   telephone: '0262 00 00 00',
   email: 'contact@pamoi.re',
   siteWeb: 'www.pamoi.re',
-  directeur: 'Paméla MAILLOT',
+  directeur: 'Gaëlle MAILLOT',
   emailDirecteur: 'p.maillot@pamoi.re',
   qualiopi: 'Certifié Qualiopi',
   dateQualiopi: '01/01/2024',
@@ -22,7 +22,7 @@ export const CFA_INFO = {
 };
 
 export const UTILISATEURS = [
-  { id: 1, nom: 'MAILLOT', prenom: 'Paméla', email: 'p.maillot@pamoi.re', role: 'Administrateur', statut: 'Actif', dernierAcces: '03/05/2026' },
+  { id: 1, nom: 'MAILLOT', prenom: 'Gaëlle', email: 'p.maillot@pamoi.re', role: 'Administrateur', statut: 'Actif', dernierAcces: '03/05/2026' },
   { id: 2, nom: 'GRONDIN', prenom: 'Marc', email: 'm.grondin@pamoi.re', role: 'Formateur', statut: 'Actif', dernierAcces: '02/05/2026' },
   { id: 3, nom: 'PAYET', prenom: 'Sophie', email: 's.payet@pamoi.re', role: 'Formateur', statut: 'Actif', dernierAcces: '01/05/2026' },
   { id: 4, nom: 'HOARAU', prenom: 'Jean', email: 'j.hoarau@pamoi.re', role: 'Coordinateur', statut: 'Actif', dernierAcces: '28/04/2026' },

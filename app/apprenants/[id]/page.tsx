@@ -581,7 +581,7 @@ function CardEntretien({
                 style={inputStyle}
                 value={form.realisePar ?? ''}
                 onChange={e => setForm(p => ({ ...p, realisePar: e.target.value }))}
-                placeholder="Ex: Paméla MAILLOT"
+                placeholder="Ex: Gaëlle MAILLOT"
               />
             </div>
           </div>

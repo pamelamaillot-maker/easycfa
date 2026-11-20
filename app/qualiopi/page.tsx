@@ -181,7 +181,7 @@ export default function Qualiopi() {
 
       {/* ===== ONGLET 1 — Suivi des 33 indicateurs (données réelles) ===== */}
       {onglet === 0 && (
-        <SuiviQualiopi verifiePar="Paméla MAILLOT" />
+        <SuiviQualiopi verifiePar="Gaëlle MAILLOT" />
       )}
 
       {/* ⚠️ Ancien tableau de bord — figé sur mockQualiopi, inatteignable.
@@ -715,7 +715,7 @@ export default function Qualiopi() {
           interventions={interventionsDb}
           sessions={sessionsDb}
           apprenants={apprenantsDb}
-          analysePar="Paméla MAILLOT"
+          analysePar="Gaëlle MAILLOT"
         />
       )}
 

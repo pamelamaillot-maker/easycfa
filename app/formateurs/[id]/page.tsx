@@ -109,7 +109,7 @@ function FormulaireEvaluation({
         </div>
         <div>
           <label style={{ fontSize: '11px', color: '#888', textTransform: 'uppercase', fontWeight: '600', display: 'block', marginBottom: '4px' }}>👤 Évaluateur *</label>
-          <input style={inputStyle} value={form.evaluateur} onChange={e => setForm(p => ({ ...p, evaluateur: e.target.value }))} placeholder="Paméla MAILLOT" />
+          <input style={inputStyle} value={form.evaluateur} onChange={e => setForm(p => ({ ...p, evaluateur: e.target.value }))} placeholder="Gaëlle MAILLOT" />
         </div>
         <div>
           <label style={{ fontSize: '11px', color: '#888', textTransform: 'uppercase', fontWeight: '600', display: 'block', marginBottom: '4px' }}>Année</label>
