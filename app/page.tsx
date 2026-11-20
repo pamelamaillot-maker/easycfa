@@ -10,6 +10,7 @@ import { chargerEntretiens as chargerEntretiensSupabase } from '../data/entretie
 import { verifierConformiteSifa } from '../data/mockApprenants_reels';
 import { estApprentissage } from '../lib/financeurs';
 import { alertesAmenagement } from '../lib/handicap';
+import { alertesDestruction, COULEUR_DESTRUCTION } from '../lib/conservationExamens';
 import { chargerOuCreerEntretiensApprenant, calculerDatePrevue, calculerStatut, STATUT_STYLE, LIBELLE_TYPE } from '../data/mockEntretiens';
 import {
   PieChart, Pie, Cell, ResponsiveContainer, Legend, Tooltip,
@@ -191,6 +192,8 @@ export default function Dashboard() {
   // SIFA = apprentis uniquement (Transition Pro, CPF… exclus)
   // ♿ Demandes d'aménagement d'épreuves à transmettre à la DEETS (≥ 3 mois avant l'examen)
   const alertesAmenag = alertesAmenagement(apprenants, examens, Infinity);
+  // 🗑️ Dossiers de session d'examen à détruire (5 ans après réception des PV validés DEETS)
+  const alertesDestr = alertesDestruction(examens);
   const sifaManquants = enCours.filter(a => estApprentissage((a as any).typeFinancement) && verifierConformiteSifa(a).length > 0);
 
   const donneesCamembert = [
@@ -378,6 +381,35 @@ export default function Dashboard() {
                       </div>
                       <span style={{ fontSize: '11px', color: c.txt, fontWeight: '700', whiteSpace: 'nowrap' }}>
                         {al.joursRestants < 0 ? `🔴 Dépassé de ${-al.joursRestants} j` : `⏳ J-${al.joursRestants}`}
+                      </span>
+                    </div>
+                  </Link>
+                );
+              })}
+            </div>
+          </CarteSection>
+        </div>
+      )}
+
+      {/* 🗑️ Dossiers d'examen à détruire — affiché seulement s'il y a quelque chose à faire */}
+      {alertesDestr.length > 0 && (
+        <div style={{ marginBottom: '16px' }}>
+          <CarteSection titre="Dossiers de session d'examen à détruire (5 ans après réception des PV DEETS)" icone="🗑️" couleur="#c53030" href="/examens">
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+              {alertesDestr.map(al => {
+                const c = COULEUR_DESTRUCTION[al.niveau];
+                const reste = [!al.papierDetruit && 'dossier papier', !al.fichiersSupprimes && 'fichiers EasyCFA'].filter(Boolean).join(' + ');
+                return (
+                  <Link key={al.examenId} href="/examens" style={{ textDecoration: 'none' }}>
+                    <div style={{ padding: '8px 10px', borderRadius: '8px', backgroundColor: c.bg, border: `1px solid ${c.bord}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <div>
+                        <div style={{ fontSize: '12px', fontWeight: '700', color: c.txt }}>{al.libelle}</div>
+                        <div style={{ fontSize: '10px', color: '#666' }}>
+                          À détruire le {al.dateEcheance.toLocaleDateString('fr-FR')} · reste : {reste}
+                        </div>
+                      </div>
+                      <span style={{ fontSize: '11px', color: c.txt, fontWeight: '700', whiteSpace: 'nowrap' }}>
+                        {al.joursRestants <= 0 ? '🔴 Échue' : `⏳ J-${al.joursRestants}`}
                       </span>
                     </div>
                   </Link>

@@ -12,7 +12,10 @@ import {
   supprimerExamen as supprimerExamenSupabase,
   uploaderPieceExamen,
   uploaderPvIndividuel,
+  supprimerFichiersExamen,
 } from '../../data/examensSupabase';
+import { alertesDestruction, echeanceDestruction, COULEUR_DESTRUCTION } from '../../lib/conservationExamens';
+import { formaterDateFR } from '../../lib/dates';
 import { chargerApprentis, modifierApprenti } from '../../data/apprentisSupabase';
 import dynamic from 'next/dynamic';
 const BoutonAmenagementEpreuves = dynamic(() => import('../../components/BoutonAmenagementEpreuves'), { ssr: false });
@@ -186,6 +189,9 @@ type SessionExamen = {
   // Regroupement des sessions d'une même journée d'examen (même jury, un seul entretien final)
   groupeExamenId?: string;
   archive?: boolean;
+  // Conservation — destruction 5 ans après réception des PV validés DEETS
+  dateDestructionDossier?: string | null;
+  dateSuppressionFichiers?: string | null;
   // DTE
   dateCmdDTE: string;
   dateReceptionDTE: string;
@@ -420,6 +426,9 @@ export default function Examens() {
     setSessionSel(u);
     save(sessions.map(s => s.id === u.id ? u : s), u);
   }
+
+  // 🗑️ Dossiers de session à détruire (5 ans après réception des PV validés DEETS)
+  const alertesDestr = alertesDestruction(sessions);
 
   function creer() {
     if (!form.formation || !form.dateDebut) return;
@@ -671,6 +680,36 @@ export default function Examens() {
             <button onClick={ignorerNonSynchro} style={{ backgroundColor: 'white', color: '#888', border: '1px solid #ccc', borderRadius: '6px', padding: '7px 14px', cursor: 'pointer' }}>
               Ignorer
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* 🗑️ Conservation : dossiers de session à détruire (5 ans après réception PV DEETS) */}
+      {onglet === 'sessions' && alertesDestr.length > 0 && (
+        <div style={{ marginBottom: '16px', backgroundColor: 'white', borderRadius: '12px', padding: '14px 16px', border: '1.5px solid #fecaca' }}>
+          <div style={{ fontSize: '13px', fontWeight: '700', color: '#c53030', marginBottom: '8px' }}>
+            🗑️ Dossiers de session à détruire — 5 ans après réception des PV validés DEETS
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+            {alertesDestr.map(al => {
+              const c = COULEUR_DESTRUCTION[al.niveau];
+              const reste = [!al.papierDetruit && 'dossier papier', !al.fichiersSupprimes && 'fichiers EasyCFA'].filter(Boolean).join(' + ');
+              return (
+                <div key={al.examenId}
+                  onClick={() => { const s = sessions.find(x => x.id === al.examenId); if (!s) return; setAfficherArchives(true); setSessionSel(s); setOngletFiche('pv'); }}
+                  style={{ padding: '8px 10px', borderRadius: '8px', backgroundColor: c.bg, border: `1px solid ${c.bord}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer' }}>
+                  <div>
+                    <div style={{ fontSize: '12px', fontWeight: '700', color: c.txt }}>{al.libelle}</div>
+                    <div style={{ fontSize: '10px', color: '#666' }}>
+                      PV DEETS reçus le {al.dateReceptionPv.toLocaleDateString('fr-FR')} · à détruire le {al.dateEcheance.toLocaleDateString('fr-FR')} · reste : {reste}
+                    </div>
+                  </div>
+                  <span style={{ fontSize: '11px', color: c.txt, fontWeight: '700', whiteSpace: 'nowrap' }}>
+                    {al.joursRestants <= 0 ? `🔴 Échue${al.joursRestants < 0 ? ` depuis ${-al.joursRestants} j` : ''}` : `⏳ J-${al.joursRestants}`}
+                  </span>
+                </div>
+              );
+            })}
           </div>
         </div>
       )}
@@ -1447,6 +1486,47 @@ export default function Examens() {
                           )}
                         </div>
                       ))}
+
+                      {/* 🗑️ Conservation — destruction 5 ans après réception des PV validés DEETS */}
+                      {(() => {
+                        const echeance = echeanceDestruction(sessionSel.pvReceptionDeets);
+                        const echue = !!echeance && echeance.getTime() <= Date.now();
+                        return (
+                          <div style={{ backgroundColor: '#fafafa', borderRadius: '8px', padding: '10px 12px', border: '1px solid #e0e0e0' }}>
+                            <div style={{ fontSize: '12px', fontWeight: '700', color: '#006B68', marginBottom: '6px' }}>🗑️ Conservation du dossier (5 ans)</div>
+                            <div style={{ fontSize: '11px', color: '#555', marginBottom: '8px' }}>
+                              {echeance
+                                ? <>Destruction prévue le <strong>{echeance.toLocaleDateString('fr-FR')}</strong> (5 ans après réception des PV validés DEETS). L&apos;alerte apparaît 3 mois avant.</>
+                                : <>Renseignez la date de réception des PV DEETS ci-dessus pour calculer l&apos;échéance.</>}
+                            </div>
+                            <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap', marginBottom: '8px' }}>
+                              <label style={{ fontSize: '11px', color: '#555', fontWeight: '600' }}>Dossier papier détruit le</label>
+                              <input type="date" style={{ ...inputStyle, maxWidth: '170px' }} value={sessionSel.dateDestructionDossier ?? ''} onChange={e => maj('dateDestructionDossier', e.target.value || null)} />
+                            </div>
+                            {sessionSel.dateSuppressionFichiers ? (
+                              <div style={{ fontSize: '11px', color: '#16a34a', fontWeight: '600' }}>✅ Fichiers EasyCFA supprimés le {formaterDateFR(sessionSel.dateSuppressionFichiers)}</div>
+                            ) : (
+                              <button
+                                disabled={!echue}
+                                title={echue ? 'Supprimer définitivement les fichiers de la session' : "Disponible à l'échéance des 5 ans"}
+                                onClick={async () => {
+                                  const sel = sessionSel;
+                                  if (!confirm(`Supprimer définitivement TOUS les fichiers de cette session (PV, convocations, émargements) ?\n\n${sel.formation} ${sel.dateDebut || ''}`)) return;
+                                  if (!confirm('Cette suppression est irréversible. Confirmer ?')) return;
+                                  const r = await supprimerFichiersExamen(sel.id);
+                                  if (!r.success) { alert('Erreur : ' + r.error); return; }
+                                  const u = { ...sel, dateSuppressionFichiers: new Date().toISOString().slice(0, 10) };
+                                  setSessionSel(u);
+                                  save(sessions.map(x => x.id === u.id ? u : x), u);
+                                  alert(`✅ ${r.nombre} fichier(s) supprimé(s).`);
+                                }}
+                                style={{ ...btnSecondary, fontSize: '11px', padding: '5px 10px', color: echue ? '#c53030' : '#aaa', border: `1.5px solid ${echue ? '#c53030' : '#ddd'}`, cursor: echue ? 'pointer' : 'not-allowed' }}>
+                                🗑️ Supprimer les fichiers de la session
+                              </button>
+                            )}
+                          </div>
+                        );
+                      })()}
 
                       {/* PV individuels — consultation */}
                       <div style={{ backgroundColor: '#EAF4F3', borderRadius: '8px', padding: '12px' }}>
