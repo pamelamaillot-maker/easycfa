@@ -553,7 +553,7 @@ export default function Recrutement() {
                   if (ent) setForm(p => ({ ...p, entrepriseId: ent.id, entrepriseNom: ent.raisonSociale, entrepriseAdresse: ent.adresse + ' ' + ent.codePostal + ' ' + ent.ville, entrepriseSiret: ent.siret, entrepriseEmail: ent.tuteurEmail || ent.email }));
                 }}>
                   <option value="">Choisir une entreprise...</option>
-                  {ENTREPRISES_REELS.map(e => <option key={e.id} value={e.id}>{e.raisonSociale}</option>)}
+                  {[...entreprises].sort((a, b) => (a.raisonSociale ?? '').localeCompare(b.raisonSociale ?? '', 'fr', { sensitivity: 'base' })).map(e => <option key={e.id} value={e.id}>{e.raisonSociale}</option>)}
                 </select>
               </div>
             ) : (
