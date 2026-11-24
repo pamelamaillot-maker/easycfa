@@ -52,6 +52,13 @@ import {
   uploaderPdfAgrement,
   type Agrement,
 } from '../../data/agrementsSupabase';
+import {
+  chargerResponsablesSession,
+  candidatsPourRole,
+  estDeclare,
+  type ResponsableSession,
+  type RoleResponsable,
+} from '../../data/responsablesSessionSupabase';
 
 const inputStyle: React.CSSProperties = { border: '1.5px solid #e0e0e0', borderRadius: '8px', padding: '7px 10px', fontSize: '12px', width: '100%', boxSizing: 'border-box', backgroundColor: 'white' };
 const btnPrimary: React.CSSProperties = { backgroundColor: '#006B68', color: 'white', border: 'none', borderRadius: '8px', padding: '8px 14px', fontSize: '12px', fontWeight: '600', cursor: 'pointer' };
@@ -179,6 +186,10 @@ type SessionExamen = {
   responsablePrenom: string;
   responsableTel: string;
   responsableEmail: string;
+  // Désignation DEETS (table responsables_session)
+  responsableTitulaireId?: string | null;
+  responsableSuppleantId?: string | null;
+  surveillantId?: string | null;
   dateCreationCERES: string;
   numeroCERES: string;
   statut: 'Planifiée' | 'En cours' | 'Terminée' | 'Clôturée';
@@ -317,6 +328,7 @@ export default function Examens() {
   const [agrementsFichiers, setAgrementsFichiers] = useState<Record<string, string>>({});
   const [agreementsInfos, setAgreementsInfos] = useState<Record<string, { debut: string; fin: string; archive: boolean }>>({});
   const [agrementsDb, setAgrementsDb] = useState<Agrement[]>([]);
+  const [responsablesDb, setResponsablesDb] = useState<ResponsableSession[]>([]);
 
   useEffect(() => {
     (async () => {
@@ -371,6 +383,15 @@ export default function Examens() {
       } catch (e) {
         console.error('[Examens] Erreur chargement agréments Supabase', e);
       }
+
+      // Responsables de session / suppléants / surveillants
+      try {
+        const rs = await chargerResponsablesSession();
+        console.log(`[Examens] ${rs.length} responsable(s) chargé(s) depuis Supabase ✅`);
+        setResponsablesDb(rs);
+      } catch (e) {
+        console.error('[Examens] Erreur chargement responsables', e);
+      }
     })();
   }, []);
 
@@ -423,6 +444,14 @@ export default function Examens() {
   function maj(champ: string, val: any) {
     if (!sessionSel) return;
     const u = { ...sessionSel, [champ]: val };
+    setSessionSel(u);
+    save(sessions.map(s => s.id === u.id ? u : s), u);
+  }
+
+  // Met à jour plusieurs champs en une seule sauvegarde
+  function majPlusieurs(patch: Record<string, any>) {
+    if (!sessionSel) return;
+    const u = { ...sessionSel, ...patch };
     setSessionSel(u);
     save(sessions.map(s => s.id === u.id ? u : s), u);
   }
@@ -909,10 +938,6 @@ export default function Examens() {
                           { label: 'Lieu', champ: 'lieu', ph: '' },
                           { label: 'N° session CERES', champ: 'numeroCERES', ph: '' },
                           { label: 'Date création CERES', champ: 'dateCreationCERES', ph: 'JJ/MM/AAAA' },
-                          { label: 'Responsable Nom', champ: 'responsableNom', ph: '' },
-                          { label: 'Responsable Prénom', champ: 'responsablePrenom', ph: '' },
-                          { label: 'Téléphone', champ: 'responsableTel', ph: '' },
-                          { label: 'Email', champ: 'responsableEmail', ph: '' },
                         ].map(f => (
                           <div key={f.champ}>
                             <label style={{ fontSize: '10px', color: '#888', display: 'block', marginBottom: '2px', textTransform: 'uppercase' }}>{f.label}</label>
@@ -920,6 +945,72 @@ export default function Examens() {
                           </div>
                         ))}
                       </div>
+
+                      {/* 👤 Désignation responsable / suppléant / surveillant (règles DEETS) */}
+                      {(() => {
+                        const titre = sessionSel.formation;
+                        const roles: { role: RoleResponsable; champ: 'responsableTitulaireId' | 'responsableSuppleantId' | 'surveillantId'; label: string }[] = [
+                          { role: 'titulaire', champ: 'responsableTitulaireId', label: 'Responsable de session' },
+                          { role: 'suppleant', champ: 'responsableSuppleantId', label: 'Responsable suppléant' },
+                          { role: 'surveillant', champ: 'surveillantId', label: 'Surveillant' },
+                        ];
+                        const choisir = (champ: string, id: string) => {
+                          const patch: Record<string, any> = { [champ]: id || null };
+                          // Le titulaire est recopié dans les anciens champs : convocations et PDF continuent de fonctionner
+                          if (champ === 'responsableTitulaireId') {
+                            const r = responsablesDb.find(x => x.id === id);
+                            patch.responsableNom = r?.nom ?? '';
+                            patch.responsablePrenom = r?.prenom ?? '';
+                            patch.responsableTel = r?.telephone ?? '';
+                            patch.responsableEmail = r?.email ?? '';
+                          }
+                          majPlusieurs(patch);
+                        };
+                        const ids = roles.map(r => (sessionSel as any)[r.champ]).filter(Boolean);
+                        const doublon = new Set(ids).size < ids.length;
+                        return (
+                          <div style={{ backgroundColor: '#fafafa', borderRadius: '8px', padding: '12px', border: `1px solid ${doublon ? '#e53e3e' : '#e0e0e0'}` }}>
+                            <div style={{ fontSize: '11px', fontWeight: '700', color: '#006B68', marginBottom: '8px', textTransform: 'uppercase' }}>👤 Responsables de la session</div>
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '10px' }}>
+                              {roles.map(c => {
+                                const valeur = (sessionSel as any)[c.champ] ?? '';
+                                const options = candidatsPourRole(responsablesDb, c.role, titre);
+                                const choisi = responsablesDb.find(r => r.id === valeur);
+                                const horsTitre = !!choisi && !options.some(o => o.id === choisi.id);
+                                return (
+                                  <div key={c.champ}>
+                                    <label style={{ fontSize: '10px', color: '#888', display: 'block', marginBottom: '2px', textTransform: 'uppercase' }}>{c.label}</label>
+                                    <select style={inputStyle} value={valeur} onChange={e => choisir(c.champ, e.target.value)}>
+                                      <option value="">— Non désigné —</option>
+                                      {options.map(r => (
+                                        <option key={r.id} value={r.id}>{r.nom} {r.prenom}{!estDeclare(r) ? ' (déclaration DEETS à saisir)' : ''}</option>
+                                      ))}
+                                      {horsTitre && <option value={choisi!.id}>{choisi!.nom} {choisi!.prenom} (non autorisé pour {titre})</option>}
+                                    </select>
+                                    {options.length === 0 && (
+                                      <div style={{ fontSize: '10px', color: '#c53030', marginTop: '3px', fontWeight: 600 }}>Aucune personne autorisée pour {titre}</div>
+                                    )}
+                                    {choisi && !estDeclare(choisi) && (
+                                      <div style={{ fontSize: '10px', color: '#c2410c', marginTop: '3px', fontWeight: 600 }}>⚠️ Déclaration DEETS non renseignée</div>
+                                    )}
+                                    {horsTitre && (
+                                      <div style={{ fontSize: '10px', color: '#c53030', marginTop: '3px', fontWeight: 600 }}>🔴 Non autorisé(e) pour ce titre</div>
+                                    )}
+                                  </div>
+                                );
+                              })}
+                            </div>
+                            {doublon && (
+                              <div style={{ fontSize: '11px', color: '#c53030', marginTop: '8px', fontWeight: 700 }}>🔴 Une même personne occupe deux rôles sur cette session : interdit par la DEETS.</div>
+                            )}
+                            {!(sessionSel as any).responsableTitulaireId && sessionSel.responsableNom && (
+                              <div style={{ fontSize: '10px', color: '#888', marginTop: '8px', fontStyle: 'italic' }}>
+                                Ancienne saisie libre : {sessionSel.responsableNom} {sessionSel.responsablePrenom} — à remplacer par une désignation ci-dessus.
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })()}
                       {/* Situations évaluation */}
                       <div style={{ backgroundColor: '#EAF4F3', borderRadius: '8px', padding: '12px' }}>
                         <div style={{ fontSize: '11px', fontWeight: '700', color: '#006B68', marginBottom: '8px', textTransform: 'uppercase' }}>
@@ -1708,10 +1799,6 @@ export default function Examens() {
                   { l: 'N° session CERES', k: 'numeroCERES', ph: '' },
                   { l: 'Date création CERES', k: 'dateCreationCERES', ph: 'JJ/MM/AAAA' },
                   { l: 'Lieu', k: 'lieu', ph: '1 Chemin Dubuisson 97436 Saint-Leu' },
-                  { l: 'Responsable Nom', k: 'responsableNom', ph: '' },
-                  { l: 'Responsable Prénom', k: 'responsablePrenom', ph: '' },
-                  { l: 'Téléphone responsable', k: 'responsableTel', ph: '' },
-                  { l: 'Email responsable', k: 'responsableEmail', ph: '' },
                 ].map(f => (
                   <div key={f.k}>
                     <label style={{ fontSize: '11px', color: '#888', textTransform: 'uppercase', fontWeight: '600', display: 'block', marginBottom: '3px' }}>{f.l}</label>

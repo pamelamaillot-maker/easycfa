@@ -101,6 +101,10 @@ export type Examen = {
   responsablePrenom?: string;
   responsableTel?: string;
   responsableEmail?: string;
+  // Désignation DEETS (table responsables_session)
+  responsableTitulaireId?: string | null;
+  responsableSuppleantId?: string | null;
+  surveillantId?: string | null;
 
   // CERES
   dateCreationCERES?: string;
