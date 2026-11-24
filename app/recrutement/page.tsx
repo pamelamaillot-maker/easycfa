@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { ENTREPRISES_REELS } from '../../data/mockEntreprises_reels';
 import { APPRENANTS_REELS } from '../../data/mockApprenants_reels';
+import { chargerEntreprises as chargerEntreprisesSupabase } from '../../data/entreprisesSupabase';
 import { COLORS } from '../../lib/constants';
 import { 
   chargerMandats as chargerMandatsSupabase,
@@ -65,6 +66,16 @@ export default function Recrutement() {
   const [form, setForm] = useState<Partial<Mandat>>({ statut: 'En attente', nbPostes: 1 });
   const [entrepriseMode, setEntrepriseMode] = useState<'bdd' | 'nouvelle'>('bdd');
   const [nouveauCandidat, setNouveauCandidat] = useState({ nom: '', prenom: '', statut: 'P2S', notes: '' });
+  const [entreprises, setEntreprises] = useState<any[]>(ENTREPRISES_REELS);
+  const [notesLocales, setNotesLocales] = useState('');
+
+  useEffect(() => {
+    chargerEntreprisesSupabase()
+      .then(liste => { if (liste.length > 0) setEntreprises(liste as any[]); })
+      .catch(e => console.error('[Recrutement] Erreur chargement entreprises', e));
+  }, [modale]);
+
+  useEffect(() => { setNotesLocales(ficheOuverte?.notes ?? ''); }, [ficheOuverte?.id]);
 
   useEffect(() => {
     (async () => {
@@ -421,7 +432,7 @@ export default function Recrutement() {
               {/* Notes */}
               <div style={{ marginBottom: '16px' }}>
                 <label style={{ fontSize: '11px', color: '#888', textTransform: 'uppercase', fontWeight: '600', display: 'block', marginBottom: '4px' }}>Notes</label>
-                <textarea style={{ ...inputStyle, minHeight: '60px', resize: 'vertical' }} value={ficheOuverte.notes ?? ''} onChange={e => mettreAJourFiche('notes', e.target.value)} />
+                <textarea style={{ ...inputStyle, minHeight: '60px', resize: 'vertical' }} value={notesLocales} onChange={e => setNotesLocales(e.target.value)} onBlur={() => { if (notesLocales !== (ficheOuverte.notes ?? '')) mettreAJourFiche('notes', notesLocales); }} />
               </div>
 
               {/* Actions */}
