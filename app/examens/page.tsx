@@ -781,7 +781,15 @@ export default function Examens() {
                     if (!dansCeres && !dansCandidats && !dansGroupe) return false;
                   }
                   return true;
-                }).sort((a, b) => dateTri(a.dateDebut) - dateTri(b.dateDebut)).map(s => {
+                }).sort((a, b) => {
+                  // À venir en haut (plus proche d'abord), puis passées (plus récente d'abord)
+                  const t = new Date();
+                  const auj = t.getFullYear() * 10000 + (t.getMonth() + 1) * 100 + t.getDate();
+                  const da = dateTri(a.dateDebut), db = dateTri(b.dateDebut);
+                  const aVenir = da >= auj, bVenir = db >= auj;
+                  if (aVenir !== bVenir) return aVenir ? -1 : 1;
+                  return aVenir ? da - db : db - da;
+                }).map(s => {
                   const cfg2 = FORMATIONS_EXAMEN[s.formation];
                   const st = statutStyles[s.statut] ?? { bg: '#f0f0f0', color: '#888' };
                   const j = diffJours(s.dateDebut);
