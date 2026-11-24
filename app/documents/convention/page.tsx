@@ -7,7 +7,7 @@ import Card from '../../../components/Card';
 import dynamic from 'next/dynamic';
 import { chargerApprentis } from '../../../data/apprentisSupabase';
 import { chargerEntreprises, sauvegarderFinancementApprenant, marquerConventionEnAttente } from '../../../data/entreprisesSupabase';
-import { chargerNpec, type Npec } from '../../../data/npecSupabase';
+import { chargerNpec, chercherNpecReferentiel, type Npec, type NpecReferentiel } from '../../../data/npecSupabase';
 import { extractRncp } from '../../../lib/financementConvention';
 import { montantEquipementParDefaut } from '../../../lib/premierEquipement';
 
@@ -24,6 +24,7 @@ export default function ApercuCF() {
   const [apprenants, setApprenants] = useState<any[]>([]);
   const [entreprises, setEntreprises] = useState<any[]>([]);
   const [npecListe, setNpecListe] = useState<Npec[]>([]);
+  const [npecRef, setNpecRef] = useState<NpecReferentiel | null>(null);
   const [apprenantId, setApprenantId] = useState('');
   const [entrepriseId, setEntrepriseId] = useState('');
   const [nDeca, setNDeca] = useState('');
@@ -107,6 +108,14 @@ export default function ApercuCF() {
     return npecListe.find(n => n.codeRncp.toUpperCase().replace(/\s+/g, '').replace('RNCP', '').includes(norm)) || null;
   }, [npecListe, rncpCode]);
 
+  // NPEC officiel France Compétences pour le couple RNCP × IDCC de l'entreprise
+  useEffect(() => {
+    let annule = false;
+    setNpecRef(null);
+    chercherNpecReferentiel(rncpCode, entrepriseObj?.idcc).then(r => { if (!annule) setNpecRef(r); });
+    return () => { annule = true; };
+  }, [rncpCode, entrepriseObj?.idcc]);
+
   // NPEC déjà saisi sur une autre convention pour la même formation ET le même IDCC
   // (le NPEC dépend de la branche de l'entreprise, pas seulement de la formation).
   const npecMemorise = useMemo<{ montant: number; source: string } | null>(() => {
@@ -146,7 +155,10 @@ export default function ApercuCF() {
     };
     const formationCode = (npecMatch?.codeInterne || apprenantObj.formation || '').trim();
     setFinance({
-      npecAnnuel: pick(fEnt.npecAnnuel, undefined, npecMemorise?.montant || npecMatch?.montantNpecAnnuel),
+      // Priorité : référentiel officiel RNCP × IDCC (si non ambigu) > saisie enregistrée > autre convention > NPEC par défaut
+      npecAnnuel: (npecRef && !npecRef.ambigu && npecRef.montant > 0)
+        ? npecRef.montant
+        : pick(fEnt.npecAnnuel, undefined, npecMemorise?.montant || npecMatch?.montantNpecAnnuel),
       coutPedagogiqueAnnee1: pick(fEnt.coutPedagogiqueAnnee1, fLegacy.coutPedagogiqueAnnee1),
       coutPedagogiqueAnnee2: pick(fEnt.coutPedagogiqueAnnee2, fLegacy.coutPedagogiqueAnnee2),
       coutTotalFraisPedagogiques: pick(fEnt.coutTotalFraisPedagogiques, fLegacy.coutTotalFraisPedagogiques),
@@ -165,7 +177,7 @@ export default function ApercuCF() {
       npecTrouve: !!npecMatch,
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [apprenantObj?.id, entrepriseObj?.id, npecMatch?.id, npecMemorise?.montant]);
+  }, [apprenantObj?.id, entrepriseObj?.id, npecMatch?.id, npecMemorise?.montant, npecRef?.montant, npecRef?.ambigu]);
 
   const donnees = useMemo(() => assemblerDonnees(
     apprenantObj,
@@ -179,6 +191,16 @@ export default function ApercuCF() {
     npecMatch,
     finance
   ), [apprenantObj, entrepriseObj, nDeca, dateSignature, lieuSignature, rncpCode, npecMatch, finance]);
+
+  // Dates obligatoires de la convention (art. 3 et 4) : contrat début + fin
+  const datesManquantes = !!apprenantObj && (!donnees.DATE_DEBUT_CONTRAT || !donnees.DATE_FIN_CONTRAT);
+  function genererApercu() {
+    if (datesManquantes) {
+      alert("⚠️ Dates de contrat manquantes : renseignez la date de début ET la date de fin du contrat dans la fiche de l'apprenant avant de générer la convention (articles 3 et 4 obligatoires).");
+      return;
+    }
+    setAfficher(true);
+  }
 
   async function handleSauvegarderFinance() {
     if (!apprenantObj || !entrepriseObj) return;
@@ -248,7 +270,7 @@ export default function ApercuCF() {
           <p style={{ color: COLORS.textMuted, fontSize: '14px' }}>Par apprentissage — Prévisualisation et génération PDF</p>
         </div>
         <div style={{ display: 'flex', gap: '8px' }}>
-          <button style={btnPrimary} onClick={() => setAfficher(true)}>👁 Prévisualiser</button>
+          <button style={btnPrimary} onClick={genererApercu}>👁 Prévisualiser</button>
           {afficher && (
             <BoutonPdfCF
               donnees={donnees}
@@ -339,7 +361,10 @@ export default function ApercuCF() {
                 <label style={{ fontSize: '11px', color: '#888', textTransform: 'uppercase', fontWeight: '600', display: 'block', marginBottom: '4px' }}>N° DECA <span style={{ color: COLORS.secondary }}>(manuel)</span></label>
                 <input style={inputStyle} placeholder="Ex : 974-25-00123" value={nDeca} onChange={(e) => { setNDeca(e.target.value); setAfficher(false); }} />
               </div>
-              <button style={{ ...btnPrimary, textAlign: 'center' }} onClick={() => setAfficher(true)}>
+              {datesManquantes && (
+                <div style={{ fontSize: 12, color: '#e53e3e', fontWeight: 600 }}>⚠️ Dates de début et/ou de fin de contrat manquantes dans la fiche apprenant.</div>
+              )}
+              <button style={{ ...btnPrimary, textAlign: 'center' }} onClick={genererApercu}>
                 👁 Générer l'aperçu
               </button>
             </div>
@@ -385,8 +410,12 @@ export default function ApercuCF() {
                 🔎 Vérifier le NPEC sur la calculette AKTO — reporter le « Coût CPNE annuel »
               </a>
               <div style={{ marginTop: 4, fontSize: 10, color: COLORS.textMuted }}>
-                {Number(entrepriseObj?.financementsApprenants?.[apprenantObj?.id || '']?.npecAnnuel) > 0
-                  ? '✅ Montant enregistré pour cette convention'
+                {npecRef && !npecRef.ambigu
+                  ? `✅ Référentiel France Compétences (${npecRef.millesime.split('-').reverse().join('/')}) — ${npecRef.cpne} : ${npecRef.montant.toLocaleString('fr-FR')} €`
+                  : npecRef && npecRef.ambigu
+                    ? `⚠️ IDCC rattaché à plusieurs CPNE : ${npecRef.options.map(o => `${o.cpne} = ${o.montant.toLocaleString('fr-FR')} €`).join(' · ')} — saisissez le bon montant`
+                  : Number(entrepriseObj?.financementsApprenants?.[apprenantObj?.id || '']?.npecAnnuel) > 0
+                  ? '⚠️ Couple RNCP × IDCC absent du référentiel — montant enregistré pour cette convention'
                   : npecMemorise
                     ? `↩️ Repris de la convention ${npecMemorise.source} (même formation, même IDCC) — à vérifier`
                     : '⚠️ Montant du référentiel par défaut — saisissez le NPEC de cet IDCC, il sera proposé ensuite pour ce couple formation + IDCC'}
@@ -478,7 +507,7 @@ export default function ApercuCF() {
                 <div style={{ fontSize: '48px', marginBottom: '16px' }}>📄</div>
                 <div style={{ fontSize: '16px', fontWeight: '600', marginBottom: '8px', color: COLORS.primary }}>Aperçu de la Convention</div>
                 <div style={{ fontSize: '14px', marginBottom: '24px' }}>Choisissez un apprenant et cliquez sur "Générer l'aperçu"</div>
-                <button style={btnPrimary} onClick={() => setAfficher(true)}>👁 Générer l'aperçu</button>
+                <button style={btnPrimary} onClick={genererApercu}>👁 Générer l'aperçu</button>
               </div>
             </Card>
           ) : (

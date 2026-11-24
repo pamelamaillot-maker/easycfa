@@ -71,16 +71,15 @@ export function assemblerDonnees(
     Number(f.npecAnnuel) || 0
   );
 
-  // Montants spécifiques apprenant (priorité) vs valeurs calculées par défaut
-  const coutPedaA1 = f.coutPedagogiqueAnnee1
-    ? formatAmount(f.coutPedagogiqueAnnee1)
-    : split.montantOpcoAnnee1;
-  const coutPedaA2 = f.coutPedagogiqueAnnee2
-    ? formatAmount(f.coutPedagogiqueAnnee2)
-    : split.montantOpcoAnnee2;
-  const coutTotalPeda = f.coutTotalFraisPedagogiques
-    ? formatAmount(f.coutTotalFraisPedagogiques)
-    : split.totalFraisPedagogiques;
+  // Montants calculés (NPEC × jours ÷ 365) en priorité, dès que les dates et le NPEC sont connus.
+  // Les montants saisis à la main ne servent qu'à défaut de calcul possible.
+  const coutPedaA1 = split.montantOpcoAnnee1
+    || (f.coutPedagogiqueAnnee1 ? formatAmount(f.coutPedagogiqueAnnee1) : '');
+  const coutPedaA2 = split.dateDebutDeuxiemeAnnee
+    ? split.montantOpcoAnnee2
+    : '';
+  const coutTotalPeda = split.montantTotalOpco
+    || (f.coutTotalFraisPedagogiques ? formatAmount(f.coutTotalFraisPedagogiques) : split.totalFraisPedagogiques);
 
   return {
     // === CFA ===

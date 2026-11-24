@@ -283,7 +283,7 @@ export default function PdfCF({ donnees: d }: Props) {
 
         <Text style={S.articleTitle}>Article 4 : Dispositions financières</Text>
         <Text style={S.p}>Conformément à l'article L. 6211-1 du code du travail, la gratuité de la formation est garantie à l'apprenti et, le cas échéant, son représentant légal. Dès lors, aucune somme ne peut leur être demandée.</Text>
-        <Text style={S.p}>Le financement du contrat de professionnalisation sera fonction de la durée d'exécution du contrat, soit <Text style={{ fontFamily: 'Helvetica-Bold' }}>{d.DUREE_FORMATION}</Text> du <Text style={{ fontFamily: 'Helvetica-Bold' }}>{d.DATE_DEBUT_FINANCEMENT}</Text> au <Text style={{ fontFamily: 'Helvetica-Bold' }}>{d.DATE_FIN_FINANCEMENT}</Text>.</Text>
+        <Text style={S.p}>Le financement du contrat d'apprentissage sera fonction de la durée d'exécution du contrat, soit <Text style={{ fontFamily: 'Helvetica-Bold' }}>{d.DUREE_FORMATION}</Text> du <Text style={{ fontFamily: 'Helvetica-Bold' }}>{d.DATE_DEBUT_FINANCEMENT}</Text> au <Text style={{ fontFamily: 'Helvetica-Bold' }}>{d.DATE_FIN_FINANCEMENT}</Text>.</Text>
 
         <View style={S.box}>
           <Text style={{ fontSize: 8, fontFamily: 'Helvetica-Bold', marginBottom: 4 }}>Niveau de Prise En Charge :</Text>

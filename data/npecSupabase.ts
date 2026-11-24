@@ -128,3 +128,47 @@ export async function supprimerNpec(id: string): Promise<boolean> {
   if (error) { console.error('[supprimerNpec]', error); return false; }
   return true;
 }
+/**
+ * Référentiel officiel France Compétences : NPEC par couple RNCP × IDCC
+ * (table npec_referentiel_idcc, millésime du 01/09/2026).
+ * Renvoie null si le couple est absent ; `ambigu` si l'IDCC relève de plusieurs CPNE
+ * avec des montants différents (choix manuel nécessaire).
+ */
+export interface NpecReferentiel {
+  montant: number;
+  cpne: string;
+  codeCpne: string;
+  millesime: string;
+  ambigu: boolean;
+  options: { montant: number; cpne: string }[];
+}
+
+export async function chercherNpecReferentiel(codeRncp: string, idcc: any): Promise<NpecReferentiel | null> {
+  const rncp = 'RNCP' + String(codeRncp || '').toUpperCase().replace(/\s+/g, '').replace('RNCP', '');
+  const idccNorm = String(idcc ?? '').replace(/\D/g, '').replace(/^0+/, '');
+  if (rncp === 'RNCP' || !idccNorm) return null;
+  try {
+    const { data, error } = await supabase
+      .from('npec_referentiel_idcc')
+      .select('montant_npec, cpne, code_cpne, millesime')
+      .eq('code_rncp', rncp)
+      .eq('idcc', idccNorm)
+      .order('millesime', { ascending: false });
+    if (error || !data || data.length === 0) return null;
+    const dernier = data[0].millesime;
+    const lignes = data.filter((l: any) => l.millesime === dernier);
+    const options = lignes.map((l: any) => ({ montant: Number(l.montant_npec) || 0, cpne: l.cpne || '' }));
+    const montants = new Set(options.map(o => o.montant));
+    return {
+      montant: options[0].montant,
+      cpne: lignes[0].cpne || '',
+      codeCpne: lignes[0].code_cpne || '',
+      millesime: dernier,
+      ambigu: montants.size > 1,
+      options,
+    };
+  } catch (e) {
+    console.error('Erreur chercherNpecReferentiel:', e);
+    return null;
+  }
+}
