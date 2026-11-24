@@ -549,11 +549,11 @@ export default function Recrutement() {
               <div style={{ marginBottom: '14px' }}>
                 <label style={{ fontSize: '11px', color: '#888', textTransform: 'uppercase', fontWeight: '600', display: 'block', marginBottom: '4px' }}>Sélectionner une entreprise *</label>
                 <select style={inputStyle} value={form.entrepriseId ?? ''} onChange={e => {
-                  const ent = ENTREPRISES_REELS.find(en => en.id === e.target.value);
-                  if (ent) setForm(p => ({ ...p, entrepriseId: ent.id, entrepriseNom: ent.raisonSociale, entrepriseAdresse: ent.adresse + ' ' + ent.codePostal + ' ' + ent.ville, entrepriseSiret: ent.siret, entrepriseEmail: ent.tuteurEmail || ent.email }));
+                  const ent = entreprises.find(en => String(en.id) === e.target.value);
+                  if (ent) setForm(p => ({ ...p, entrepriseId: String(ent.id), entrepriseNom: ent.raisonSociale, entrepriseAdresse: [ent.adresse, ent.codePostal, ent.ville].filter(Boolean).join(' '), entrepriseSiret: ent.siret ?? '', entrepriseEmail: ent.tuteurEmail || ent.email || '' }));
                 }}>
                   <option value="">Choisir une entreprise...</option>
-                  {[...entreprises].sort((a, b) => (a.raisonSociale ?? '').localeCompare(b.raisonSociale ?? '', 'fr', { sensitivity: 'base' })).map(e => <option key={e.id} value={e.id}>{e.raisonSociale}</option>)}
+                  {[...entreprises].sort((a, b) => (a.raisonSociale ?? '').localeCompare(b.raisonSociale ?? '', 'fr', { sensitivity: 'base' })).map(e => <option key={e.id} value={String(e.id)}>{e.raisonSociale}</option>)}
                 </select>
               </div>
             ) : (
