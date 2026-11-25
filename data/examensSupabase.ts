@@ -105,6 +105,7 @@ export type Examen = {
   responsableTitulaireId?: string | null;
   responsableSuppleantId?: string | null;
   surveillantId?: string | null;
+  responsablesSaisisCeres?: boolean;
 
   // CERES
   dateCreationCERES?: string;

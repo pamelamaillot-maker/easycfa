@@ -61,9 +61,12 @@ export function formateursDuGroupe(
   const ids = new Set(sessionIds);
   const vus = new Map<string, FormateurDuGroupe>();
   const ajouter = (f: FormateurDuGroupe) => {
-    const cle = f.formateurId ? 'id:' + f.formateurId : 'nom:' + cleNom(f.nom);
     if (!cleNom(f.nom) && !f.formateurId) return;
-    if (!vus.has(cle)) vus.set(cle, f);
+    // Une même personne peut venir du planning (avec id) et de l'émargement (nom seul) : on dédoublonne sur le nom
+    const cle = cleNom(f.nom) ? 'nom:' + cleNom(f.nom) : 'id:' + f.formateurId;
+    const deja = vus.get(cle);
+    if (!deja) vus.set(cle, f);
+    else if (!deja.formateurId && f.formateurId) deja.formateurId = f.formateurId;
   };
 
   for (const s of sessionsFormation) {

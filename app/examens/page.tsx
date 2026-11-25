@@ -55,7 +55,6 @@ import {
 import {
   chargerResponsablesSession,
   candidatsPourRole,
-  estDeclare,
   type ResponsableSession,
   type RoleResponsable,
 } from '../../data/responsablesSessionSupabase';
@@ -194,6 +193,7 @@ type SessionExamen = {
   responsableTitulaireId?: string | null;
   responsableSuppleantId?: string | null;
   surveillantId?: string | null;
+  responsablesSaisisCeres?: boolean;
   dateCreationCERES: string;
   numeroCERES: string;
   statut: 'Planifiée' | 'En cours' | 'Terminée' | 'Clôturée';
@@ -1002,15 +1002,12 @@ export default function Examens() {
                                     <select style={inputStyle} value={valeur} onChange={e => choisir(c.champ, e.target.value)}>
                                       <option value="">— Non désigné —</option>
                                       {options.map(r => (
-                                        <option key={r.id} value={r.id}>{r.nom} {r.prenom}{!estDeclare(r) ? ' (déclaration DEETS à saisir)' : ''}</option>
+                                        <option key={r.id} value={r.id}>{r.nom} {r.prenom}</option>
                                       ))}
                                       {horsTitre && <option value={choisi!.id}>{choisi!.nom} {choisi!.prenom} (non autorisé pour {titre})</option>}
                                     </select>
                                     {options.length === 0 && (
                                       <div style={{ fontSize: '10px', color: '#c53030', marginTop: '3px', fontWeight: 600 }}>Aucune personne autorisée pour {titre}</div>
-                                    )}
-                                    {choisi && !estDeclare(choisi) && (
-                                      <div style={{ fontSize: '10px', color: '#c2410c', marginTop: '3px', fontWeight: 600 }}>⚠️ Déclaration DEETS non renseignée</div>
                                     )}
                                     {horsTitre && (
                                       <div style={{ fontSize: '10px', color: '#c53030', marginTop: '3px', fontWeight: 600 }}>🔴 Non autorisé(e) pour ce titre</div>
@@ -1019,6 +1016,10 @@ export default function Examens() {
                                 );
                               })}
                             </div>
+                            <label style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '10px', fontSize: '12px', cursor: 'pointer', fontWeight: 600, color: (sessionSel as any).responsablesSaisisCeres ? '#16a34a' : '#c2410c' }}>
+                              <input type="checkbox" checked={!!(sessionSel as any).responsablesSaisisCeres} onChange={e => maj('responsablesSaisisCeres', e.target.checked)} />
+                              {(sessionSel as any).responsablesSaisisCeres ? '✅ Responsable et suppléant saisis dans CERES' : '⚠️ Responsable et suppléant à saisir dans CERES (déclaration DEETS)'}
+                            </label>
                             {doublon && (
                               <div style={{ fontSize: '11px', color: '#c53030', marginTop: '8px', fontWeight: 700 }}>🔴 Une même personne occupe deux rôles sur cette session : interdit par la DEETS.</div>
                             )}
