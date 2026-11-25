@@ -543,10 +543,64 @@ export default function Examens() {
   }
 
   // Actions en retard d'une session (sessions actives uniquement)
+  // Délai d'envoi du PV à la DEETS après la fin de session
+  const DELAI_PV_JOURS = 15;
+
+  // PV : renvoie un libellé si l'envoi est en retard ou proche (null sinon)
+  function alertePv(s: SessionExamen): string | null {
+    if (s.archive || s.statut === 'Clôturée') return null;
+    if (s.pvEnvoiDemarche || s.pvCourrierReco) return null;
+    const jFin = diffJours(s.dateFin || s.dateDebut);
+    if (jFin === null || jFin > 0) return null;           // session pas encore terminée
+    const reste = DELAI_PV_JOURS + jFin;                    // jFin <= 0 : jours écoulés depuis la fin
+    return reste < 0
+      ? `PV à envoyer à la DEETS — EN RETARD de ${-reste} j (limite ${dateLimite(s.dateFin || s.dateDebut, -DELAI_PV_JOURS)})`
+      : `PV à envoyer à la DEETS avant le ${dateLimite(s.dateFin || s.dateDebut, -DELAI_PV_JOURS)} (reste ${reste} j)`;
+  }
+
+  // Points bloquants avant de passer la session « En cours »
+  function bloquantsDemarrage(s: SessionExamen): string[] {
+    const b: string[] = [];
+    const sx = s as any;
+    if (!s.numeroCERES || !s.dateCreationCERES) b.push('N° et date de création de la session CERES non renseignés');
+    if (!sx.responsableTitulaireId) b.push('Responsable de session non désigné');
+    if (!sx.responsablesSaisisCeres) b.push('Responsable et suppléant non saisis dans CERES');
+    const ids = [sx.responsableTitulaireId, sx.responsableSuppleantId, sx.surveillantId].filter(Boolean);
+    if (new Set(ids).size < ids.length) b.push('Une même personne occupe deux rôles (responsable / suppléant / surveillant)');
+    const c = controlerConflits(s, responsablesDb, apprenantsDb, sessionsFormationDb, emargementsDb, interventionsDb);
+    c.conflits.forEach(x => b.push(`${x.personne} a formé le groupe : ne peut pas être ${LIBELLE_ROLE_COURT[x.role]}`));
+    controlerJury(s, juresRepertoire as any).points.filter(p => p.niveau === 'rouge').forEach(p => b.push('Jury : ' + p.texte));
+    return b;
+  }
+
+  // Points bloquants avant de clôturer la session
+  function bloquantsCloture(s: SessionExamen): string[] {
+    const b: string[] = [];
+    const sx = s as any;
+    if (!sx.pvSigneUrl && !s.pvSigne) b.push('PV général signé par les jurés non importé');
+    if (!s.pvEnvoiDemarche && !s.pvCourrierReco) b.push("Preuve d'envoi du PV à la DEETS non renseignée (démarches-simplifiées ou recommandé AR)");
+    return b;
+  }
+
+  function changerStatut(nouveau: string) {
+    if (!sessionSel) return;
+    const b = nouveau === 'En cours' ? bloquantsDemarrage(sessionSel) : nouveau === 'Clôturée' ? bloquantsCloture(sessionSel) : [];
+    if (b.length) {
+      alert(`⛔ Impossible de passer la session au statut « ${nouveau} » :\n\n• ${b.join('\n• ')}`);
+      return;
+    }
+    maj('statut', nouveau);
+  }
+
   function actionsUrgentes(s: SessionExamen): string[] {
-    if (s.archive || s.statut === 'Clôturée' || s.statut === 'Terminée') return [];
+    if (s.archive || s.statut === 'Clôturée') return [];
+    const pv = alertePv(s);
+    if (s.statut === 'Terminée') return pv ? [pv] : [];
     const j = diffJours(s.dateDebut);
     const a: string[] = [];
+    if (pv) a.push(pv);
+    const conflits = controlerConflits(s, responsablesDb, apprenantsDb, sessionsFormationDb, emargementsDb, interventionsDb).conflits;
+    conflits.forEach(x => a.push(`Conflit de rôles : ${x.personne} a formé le groupe (${LIBELLE_ROLE_COURT[x.role]})`));
     if (!s.numeroCERES || !s.dateCreationCERES) a.push(`Renseigner ${!s.numeroCERES && !s.dateCreationCERES ? 'le n° et la date de création' : !s.numeroCERES ? 'le n°' : 'la date de création'} de la session CERES`);
     if (j === null) return a;
     if (j <= 120 && (!(s as any).responsableTitulaireId || !(s as any).responsablesSaisisCeres)) {
@@ -596,6 +650,22 @@ export default function Examens() {
           <button onClick={() => setModale(true)} style={btnPrimary}>+ Nouvelle session</button>
         </div>
       </div>
+
+      {/* 📋 Agréments qui expirent dans moins de 6 mois */}
+      {(() => {
+        const proches = agrementsDb.filter(ag => !ag.archive).map(ag => ({ ag, j: diffJours(ag.dateFin || '') }))
+          .filter(x => x.j !== null && x.j <= 183);
+        if (!proches.length) return null;
+        return (
+          <div style={{ backgroundColor: '#fde8e8', border: '1.5px solid #e53e3e', borderRadius: '10px', padding: '10px 16px', marginBottom: '12px' }}>
+            {proches.map(({ ag, j }) => (
+              <div key={ag.id} style={{ fontSize: '12px', color: '#c53030', fontWeight: 700 }}>
+                📋 Agrément {ag.formationCode} — {j! < 0 ? `EXPIRÉ depuis ${-j!} j` : `expire le ${ag.dateFin} (J-${j})`} : renouvellement à lancer
+              </div>
+            ))}
+          </div>
+        );
+      })()}
 
       {/* Alertes globales */}
       {alertes.length > 0 && (
@@ -932,12 +1002,26 @@ export default function Examens() {
                     <div style={{ fontSize: '12px', color: '#888' }}>📅 {sessionSel.dateDebut} → {sessionSel.dateFin}</div>
                   </div>
                   <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
-                    <select value={sessionSel.statut} onChange={e => maj('statut', e.target.value)} style={{ ...inputStyle, width: 'auto', fontSize: '11px' }}>
+                    <select value={sessionSel.statut} onChange={e => changerStatut(e.target.value)} style={{ ...inputStyle, width: 'auto', fontSize: '11px' }}>
                       {['Planifiée', 'En cours', 'Terminée', 'Clôturée'].map(s => <option key={s} value={s}>{s}</option>)}
                     </select>
                     <button onClick={() => setSessionSel(null)} style={{ backgroundColor: '#f0f0f0', border: 'none', borderRadius: '6px', padding: '6px 10px', cursor: 'pointer', fontSize: '12px' }}>✕</button>
                   </div>
                 </div>
+
+                {/* ⛔ Démarrage bloqué tant qu'un point réglementaire manque */}
+                {sessionSel.statut === 'Planifiée' && (() => {
+                  const b = bloquantsDemarrage(sessionSel);
+                  if (!b.length) return (
+                    <div style={{ fontSize: '11px', color: '#16a34a', fontWeight: 700, marginBottom: '8px' }}>✅ Prête à passer « En cours » : aucun point bloquant</div>
+                  );
+                  return (
+                    <div style={{ backgroundColor: '#fde8e8', border: '1px solid #e53e3e', borderRadius: '8px', padding: '8px 10px', marginBottom: '8px' }}>
+                      <div style={{ fontSize: '11px', fontWeight: 800, color: '#c53030' }}>⛔ Passage « En cours » bloqué — {b.length} point(s) :</div>
+                      {b.map((x, i) => <div key={i} style={{ fontSize: '10px', color: '#c53030' }}>• {x}</div>)}
+                    </div>
+                  );
+                })()}
 
                 {/* Alertes J-120/90/40 */}
                 {joursDebut !== null && joursDebut >= 0 && (
@@ -1845,7 +1929,7 @@ export default function Examens() {
                         {sessionSel.statut !== 'Clôturée' && (
                           <button onClick={() => {
                             if (!confirm('Confirmer la clôture de la session ?')) return;
-                            maj('statut', 'Clôturée');
+                            changerStatut('Clôturée');
                           }} style={btnPrimary}>🔒 Clôturer la session</button>
                         )}
                       </div>
