@@ -530,14 +530,32 @@ export default function Examens() {
   const joursDebut = sessionSel ? diffJours(sessionSel.dateDebut) : null;
 
   // Alertes globales
-  const alertes = sessions.filter(s => {
+  // Date limite = date de début - N jours (affichée JJ/MM/AAAA)
+  function dateLimite(dateDebut: string, jours: number): string {
+    const p = (dateDebut ?? '').split('/');
+    if (p.length !== 3) return '';
+    let a = parseInt(p[2]); if (a < 100) a += 2000;
+    const d = new Date(a, parseInt(p[1]) - 1, parseInt(p[0]) - jours);
+    return isNaN(d.getTime()) ? '' : d.toLocaleDateString('fr-FR');
+  }
+
+  // Actions en retard d'une session (sessions actives uniquement)
+  function actionsUrgentes(s: SessionExamen): string[] {
+    if (s.archive || s.statut === 'Clôturée' || s.statut === 'Terminée') return [];
     const j = diffJours(s.dateDebut);
-    if (j === null) return false;
-    if (!s.dateCmdDTE && j <= 120) return true;
-    if (!s.dateCmdJury && j <= 90) return true;
-    if (!s.dateEnvoiConvocations && j <= 40) return true;
-    return false;
-  });
+    const a: string[] = [];
+    if (!s.numeroCERES || !s.dateCreationCERES) a.push(`Renseigner ${!s.numeroCERES && !s.dateCreationCERES ? 'le n° et la date de création' : !s.numeroCERES ? 'le n°' : 'la date de création'} de la session CERES`);
+    if (j === null) return a;
+    if (j <= 120 && (!(s as any).responsableTitulaireId || !(s as any).responsablesSaisisCeres)) {
+      a.push(!(s as any).responsableTitulaireId ? `Désigner le responsable de session (J-${j})` : `Saisir responsable et suppléant dans CERES (J-${j})`);
+    }
+    if (!s.dateCmdDTE && j <= 90) a.push(`Commander DTE — limite ${dateLimite(s.dateDebut, 90)} (J-${j})`);
+    if (!s.dateCmdJury && j <= 90) a.push(`Commander jurés (J-${j})`);
+    if (!s.dateEnvoiConvocations && j <= 40) a.push(`Envoyer convocations (J-${j})`);
+    return a;
+  }
+
+  const alertes = sessions.filter(s => actionsUrgentes(s).length > 0);
 
   const statutStyles: Record<string, { bg: string; color: string }> = {
     'Planifiée': { bg: '#fef6e4', color: '#C8A23A' },
@@ -583,10 +601,7 @@ export default function Examens() {
           {alertes.map(s => {
             const j = diffJours(s.dateDebut);
             const cfg2 = FORMATIONS_EXAMEN[s.formation];
-            const actions = [];
-            if (!s.dateCmdDTE && j !== null && j <= 120) actions.push(`Commander DTE (J-${j})`);
-            if (!s.dateCmdJury && j !== null && j <= 90) actions.push(`Commander jurés (J-${j})`);
-            if (!s.dateEnvoiConvocations && j !== null && j <= 40) actions.push(`Envoyer convocations (J-${j})`);
+            const actions = actionsUrgentes(s);
             return (
               <div key={s.id} style={{ fontSize: '11px', color: '#c53030', marginBottom: '3px' }}>
                 ⚠️ <strong>{cfg2?.label} — {s.dateDebut}</strong> : {actions.join(' • ')}
@@ -925,7 +940,8 @@ export default function Examens() {
                 {joursDebut !== null && joursDebut >= 0 && (
                   <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
                     {[
-                      { seuil: 120, label: 'Commander DTE', fait: !!sessionSel.dateCmdDTE },
+                      { seuil: 120, label: 'Responsable de session', fait: !!(sessionSel as any).responsableTitulaireId && !!(sessionSel as any).responsablesSaisisCeres },
+                      { seuil: 90, label: 'Commander DTE', fait: !!sessionSel.dateCmdDTE },
                       { seuil: 90, label: 'Commander jurés', fait: !!sessionSel.dateCmdJury },
                       { seuil: 40, label: 'Envoyer convocations', fait: !!sessionSel.dateEnvoiConvocations },
                     ].map(a => (
@@ -1112,13 +1128,18 @@ export default function Examens() {
                   {/* ── DTE ── */}
                   {ongletFiche === 'dte' && (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                      <div style={{ backgroundColor: joursDebut !== null && joursDebut <= 120 && !sessionSel.dateCmdDTE ? '#fde8e8' : '#EAF4F3', borderRadius: '8px', padding: '12px' }}>
+                      <div style={{ backgroundColor: joursDebut !== null && joursDebut <= 90 && !sessionSel.dateCmdDTE ? '#fde8e8' : '#EAF4F3', borderRadius: '8px', padding: '12px' }}>
                         <div style={{ fontSize: '12px', fontWeight: '700', color: '#006B68', marginBottom: '8px' }}>
                           📦 Documents de l'évaluation (DTE)
-                          {joursDebut !== null && joursDebut <= 120 && !sessionSel.dateCmdDTE && (
+                          {joursDebut !== null && joursDebut <= 90 && !sessionSel.dateCmdDTE && (
                             <span style={{ marginLeft: '8px', backgroundColor: '#e53e3e', color: 'white', padding: '2px 8px', borderRadius: '10px', fontSize: '10px' }}>⚠️ À commander — J-{joursDebut}</span>
                           )}
                         </div>
+                        {!sessionSel.dateCmdDTE && dateLimite(sessionSel.dateDebut, 90) && (
+                          <div style={{ fontSize: '11px', fontWeight: 700, color: joursDebut !== null && joursDebut <= 90 ? '#c53030' : '#006B68', marginBottom: '8px' }}>
+                            📅 À commander au plus tard le {dateLimite(sessionSel.dateDebut, 90)} (J-90)
+                          </div>
+                        )}
                         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
                           {[
                             { label: 'Date commande DTE (CERES)', champ: 'dateCmdDTE' },
