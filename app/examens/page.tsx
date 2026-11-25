@@ -19,6 +19,8 @@ import { formaterDateFR } from '../../lib/dates';
 import { chargerApprentis, modifierApprenti } from '../../data/apprentisSupabase';
 import dynamic from 'next/dynamic';
 const BoutonAmenagementEpreuves = dynamic(() => import('../../components/BoutonAmenagementEpreuves'), { ssr: false });
+const BoutonDossierControle = dynamic(() => import('../../components/PdfDossierControle'), { ssr: false });
+import type { DonneesDossierControle } from '../../components/PdfDossierControle';
 import { DELAI_DEMANDE_AMENAGEMENT_MOIS, libelleCourtReconnaissance } from '../../lib/handicap';
 import { ccpsDuTP, dateLimiteRepresentation, joursAvantLimite } from '../../lib/referentielsTP';
 import {
@@ -345,6 +347,17 @@ export default function Examens() {
   const [interventionsDb, setInterventionsDb] = useState<any[]>([]);
   // Répertoire des jurés (habilitations CERES, entreprise)
   const [juresRepertoire, setJuresRepertoire] = useState<JureDb[]>([]);
+  // Journal de la session ouverte + utilisateur connecté (dossier de contrôle)
+  const [journalSession, setJournalSession] = useState<any[]>([]);
+  const [emailUtilisateur, setEmailUtilisateur] = useState('');
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data }) => setEmailUtilisateur(data.session?.user?.email ?? ''));
+  }, []);
+  useEffect(() => {
+    if (!sessionSel?.id) { setJournalSession([]); return; }
+    supabase.from('examens_journal').select('*').eq('examenId', sessionSel.id).order('le', { ascending: false }).limit(300)
+      .then(({ data, error }) => { if (error) console.error('[Examens] Lecture journal', error.message); setJournalSession(data ?? []); });
+  }, [sessionSel?.id]);
 
   useEffect(() => {
     (async () => {
@@ -475,8 +488,52 @@ export default function Examens() {
     setNonSynchro([]);
   }
 
+  // ── Journal des modifications (qui, quoi, quand) — table examens_journal, non modifiable
+  const LIBELLES_CHAMPS: Record<string, string> = {
+    statut: 'Statut', numeroCERES: 'N° CERES', dateCreationCERES: 'Date création CERES',
+    responsableTitulaireId: 'Responsable de session', responsableSuppleantId: 'Suppléant', surveillantId: 'Surveillant',
+    responsablesSaisisCeres: 'Responsables saisis dans CERES', dateCmdDTE: 'Commande DTE', dateReceptionDTE: 'Réception DTE',
+    dateCmdJury: 'Commande jurés', dateEnvoiConvocations: 'Envoi convocations', jures: 'Jurés', candidats: 'Candidats',
+    checklist: 'Checklist', pvSigne: 'PV signé', pvEnvoiDemarche: 'Envoi PV (démarches)', pvCourrierReco: 'Envoi PV (recommandé)',
+    pvReceptionDeets: 'Réception PV DEETS', dateResultatsCERES: 'Résultats CERES', dateDebut: 'Date début', dateFin: 'Date fin', lieu: 'Lieu',
+  };
+  function resumeValeur(champ: string, v: any): string {
+    if (v === null || v === undefined || v === '') return '—';
+    if (typeof v === 'boolean') return v ? 'oui' : 'non';
+    if (['responsableTitulaireId', 'responsableSuppleantId', 'surveillantId'].includes(champ)) {
+      const r = responsablesDb.find(x => x.id === v); return r ? `${r.prenom} ${r.nom}` : String(v);
+    }
+    if (Array.isArray(v)) return `${v.length} élément(s)`;
+    if (typeof v === 'object') return JSON.stringify(v).slice(0, 300);
+    return String(v).slice(0, 300);
+  }
+  function decrireChecklist(avant: any, apres: any): string {
+    const a = avant ?? {}, b = apres ?? {};
+    const diffs = Object.keys(b).filter(k => JSON.stringify(a[k]) !== JSON.stringify(b[k]))
+      .map(k => k === 'ouverturePlis' ? 'photo ouverture des plis jointe' : `${k} ${b[k]?.fait ? 'coché' : 'décoché'}`);
+    return diffs.join(', ') || 'modifiée';
+  }
+  async function journaliser(examenId: string, changements: { champ: string; avant: any; apres: any }[]) {
+    try {
+      const { data } = await supabase.auth.getSession();
+      const par = data.session?.user?.email ?? 'inconnu';
+      const lignes = changements
+        .filter(c => JSON.stringify(c.avant ?? null) !== JSON.stringify(c.apres ?? null))
+        .map(c => ({
+          examenId, champ: c.champ, par,
+          ancienneValeur: c.champ === 'checklist' ? null : resumeValeur(c.champ, c.avant),
+          nouvelleValeur: c.champ === 'checklist' ? decrireChecklist(c.avant, c.apres) : resumeValeur(c.champ, c.apres),
+        }));
+      if (!lignes.length) return;
+      const { error } = await supabase.from('examens_journal').insert(lignes);
+      if (error) console.error('[Examens] Journal :', error.message);
+      else setJournalSession(prev => [...lignes.map(l => ({ ...l, le: new Date().toISOString() })), ...prev]);
+    } catch (e) { console.error('[Examens] Journal exception', e); }
+  }
+
   function maj(champ: string, val: any) {
     if (!sessionSel) return;
+    journaliser(sessionSel.id, [{ champ, avant: (sessionSel as any)[champ], apres: val }]);
     const u = { ...sessionSel, [champ]: val };
     setSessionSel(u);
     save(sessions.map(s => s.id === u.id ? u : s), u);
@@ -485,6 +542,8 @@ export default function Examens() {
   // Met à jour plusieurs champs en une seule sauvegarde
   function majPlusieurs(patch: Record<string, any>) {
     if (!sessionSel) return;
+    journaliser(sessionSel.id, Object.keys(patch).filter(k => !k.startsWith('responsable') || k.endsWith('Id'))
+      .map(k => ({ champ: k, avant: (sessionSel as any)[k], apres: patch[k] })));
     const u = { ...sessionSel, ...patch };
     setSessionSel(u);
     save(sessions.map(s => s.id === u.id ? u : s), u);
@@ -1014,6 +1073,61 @@ export default function Examens() {
                     <div style={{ fontSize: '12px', color: '#888' }}>📅 {sessionSel.dateDebut} → {sessionSel.dateFin}</div>
                   </div>
                   <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                    {(() => {
+                      const sx = sessionSel as any;
+                      const nomResp = (id?: string | null) => { const r = responsablesDb.find(x => x.id === id); return r ? `${r.prenom} ${r.nom}` : ''; };
+                      const cf = controlerConflits(sessionSel, responsablesDb, apprenantsDb, sessionsFormationDb, emargementsDb, interventionsDb);
+                      const jy = controlerJury(sessionSel, juresRepertoire as any);
+                      const libPhase: Record<string, string> = { avant: 'Avant la session', jourJ: 'Jour de la session', apres: 'Après la session' };
+                      const pieces: { libelle: string; nom: string }[] = [];
+                      if (sx.pvSigne) pieces.push({ libelle: 'PV général signé', nom: sx.pvSigne });
+                      if (sx.pvDeets) pieces.push({ libelle: 'Attestation PV DEETS', nom: sx.pvDeets });
+                      if (sx.checklist?.ouverturePlis?.nom) pieces.push({ libelle: 'Photo ouverture des plis', nom: sx.checklist.ouverturePlis.nom });
+                      (sessionSel.jures ?? []).forEach((j: any) => { if (j.nonLienNom) pieces.push({ libelle: `Non-lien ${j.prenom ?? ''} ${j.nom ?? ''}`, nom: j.nonLienNom }); });
+                      (sessionSel.candidats ?? []).forEach((c: any) => { if (c.pvIndividuelNom) pieces.push({ libelle: `PV individuel ${c.prenom ?? ''} ${c.nom ?? ''}`, nom: c.pvIndividuelNom }); });
+                      if (sessionSel.emargementJures) pieces.push({ libelle: 'Émargement jury', nom: sessionSel.emargementJures });
+                      Object.entries(sessionSel.emargementsCandidats ?? {}).forEach(([k, v]) => { if (v) pieces.push({ libelle: `Émargement candidats ${k}`, nom: String(v) }); });
+                      const donnees: DonneesDossierControle = {
+                        formation: sessionSel.formation, formationLabel: cfg.label, numeroTitre: cfg.numero,
+                        typeSession: sessionSel.typeSession === 'ccp' ? `Session CCP ${(sessionSel.ccpVises ?? []).join(', ')}` : 'Session titre (TP complet)',
+                        dateDebut: sessionSel.dateDebut, dateFin: sessionSel.dateFin, lieu: sessionSel.lieu, statut: sessionSel.statut,
+                        numeroCERES: sessionSel.numeroCERES, dateCreationCERES: sessionSel.dateCreationCERES,
+                        responsables: [
+                          { role: 'Responsable de session', nom: nomResp(sx.responsableTitulaireId) || (sessionSel.responsableNom ? `${sessionSel.responsablePrenom} ${sessionSel.responsableNom} (saisie libre)` : '') },
+                          { role: 'Suppléant', nom: nomResp(sx.responsableSuppleantId) },
+                          { role: 'Surveillant', nom: nomResp(sx.surveillantId) },
+                        ],
+                        responsablesSaisisCeres: !!sx.responsablesSaisisCeres,
+                        controleFormateurs: { conforme: cf.verifiable && cf.conflits.length === 0, verifiable: cf.verifiable,
+                          formateurs: cf.formateurs.map(f => f.nom).filter(Boolean),
+                          conflits: cf.conflits.map(c => `${c.personne} a formé le groupe (${c.preuve.source} ${c.preuve.date ?? ''}) : ${LIBELLE_ROLE_COURT[c.role]} interdit`) },
+                        jury: { conforme: jy.conforme, points: jy.points,
+                          jures: jy.jures.map(e => {
+                            const sj = (sessionSel.jures ?? []).find((x: any) => x.id === e.jureId) as any;
+                            return { nom: e.nomComplet,
+                              habilitation: e.habiliteTP === 'valide' ? `Habilité(e) ${sessionSel.formation}` : e.habiliteTP === 'date_inconnue' ? `Habilité(e) ${sessionSel.formation} (validité à saisir)` : e.habiliteTP === 'expiree' ? `Habilitation ${sessionSel.formation} expirée` : `Habilité(e) ${e.autresTitres.join(', ') || '—'}${sj?.correspondanceVerifiee ? ' (correspondance CCP vérifiée)' : ''}`,
+                              nonLien: sj?.nonLienNom ? `signée (${sj.nonLienNom})` : sj?.nonLienSigne ? 'signée (pièce non jointe)' : 'non signée' };
+                          }) },
+                        candidats: (sessionSel.candidats ?? []).map((c: any) => ({
+                          nom: `${c.nom ?? ''} ${c.prenom ?? ''}`.trim(), entreprise: c.entreprise ?? '',
+                          dossiers: `DP ${c.dpFourni ? 'oui' : 'NON'} / ECF ${c.ecfFourni ? 'oui' : 'NON'}`,
+                          decision: c.decisionJury ? (LIBELLE_DECISION as any)[c.decisionJury] ?? c.decisionJury : '' })),
+                        checklist: checklistSession(sessionSel).map(p => ({ phase: libPhase[p.phase], libelle: p.libelle, ok: p.ok,
+                          detail: p.mode === 'manuel' ? (p.le ? `${p.ok ? 'coché' : 'décoché'} par ${p.par} le ${new Date(p.le).toLocaleString('fr-FR')}` : '') : (p.detail ?? '') })),
+                        pv: [
+                          { libelle: 'Résultats saisis CERES', valeur: sessionSel.dateResultatsCERES },
+                          { libelle: 'PV signé importé', valeur: sessionSel.pvSigne },
+                          { libelle: 'Envoi démarches-simplifiées', valeur: sessionSel.pvEnvoiDemarche },
+                          { libelle: 'Envoi recommandé AR', valeur: sessionSel.pvCourrierReco },
+                          { libelle: 'Réception PV validés DEETS', valeur: sessionSel.pvReceptionDeets },
+                        ],
+                        pieces,
+                        journal: journalSession.map((j: any) => ({ le: new Date(j.le).toLocaleString('fr-FR'), par: j.par ?? '',
+                          texte: `${LIBELLES_CHAMPS[j.champ] ?? j.champ} : ${j.ancienneValeur ? j.ancienneValeur + ' → ' : ''}${j.nouvelleValeur ?? ''}` })),
+                        genereLe: new Date().toLocaleString('fr-FR'), generePar: emailUtilisateur || 'utilisateur EasyCFA',
+                      };
+                      return <BoutonDossierControle donnees={donnees} style={{ ...btnSecondary, fontSize: '11px', padding: '6px 10px' }} />;
+                    })()}
                     <select value={sessionSel.statut} onChange={e => changerStatut(e.target.value)} style={{ ...inputStyle, width: 'auto', fontSize: '11px' }}>
                       {['Planifiée', 'En cours', 'Terminée', 'Clôturée'].map(s => <option key={s} value={s}>{s}</option>)}
                     </select>
