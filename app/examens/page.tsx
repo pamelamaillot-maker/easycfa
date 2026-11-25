@@ -59,6 +59,10 @@ import {
   type ResponsableSession,
   type RoleResponsable,
 } from '../../data/responsablesSessionSupabase';
+import { chargerSessions } from '../../data/sessionsSupabase';
+import { chargerEmargements } from '../../data/emargementsSupabase';
+import { chargerInterventions } from '../../data/interventionsSupabase';
+import { controlerConflits, LIBELLE_ROLE_COURT } from '../../lib/conflitsResponsables';
 
 const inputStyle: React.CSSProperties = { border: '1.5px solid #e0e0e0', borderRadius: '8px', padding: '7px 10px', fontSize: '12px', width: '100%', boxSizing: 'border-box', backgroundColor: 'white' };
 const btnPrimary: React.CSSProperties = { backgroundColor: '#006B68', color: 'white', border: 'none', borderRadius: '8px', padding: '8px 14px', fontSize: '12px', fontWeight: '600', cursor: 'pointer' };
@@ -329,6 +333,10 @@ export default function Examens() {
   const [agreementsInfos, setAgreementsInfos] = useState<Record<string, { debut: string; fin: string; archive: boolean }>>({});
   const [agrementsDb, setAgrementsDb] = useState<Agrement[]>([]);
   const [responsablesDb, setResponsablesDb] = useState<ResponsableSession[]>([]);
+  // Sources des formateurs du groupe (contrôle responsable ≠ formateur)
+  const [sessionsFormationDb, setSessionsFormationDb] = useState<any[]>([]);
+  const [emargementsDb, setEmargementsDb] = useState<any[]>([]);
+  const [interventionsDb, setInterventionsDb] = useState<any[]>([]);
 
   useEffect(() => {
     (async () => {
@@ -391,6 +399,17 @@ export default function Examens() {
         setResponsablesDb(rs);
       } catch (e) {
         console.error('[Examens] Erreur chargement responsables', e);
+      }
+
+      // Formateurs du groupe : plannings, émargements, fiches d'intervention
+      try {
+        const [sf, em, iv] = await Promise.all([chargerSessions(), chargerEmargements(), chargerInterventions()]);
+        setSessionsFormationDb(sf as any[]);
+        setEmargementsDb(em as any[]);
+        setInterventionsDb(iv as any[]);
+        console.log(`[Examens] Contrôle formateurs : ${sf.length} sessions, ${em.length} émargements, ${iv.length} interventions ✅`);
+      } catch (e) {
+        console.error('[Examens] Erreur chargement sources formateurs', e);
       }
     })();
   }, []);
@@ -1011,6 +1030,33 @@ export default function Examens() {
                           </div>
                         );
                       })()}
+                      {/* 🛡️ Contrôle DEETS : responsable / suppléant / surveillant ≠ formateur du groupe */}
+                      {(() => {
+                        const designes = ['responsableTitulaireId', 'responsableSuppleantId', 'surveillantId'].some(k => (sessionSel as any)[k]);
+                        if (!designes) return null;
+                        const r = controlerConflits(sessionSel, responsablesDb, apprenantsDb, sessionsFormationDb, emargementsDb, interventionsDb);
+                        if (!r.verifiable) return (
+                          <div style={{ backgroundColor: '#fef6e4', border: '1.5px solid #C8A23A', borderRadius: '8px', padding: '10px 12px', fontSize: '11px', color: '#92400e', fontWeight: 600 }}>
+                            🟠 Contrôle formateur impossible : aucun candidat n'est relié à une fiche apprenant. Reliez les candidats (onglet Candidats) pour vérifier.
+                          </div>
+                        );
+                        if (r.conflits.length === 0) return (
+                          <div style={{ backgroundColor: '#e6f4f1', border: '1.5px solid #006B68', borderRadius: '8px', padding: '10px 12px', fontSize: '11px', color: '#006B68', fontWeight: 600 }}>
+                            ✅ Aucun conflit formateur détecté — {r.formateurs.length} formateur(s) du groupe vérifié(s) : {r.formateurs.map(f => f.nom).filter(Boolean).join(', ') || '—'}
+                          </div>
+                        );
+                        return (
+                          <div style={{ backgroundColor: '#fde8e8', border: '2px solid #e53e3e', borderRadius: '8px', padding: '10px 12px' }}>
+                            <div style={{ fontSize: '12px', fontWeight: 800, color: '#c53030', marginBottom: '4px' }}>🔴 Conflit de rôles — session non conforme DEETS</div>
+                            {r.conflits.map((c, i) => (
+                              <div key={i} style={{ fontSize: '11px', color: '#c53030', marginTop: '2px' }}>
+                                <strong>{c.personne}</strong> a formé ce groupe ({c.preuve.source}{c.preuve.date ? ` du ${c.preuve.date}` : ''}{c.preuve.sessionNumero ? `, session ${c.preuve.sessionNumero}` : ''}) : ne peut pas être {LIBELLE_ROLE_COURT[c.role]}.
+                              </div>
+                            ))}
+                          </div>
+                        );
+                      })()}
+
                       {/* Situations évaluation */}
                       <div style={{ backgroundColor: '#EAF4F3', borderRadius: '8px', padding: '12px' }}>
                         <div style={{ fontSize: '11px', fontWeight: '700', color: '#006B68', marginBottom: '8px', textTransform: 'uppercase' }}>
