@@ -54,6 +54,7 @@ import {
 } from '../../data/agrementsSupabase';
 import {
   chargerResponsablesSession,
+  creerResponsableSession,
   candidatsPourRole,
   type ResponsableSession,
   type RoleResponsable,
@@ -334,6 +335,8 @@ export default function Examens() {
   const [agreementsInfos, setAgreementsInfos] = useState<Record<string, { debut: string; fin: string; archive: boolean }>>({});
   const [agrementsDb, setAgrementsDb] = useState<Agrement[]>([]);
   const [responsablesDb, setResponsablesDb] = useState<ResponsableSession[]>([]);
+  // Saisie libre d'une nouvelle personne (responsable / suppléant / surveillant)
+  const [ajoutResp, setAjoutResp] = useState<{ champ: string; role: RoleResponsable; nom: string; prenom: string; telephone: string; email: string } | null>(null);
   // Sources des formateurs du groupe (contrôle responsable ≠ formateur)
   const [sessionsFormationDb, setSessionsFormationDb] = useState<any[]>([]);
   const [emargementsDb, setEmargementsDb] = useState<any[]>([]);
@@ -1025,12 +1028,16 @@ export default function Examens() {
                                 return (
                                   <div key={c.champ}>
                                     <label style={{ fontSize: '10px', color: '#888', display: 'block', marginBottom: '2px', textTransform: 'uppercase' }}>{c.label}</label>
-                                    <select style={inputStyle} value={valeur} onChange={e => choisir(c.champ, e.target.value)}>
+                                    <select style={inputStyle} value={valeur} onChange={e => {
+                                      if (e.target.value === '__nouveau__') { setAjoutResp({ champ: c.champ, role: c.role, nom: '', prenom: '', telephone: '', email: '' }); return; }
+                                      choisir(c.champ, e.target.value);
+                                    }}>
                                       <option value="">— Non désigné —</option>
                                       {options.map(r => (
                                         <option key={r.id} value={r.id}>{r.nom} {r.prenom}</option>
                                       ))}
                                       {horsTitre && <option value={choisi!.id}>{choisi!.nom} {choisi!.prenom} (non autorisé pour {titre})</option>}
+                                      <option value="__nouveau__">➕ Autre personne (saisie libre)…</option>
                                     </select>
                                     {options.length === 0 && (
                                       <div style={{ fontSize: '10px', color: '#c53030', marginTop: '3px', fontWeight: 600 }}>Aucune personne autorisée pour {titre}</div>
@@ -1042,6 +1049,45 @@ export default function Examens() {
                                 );
                               })}
                             </div>
+                            {ajoutResp && (
+                              <div style={{ marginTop: '10px', padding: '10px', borderRadius: '8px', border: '1px solid #006B68', backgroundColor: 'white' }}>
+                                <div style={{ fontSize: '11px', fontWeight: 700, color: '#006B68', marginBottom: '6px' }}>
+                                  ➕ Nouvelle personne — {roles.find(r => r.champ === ajoutResp.champ)?.label} ({titre})
+                                </div>
+                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: '8px' }}>
+                                  {[
+                                    { k: 'nom', l: 'Nom *' }, { k: 'prenom', l: 'Prénom *' },
+                                    { k: 'telephone', l: 'Téléphone' }, { k: 'email', l: 'Email' },
+                                  ].map(f => (
+                                    <div key={f.k}>
+                                      <label style={{ fontSize: '9px', color: '#888', textTransform: 'uppercase', display: 'block', marginBottom: '2px' }}>{f.l}</label>
+                                      <input style={{ ...inputStyle, fontSize: '11px', padding: '5px 7px' }} value={(ajoutResp as any)[f.k]}
+                                        onChange={e => setAjoutResp(a => a ? { ...a, [f.k]: f.k === 'nom' ? e.target.value.toUpperCase() : e.target.value } : a)} />
+                                    </div>
+                                  ))}
+                                </div>
+                                <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end', marginTop: '8px' }}>
+                                  <button onClick={() => setAjoutResp(null)} style={{ ...btnSecondary, padding: '5px 10px', fontSize: '11px' }}>Annuler</button>
+                                  <button disabled={!ajoutResp.nom.trim() || !ajoutResp.prenom.trim()} onClick={async () => {
+                                    const a = ajoutResp;
+                                    const r = await creerResponsableSession({
+                                      nom: a.nom.trim(), prenom: a.prenom.trim(), telephone: a.telephone.trim() || null, email: a.email.trim() || null,
+                                      role: a.role, titresConcernes: [titre], actif: true, archive: false,
+                                      notes: `Ajouté(e) en saisie libre depuis la session ${titre} du ${sessionSel.dateDebut}`,
+                                    });
+                                    if (!r.success || !r.data) { alert('Enregistrement impossible : ' + (r.error || 'erreur inconnue')); return; }
+                                    setResponsablesDb(prev => [...prev, r.data!]);
+                                    setAjoutResp(null);
+                                    const patch: Record<string, any> = { [a.champ]: r.data.id };
+                                    if (a.champ === 'responsableTitulaireId') {
+                                      patch.responsableNom = r.data.nom; patch.responsablePrenom = r.data.prenom;
+                                      patch.responsableTel = r.data.telephone ?? ''; patch.responsableEmail = r.data.email ?? '';
+                                    }
+                                    majPlusieurs(patch);
+                                  }} style={{ ...btnPrimary, padding: '5px 10px', fontSize: '11px', opacity: !ajoutResp.nom.trim() || !ajoutResp.prenom.trim() ? 0.5 : 1 }}>✅ Ajouter et désigner</button>
+                                </div>
+                              </div>
+                            )}
                             <label style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '10px', fontSize: '12px', cursor: 'pointer', fontWeight: 600, color: (sessionSel as any).responsablesSaisisCeres ? '#16a34a' : '#c2410c' }}>
                               <input type="checkbox" checked={!!(sessionSel as any).responsablesSaisisCeres} onChange={e => maj('responsablesSaisisCeres', e.target.checked)} />
                               {(sessionSel as any).responsablesSaisisCeres ? '✅ Responsable et suppléant saisis dans CERES' : '⚠️ Responsable et suppléant à saisir dans CERES (déclaration DEETS)'}
