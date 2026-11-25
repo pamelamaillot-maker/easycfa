@@ -62,6 +62,7 @@ import { chargerSessions } from '../../data/sessionsSupabase';
 import { chargerEmargements } from '../../data/emargementsSupabase';
 import { chargerInterventions } from '../../data/interventionsSupabase';
 import { controlerConflits, LIBELLE_ROLE_COURT } from '../../lib/conflitsResponsables';
+import { controlerJury } from '../../lib/controleJury';
 
 const inputStyle: React.CSSProperties = { border: '1.5px solid #e0e0e0', borderRadius: '8px', padding: '7px 10px', fontSize: '12px', width: '100%', boxSizing: 'border-box', backgroundColor: 'white' };
 const btnPrimary: React.CSSProperties = { backgroundColor: '#006B68', color: 'white', border: 'none', borderRadius: '8px', padding: '8px 14px', fontSize: '12px', fontWeight: '600', cursor: 'pointer' };
@@ -337,6 +338,8 @@ export default function Examens() {
   const [sessionsFormationDb, setSessionsFormationDb] = useState<any[]>([]);
   const [emargementsDb, setEmargementsDb] = useState<any[]>([]);
   const [interventionsDb, setInterventionsDb] = useState<any[]>([]);
+  // Répertoire des jurés (habilitations CERES, entreprise)
+  const [juresRepertoire, setJuresRepertoire] = useState<JureDb[]>([]);
 
   useEffect(() => {
     (async () => {
@@ -410,6 +413,13 @@ export default function Examens() {
         console.log(`[Examens] Contrôle formateurs : ${sf.length} sessions, ${em.length} émargements, ${iv.length} interventions ✅`);
       } catch (e) {
         console.error('[Examens] Erreur chargement sources formateurs', e);
+      }
+
+      // Répertoire des jurés : habilitations pour le contrôle du jury
+      try {
+        setJuresRepertoire(await chargerJures());
+      } catch (e) {
+        console.error('[Examens] Erreur chargement répertoire jurés', e);
       }
     })();
   }, []);
@@ -1136,6 +1146,23 @@ export default function Examens() {
                   {/* ── JURÉS ── */}
                   {ongletFiche === 'jury' && (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                      {/* 🛡️ Contrôle DEETS du jury */}
+                      {(() => {
+                        const r = controlerJury(sessionSel, juresRepertoire as any);
+                        const rouge = r.points.filter(p => p.niveau === 'rouge');
+                        const orange = r.points.filter(p => p.niveau === 'orange');
+                        const couleur = rouge.length ? { bg: '#fde8e8', bord: '#e53e3e', txt: '#c53030' } : orange.length ? { bg: '#fef6e4', bord: '#C8A23A', txt: '#92400e' } : { bg: '#e6f4f1', bord: '#006B68', txt: '#006B68' };
+                        return (
+                          <div style={{ backgroundColor: couleur.bg, border: `1.5px solid ${couleur.bord}`, borderRadius: '8px', padding: '10px 12px' }}>
+                            <div style={{ fontSize: '12px', fontWeight: 800, color: couleur.txt, marginBottom: r.points.length ? '4px' : 0 }}>
+                              {rouge.length ? '🔴 Jury non conforme DEETS' : orange.length ? '🟠 Jury : points à compléter' : '✅ Jury conforme'} — session {sessionSel.typeSession === 'ccp' ? 'CCP : les 2 jurés doivent être habilités ' + sessionSel.formation : 'TP complet : au moins 1 juré habilité ' + sessionSel.formation}
+                            </div>
+                            {[...rouge, ...orange].map((p, i) => (
+                              <div key={i} style={{ fontSize: '11px', color: p.niveau === 'rouge' ? '#c53030' : '#92400e', marginTop: '2px' }}>{p.niveau === 'rouge' ? '🔴' : '🟠'} {p.texte}</div>
+                            ))}
+                          </div>
+                        );
+                      })()}
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                         <div style={{ fontSize: '12px', color: '#888' }}>
                           {joursDebut !== null && joursDebut <= 90 && !sessionSel.dateCmdJury && (
@@ -1182,6 +1209,43 @@ export default function Examens() {
                                 <a href={`mailto:${j.email}?subject=Disponibilité session examen ${cfg.label} - ${sessionSel.dateDebut}&body=Bonjour,%0A%0ANous vous contactons concernant la session d'examen ${cfg.label} du ${sessionSel.dateDebut}.%0A%0AMerci de nous confirmer votre disponibilité.%0A%0ACordialement%0APAM OI`} style={{ fontSize: '10px', color: '#0891b2', textDecoration: 'none', fontWeight: '600' }}>📧 Envoyer mail disponibilité</a>
                                 <button onClick={() => maj('jures', sessionSel.jures.filter((_, i) => i !== ji))} style={{ backgroundColor: '#fde8e8', color: '#e53e3e', border: 'none', borderRadius: '4px', padding: '2px 6px', fontSize: '10px', cursor: 'pointer', marginLeft: 'auto' }}>✕</button>
                               </div>
+                              {/* Déclaration de non-lien + correspondance CCP */}
+                              {(() => {
+                                const jx = j as any;
+                                const majJ = (patch: Record<string, any>) => maj('jures', sessionSel.jures.map((jj, i) => i === ji ? { ...jj, ...patch } : jj));
+                                const etat = controlerJury(sessionSel, juresRepertoire as any).jures.find(e => e.jureId === j.id);
+                                return (
+                                  <div style={{ display: 'flex', gap: '12px', alignItems: 'center', flexWrap: 'wrap', marginTop: '8px', paddingTop: '8px', borderTop: '1px dashed #d0e8e6' }}>
+                                    <label style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '11px', cursor: 'pointer', fontWeight: 600, color: jx.nonLienSigne ? '#16a34a' : '#c2410c' }}>
+                                      <input type="checkbox" checked={!!jx.nonLienSigne} onChange={e => majJ({ nonLienSigne: e.target.checked })} />
+                                      Déclaration de non-lien signée
+                                    </label>
+                                    <label style={{ ...btnSecondary, display: 'inline-block', cursor: 'pointer', fontSize: '10px', padding: '3px 8px' }}>
+                                      📎 {jx.nonLienUrl ? 'Remplacer' : 'Joindre la déclaration'}
+                                      <input type="file" accept=".pdf,.jpg,.jpeg,.png" style={{ display: 'none' }} onChange={async ev => {
+                                        const f = ev.target.files?.[0];
+                                        ev.target.value = '';
+                                        if (!f) return;
+                                        const r = await uploaderPieceExamen(sessionSel.id, `nonlien_${j.id}`, f);
+                                        if (!r.success) { alert('Erreur : ' + r.error); return; }
+                                        majJ({ nonLienNom: r.nom, nonLienUrl: r.url, nonLienChemin: r.chemin, nonLienSigne: true });
+                                      }} />
+                                    </label>
+                                    {jx.nonLienUrl && <a href={jx.nonLienUrl} target="_blank" rel="noopener noreferrer" style={{ fontSize: '10px', color: '#006B68', fontWeight: 600, textDecoration: 'underline' }}>✅ {jx.nonLienNom}</a>}
+                                    {etat?.besoinCorrespondance && (
+                                      <label style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '11px', cursor: 'pointer', fontWeight: 600, color: jx.correspondanceVerifiee ? '#16a34a' : '#c2410c' }}>
+                                        <input type="checkbox" checked={!!jx.correspondanceVerifiee} onChange={e => majJ({ correspondanceVerifiee: e.target.checked })} />
+                                        Correspondance CCP vérifiée ({etat.autresTitres.join(', ')} → {sessionSel.formation})
+                                      </label>
+                                    )}
+                                    {etat && (
+                                      <span style={{ fontSize: '10px', color: etat.habiliteTP === 'valide' ? '#16a34a' : etat.habiliteTP === 'non' ? '#888' : '#c2410c', fontWeight: 600 }}>
+                                        {etat.habiliteTP === 'valide' ? `✅ Habilité(e) ${sessionSel.formation}` : etat.habiliteTP === 'date_inconnue' ? `⚠️ Habilité(e) ${sessionSel.formation} — date de validité à saisir` : etat.habiliteTP === 'expiree' ? `🔴 Habilitation ${sessionSel.formation} expirée` : `Non habilité(e) ${sessionSel.formation}`}
+                                      </span>
+                                    )}
+                                  </div>
+                                );
+                              })()}
                             </div>
                           ))}
                         </div>
@@ -1912,6 +1976,13 @@ function RepertoireJures({ examens }: { examens: SessionExamen[] }) {
     await recharger();
   }
 
+  // Mise à jour d'un juré du répertoire (habilitations, entreprise)
+  async function majJure(id: string, patch: Partial<JureDb>) {
+    setJures(prev => prev.map(x => x.id === id ? { ...x, ...patch } : x));
+    const r = await modifierJure(id, patch);
+    if (!r.success) alert('Erreur : ' + r.error);
+  }
+
   async function retirer(id: string) {
     if (!confirm('Supprimer ce juré du répertoire ?')) return;
     const r = await supprimerJure(id);
@@ -1950,6 +2021,35 @@ function RepertoireJures({ examens }: { examens: SessionExamen[] }) {
                   {j.specialite && <div style={{ fontSize: '11px', color: '#888', marginTop: '2px' }}>🎓 {j.specialite}</div>}
                   <div style={{ fontSize: '11px', color: '#555', marginTop: '4px' }}>📞 {j.telephone}</div>
                   <div style={{ fontSize: '11px', color: '#555' }}>✉️ {j.email}</div>
+                  <div style={{ marginTop: '6px' }}>
+                    <label style={{ fontSize: '9px', color: '#888', textTransform: 'uppercase', display: 'block' }}>Entreprise (contrôle de non-lien)</label>
+                    <input style={{ ...inputStyle2, fontSize: '11px', padding: '4px 7px' }} defaultValue={j.entreprise ?? ''} placeholder="Employeur du juré"
+                      onBlur={e => { if ((e.target.value || '') !== (j.entreprise ?? '')) majJure(j.id, { entreprise: e.target.value }); }} />
+                  </div>
+                  <div style={{ marginTop: '8px' }}>
+                    <div style={{ fontSize: '9px', color: '#888', textTransform: 'uppercase', marginBottom: '3px' }}>Habilitations CERES</div>
+                    {(j.habilitations ?? []).map((h, hi) => {
+                      const habs = j.habilitations ?? [];
+                      const fin = h.dateFin ?? '';
+                      const expiree = !!fin && fin < new Date().toISOString().slice(0, 10);
+                      return (
+                        <div key={hi} style={{ display: 'flex', gap: '6px', alignItems: 'center', marginBottom: '4px' }}>
+                          <select style={{ ...inputStyle2, width: '80px', fontSize: '11px', padding: '3px 5px' }} value={h.titre}
+                            onChange={e => majJure(j.id, { habilitations: habs.map((x, i) => i === hi ? { ...x, titre: e.target.value } : x) })}>
+                            {Object.keys(FORMATIONS_EXAMEN).map(c => <option key={c} value={c}>{c}</option>)}
+                          </select>
+                          <span style={{ fontSize: '10px', color: '#888' }}>valide jusqu&apos;au</span>
+                          <input type="date" style={{ ...inputStyle2, width: '140px', fontSize: '11px', padding: '3px 5px', borderColor: !fin ? '#C8A23A' : expiree ? '#e53e3e' : '#e0e0e0' }} value={fin}
+                            onChange={e => majJure(j.id, { habilitations: habs.map((x, i) => i === hi ? { ...x, dateFin: e.target.value || null } : x) })} />
+                          {!fin && <span style={{ fontSize: '10px', color: '#c2410c' }}>⚠️ à saisir</span>}
+                          {expiree && <span style={{ fontSize: '10px', color: '#c53030', fontWeight: 700 }}>expirée</span>}
+                          <button onClick={() => majJure(j.id, { habilitations: habs.filter((_, i) => i !== hi) })} style={{ background: 'none', border: 'none', color: '#e53e3e', cursor: 'pointer', fontSize: '11px' }}>✕</button>
+                        </div>
+                      );
+                    })}
+                    <button onClick={() => majJure(j.id, { habilitations: [...(j.habilitations ?? []), { titre: 'SC', dateFin: null }] })}
+                      style={{ backgroundColor: 'white', color: '#006B68', border: '1px solid #006B68', borderRadius: '6px', padding: '2px 8px', fontSize: '10px', cursor: 'pointer', fontWeight: 600 }}>+ Habilitation</button>
+                  </div>
                 </div>
                 <button onClick={() => retirer(j.id)} style={{ backgroundColor: '#fde8e8', color: '#e53e3e', border: 'none', borderRadius: '4px', padding: '3px 8px', fontSize: '11px', cursor: 'pointer' }}>✕</button>
               </div>

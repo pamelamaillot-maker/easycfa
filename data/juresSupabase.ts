@@ -36,6 +36,7 @@ export interface Jure {
   specialite?: string;
   formations?: string[];       // sigles TP : ['SC', 'GCF']
   entreprise?: string;
+  habilitations?: { titre: string; dateFin?: string | null }[];  // lues sur CERES
   fonction?: string;
   nbInterventions?: number;
   dernierExamen?: string;      // JJ/MM/AAAA
@@ -48,7 +49,7 @@ export interface Jure {
 
 const CHAMPS_VALIDES_JURE = new Set<string>([
   'id', 'nom', 'prenom', 'cle', 'telephone', 'email', 'specialite',
-  'formations', 'entreprise', 'fonction', 'nbInterventions',
+  'formations', 'entreprise', 'habilitations', 'fonction', 'nbInterventions',
   'dernierExamen', 'actif', 'notes', 'archive',
   'dateCreation', 'dateModification',
 ]);
