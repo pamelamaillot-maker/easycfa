@@ -106,6 +106,7 @@ export type Examen = {
   responsableSuppleantId?: string | null;
   surveillantId?: string | null;
   responsablesSaisisCeres?: boolean;
+  checklist?: Record<string, any>;     // checklist réglementaire (points manuels + photo ouverture des plis)
 
   // CERES
   dateCreationCERES?: string;

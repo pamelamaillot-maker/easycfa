@@ -64,6 +64,8 @@ import { chargerEmargements } from '../../data/emargementsSupabase';
 import { chargerInterventions } from '../../data/interventionsSupabase';
 import { controlerConflits, LIBELLE_ROLE_COURT } from '../../lib/conflitsResponsables';
 import { controlerJury } from '../../lib/controleJury';
+import { calculerChecklist, tauxChecklist, LIBELLE_PHASE, type Phase } from '../../lib/checklistExamen';
+import { supabase } from '../../lib/supabaseClient';
 
 const inputStyle: React.CSSProperties = { border: '1.5px solid #e0e0e0', borderRadius: '8px', padding: '7px 10px', fontSize: '12px', width: '100%', boxSizing: 'border-box', backgroundColor: 'white' };
 const btnPrimary: React.CSSProperties = { backgroundColor: '#006B68', color: 'white', border: 'none', borderRadius: '8px', padding: '8px 14px', fontSize: '12px', fontWeight: '600', cursor: 'pointer' };
@@ -312,7 +314,7 @@ export default function Examens() {
   const [envoiEnCours, setEnvoiEnCours] = useState(false);
   const [sessionSel, setSessionSel] = useState<SessionExamen | null>(null);
   const [onglet, setOnglet] = useState<'sessions' | 'agrement' | 'jures' | 'taux'>('sessions');
-  const [ongletFiche, setOngletFiche] = useState<'infos' | 'dte' | 'jury' | 'candidats' | 'documents' | 'pv' | 'emargement'>('infos');
+  const [ongletFiche, setOngletFiche] = useState<'infos' | 'checklist' | 'dte' | 'jury' | 'candidats' | 'documents' | 'pv' | 'emargement'>('infos');
   const [modale, setModale] = useState(false);
   const [afficherArchives, setAfficherArchives] = useState(false);
   const [apprenantsDb, setApprenantsDb] = useState<any[]>([]);
@@ -622,17 +624,27 @@ export default function Examens() {
   };
 
   // Complétion checklist
+  // Checklist réglementaire (avant / jour J / après) — remplace l'ancien comptage de 15 cases
+  function checklistSession(s: SessionExamen) {
+    return calculerChecklist(s, {
+      agrements: agrementsDb,
+      apprenants: apprenantsDb,
+      conflits: controlerConflits(s, responsablesDb, apprenantsDb, sessionsFormationDb, emargementsDb, interventionsDb).conflits.length,
+      juryRouge: controlerJury(s, juresRepertoire as any).points.filter(p => p.niveau === 'rouge').length,
+    });
+  }
   function tauxCompletion(s: SessionExamen): number {
-    const checks = [
-      !!s.dateCreationCERES, !!s.numeroCERES,
-      !!s.dateCmdDTE, !!s.dateReceptionDTE,
-      s.jures.length > 0, !!s.dateCmdJury,
-      !!s.dateEnvoiConvocations,
-      s.affichageReglement, s.affichagePlanning, s.affichageConditions,
-      !!s.dateResultatsCERES, !!s.pvSigne, !!s.pvEnvoiDemarche,
-      !!s.pvCourrierReco, !!s.pvDeets,
-    ];
-    return Math.round((checks.filter(Boolean).length / checks.length) * 100);
+    return tauxChecklist(checklistSession(s));
+  }
+
+  // Coche / décoche un point manuel, horodaté avec l'auteur
+  async function cocherPoint(id: string, fait: boolean) {
+    if (!sessionSel) return;
+    const { data } = await supabase.auth.getSession();
+    const par = data.session?.user?.email ?? 'inconnu';
+    const ck = { ...((sessionSel as any).checklist ?? {}) };
+    ck[id] = fait ? { fait: true, par, le: new Date().toISOString() } : { fait: false, par, le: new Date().toISOString() };
+    maj('checklist', ck);
   }
 
   return (
@@ -1045,6 +1057,7 @@ export default function Examens() {
                 <div style={{ display: 'flex', borderBottom: '2px solid #EAF4F3', overflowX: 'auto' }}>
                   {[
                     { id: 'infos', label: '📋 Infos' },
+                    { id: 'checklist', label: `✅ Checklist (${tauxCompletion(sessionSel)}%)` },
                     { id: 'dte', label: '📦 DTE' },
                     { id: 'jury', label: '👨‍⚖️ Jurés' },
                     { id: 'candidats', label: `👥 Candidats (${sessionSel.candidats.length})` },
@@ -1254,6 +1267,60 @@ export default function Examens() {
                       </div>
                     </div>
                   )}
+
+                  {/* ── CHECKLIST RÉGLEMENTAIRE ── */}
+                  {ongletFiche === 'checklist' && (() => {
+                    const points = checklistSession(sessionSel);
+                    const ck = (sessionSel as any).checklist ?? {};
+                    const photo = ck.ouverturePlis;
+                    return (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                        {(['avant', 'jourJ', 'apres'] as Phase[]).map(ph => {
+                          const pts = points.filter(p => p.phase === ph);
+                          const faits = pts.filter(p => p.ok).length;
+                          return (
+                            <div key={ph} style={{ border: '1px solid #e0e0e0', borderRadius: '8px', overflow: 'hidden' }}>
+                              <div style={{ backgroundColor: faits === pts.length ? '#e6f4f1' : '#fafafa', padding: '8px 12px', display: 'flex', justifyContent: 'space-between', fontSize: '12px', fontWeight: 700, color: '#006B68' }}>
+                                <span>{LIBELLE_PHASE[ph]}</span>
+                                <span style={{ color: faits === pts.length ? '#16a34a' : '#C8A23A' }}>{faits}/{pts.length}</span>
+                              </div>
+                              {pts.map(p => (
+                                <div key={p.id} style={{ display: 'flex', gap: '8px', alignItems: 'flex-start', padding: '6px 12px', borderTop: '1px solid #f0f0f0', fontSize: '12px' }}>
+                                  {p.mode === 'manuel' ? (
+                                    <input type="checkbox" checked={p.ok} onChange={e => cocherPoint(p.id, e.target.checked)} style={{ marginTop: '2px', cursor: 'pointer' }} />
+                                  ) : (
+                                    <span style={{ width: '13px', textAlign: 'center' }}>{p.ok ? '✅' : '⬜'}</span>
+                                  )}
+                                  <div style={{ flex: 1 }}>
+                                    <div style={{ color: p.ok ? '#333' : '#c53030', fontWeight: p.ok ? 400 : 600 }}>{p.libelle}</div>
+                                    <div style={{ fontSize: '10px', color: '#888' }}>
+                                      {p.mode === 'auto' ? `Automatique${p.detail ? ' — ' + p.detail : ''}` : p.le ? `${p.ok ? 'Coché' : 'Décoché'} par ${p.par} le ${new Date(p.le).toLocaleString('fr-FR')}` : 'À cocher'}
+                                    </div>
+                                    {p.photo && (
+                                      <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginTop: '4px' }}>
+                                        <label style={{ ...btnSecondary, display: 'inline-block', cursor: 'pointer', fontSize: '10px', padding: '3px 8px' }}>
+                                          📷 {photo?.url ? 'Remplacer la photo' : "Joindre la photo de l'ouverture des plis"}
+                                          <input type="file" accept="image/*,.pdf" style={{ display: 'none' }} onChange={async ev => {
+                                            const f = ev.target.files?.[0];
+                                            ev.target.value = '';
+                                            if (!f) return;
+                                            const r = await uploaderPieceExamen(sessionSel.id, 'ouverture_plis', f);
+                                            if (!r.success) { alert('Erreur : ' + r.error); return; }
+                                            maj('checklist', { ...ck, ouverturePlis: { nom: r.nom, url: r.url, chemin: r.chemin } });
+                                          }} />
+                                        </label>
+                                        {photo?.url && <a href={photo.url} target="_blank" rel="noopener noreferrer" style={{ fontSize: '10px', color: '#006B68', fontWeight: 600, textDecoration: 'underline' }}>✅ {photo.nom}</a>}
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    );
+                  })()}
 
                   {/* ── DTE ── */}
                   {ongletFiche === 'dte' && (
