@@ -6,10 +6,15 @@
 //  - l'équipe les envoie sur sign.plus, puis importe ici les PDF signés (plusieurs d'un coup)
 //  - EasyCFA les range dans ASSIDUITE et met le X cliquable dans le tableau (statut « Signé »)
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { COLORS } from '../lib/constants';
 import Card from './Card';
+
+// Signataire PAM OI des états de présence (visa du CFA)
+const SIGNATAIRE_CFA = { nom: 'Gaëlle MAILLOT', email: 'pamelamaillot@pamoi.re' };
+
+type Signataire = { role: string; nom: string; email: string; source?: string };
 
 type Etat = {
   id: string; apprenantId: string; annee: number; mois: number; sessionNumero: string | null;
@@ -48,6 +53,9 @@ async function appelApi(corps: object) {
 export default function EtatsPresenceAValider({ annee, mois, apprenantId, sessionNumero }: { annee: number; mois: number; apprenantId?: string; sessionNumero?: string }) {
   const [etats, setEtats] = useState<Etat[]>([]);
   const [noms, setNoms] = useState<Record<string, string>>({});
+  const [signataires, setSignataires] = useState<Record<string, Signataire[]>>({});
+  const [ouvert, setOuvert] = useState<string | null>(null);
+  const [copie, setCopie] = useState('');
   const [occupe, setOccupe] = useState<string | null>(null);
   const [message, setMessage] = useState('');
   const [liens, setLiens] = useState<Record<string, string>>({});
@@ -60,8 +68,30 @@ export default function EtatsPresenceAValider({ annee, mois, apprenantId, sessio
     const liste = (data || []) as Etat[];
     setEtats(liste);
     if (liste.length) {
-      const { data: a } = await supabase.from('apprenants').select('id,nom,prenom').in('id', liste.map(e => e.apprenantId));
+      const { data: a } = await supabase.from('apprenants')
+        .select('id,nom,prenom,email,entreprise,"tuteurNom","tuteurPrenom","tuteurEmail"')
+        .in('id', liste.map(e => e.apprenantId));
       setNoms(Object.fromEntries((a || []).map((x: any) => [x.id, `${x.prenom} ${x.nom}`])));
+      // Signataires : apprenant (fiche), tuteur (fiche, sinon fiche entreprise), PAM OI
+      const { data: ents } = await supabase.from('entreprises')
+        .select('"raisonSociale",email,"rhEmail","tuteurNom","tuteurPrenom","tuteurEmail","dirigeantNom","dirigeantPrenom","dirigeantEmail"');
+      const norm = (t: string) => (t || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]/g, '');
+      const carte: Record<string, Signataire[]> = {};
+      (a || []).forEach((x: any) => {
+        const ent: any = (ents || []).find((en: any) => norm(en.raisonSociale) === norm(x.entreprise));
+        let tuteur: Signataire = { role: 'Tuteur entreprise', nom: [x.tuteurPrenom, x.tuteurNom].filter(Boolean).join(' '), email: x.tuteurEmail || '', source: 'fiche apprenant' };
+        if (!tuteur.email && ent?.tuteurEmail) tuteur = { role: 'Tuteur entreprise', nom: [ent.tuteurPrenom, ent.tuteurNom].filter(Boolean).join(' ') || tuteur.nom, email: ent.tuteurEmail, source: 'fiche entreprise (tuteur)' };
+        if (!tuteur.email && ent) {
+          const repli = ent.dirigeantEmail || ent.email || ent.rhEmail || '';
+          if (repli) tuteur = { role: 'Tuteur entreprise', nom: tuteur.nom || [ent.dirigeantPrenom, ent.dirigeantNom].filter(Boolean).join(' '), email: repli, source: 'adresse de l’entreprise — à vérifier' };
+        }
+        carte[x.id] = [
+          { role: 'Apprenant', nom: `${x.prenom} ${x.nom}`, email: x.email || '', source: 'fiche apprenant' },
+          tuteur,
+          { role: 'PAM OI', nom: SIGNATAIRE_CFA.nom, email: SIGNATAIRE_CFA.email },
+        ];
+      });
+      setSignataires(carte);
     }
   }
   useEffect(() => { charger(); }, [annee, mois]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -173,7 +203,8 @@ export default function EtatsPresenceAValider({ annee, mois, apprenantId, sessio
           </thead>
           <tbody>
             {triees.map(e => (
-              <tr key={e.id} style={{ borderTop: `1px solid ${COLORS.border}` }}>
+              <Fragment key={e.id}>
+              <tr style={{ borderTop: `1px solid ${COLORS.border}` }}>
                 <td style={{ ...td, fontWeight: 700 }}>
                   <a href={`/apprenants/${e.apprenantId}`} style={{ color: COLORS.text, textDecoration: 'none' }}>{noms[e.apprenantId] || e.apprenantId}</a>
                   <div style={{ fontSize: 11, color: COLORS.textMuted, fontWeight: 400 }}>{e.sessionNumero}</div>
@@ -201,6 +232,10 @@ export default function EtatsPresenceAValider({ annee, mois, apprenantId, sessio
                   )}
                 </td>
                 <td style={{ ...td, whiteSpace: 'nowrap' }}>
+                  <button style={{ ...bouton(ouvert === e.id ? '#555' : '#C8A23A'), marginRight: 4 }}
+                    onClick={() => setOuvert(ouvert === e.id ? null : e.id)} title="E-mails à saisir dans la signature électronique Google">
+                    ✍️ Signataires
+                  </button>
                   {e.statut !== 'erreur' && (
                     <button style={{ ...bouton(COLORS.primary), marginRight: 4 }} disabled={occupe === 'import'}
                       onClick={() => { setCibleImport(e.id); champImportUn.current?.click(); }} title="Importer le PDF signé de cet apprenant">
@@ -212,6 +247,33 @@ export default function EtatsPresenceAValider({ annee, mois, apprenantId, sessio
                   </button>
                 </td>
               </tr>
+              {ouvert === e.id && (
+                <tr style={{ backgroundColor: '#fbf8ee' }}>
+                  <td colSpan={9} style={{ padding: '10px 14px' }}>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: COLORS.primary, marginBottom: 6 }}>
+                      ✍️ Signataires à saisir dans Drive › ⋮ › eSignature › Gérer les signataires
+                    </div>
+                    {(signataires[e.apprenantId] || []).map(s => (
+                      <div key={s.role} style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 12, padding: '3px 0' }}>
+                        <span style={{ width: 130, color: COLORS.textMuted }}>{s.role}</span>
+                        <span style={{ width: 180, fontWeight: 600 }}>{s.nom || '—'}</span>
+                        {s.email
+                          ? <>
+                              <code style={{ backgroundColor: 'white', border: '1px solid #e0e0e0', borderRadius: 4, padding: '2px 6px' }}>{s.email}</code>
+                              <button style={bouton(COLORS.primary)} onClick={() => { navigator.clipboard.writeText(s.email); setCopie(s.email); setTimeout(() => setCopie(''), 2000); }}>
+                                {copie === s.email ? '✅ Copié' : '📋 Copier'}
+                              </button>
+                              {s.source && s.source.includes('vérifier') && <span style={{ color: '#C8A23A', fontSize: 11 }}>⚠ {s.source}</span>}
+                            </>
+                          : <span style={{ color: '#e53e3e', fontWeight: 600 }}>
+                              ⚠ e-mail manquant — à compléter sur la <a href={s.role === 'Apprenant' ? `/apprenants/${e.apprenantId}` : `/apprenants/${e.apprenantId}`} style={{ color: '#e53e3e' }}>fiche apprenant</a>
+                            </span>}
+                      </div>
+                    ))}
+                  </td>
+                </tr>
+              )}
+              </Fragment>
             ))}
           </tbody>
         </table>
