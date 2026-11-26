@@ -191,6 +191,9 @@ export default function RecapMensuel() {
     const liste = Array.from(parApprenant.values());
     const normaliser = (s: string) => (s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/\s+/g, ' ').trim();
     liste.forEach(s => {
+      // Séances dans l'ordre chronologique (matin avant après-midi)
+      const cle = (d: string) => { const x = parseDateFr(d); return x ? x.annee * 10000 + x.mois * 100 + x.jour : 0; };
+      s.seances.sort((x, y) => cle(x.date) - cle(y.date) || (x.demiJournee === 'Matin' ? -1 : 1));
       s.tauxPresence = s.heuresPrevues > 0 ? Math.round((s.heuresRealisees / s.heuresPrevues) * 100) : 0;
       s.tauxAbsence = 100 - s.tauxPresence;
       // Si emailEntreprise vide, on cherche depuis la liste des entreprises Supabase
