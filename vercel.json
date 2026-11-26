@@ -1,6 +1,8 @@
 {
   "crons": [
     { "path": "/api/cron/anniversaires", "schedule": "0 4 * * *" },
+    { "path": "/api/cron/rappel-emargement?moment=matin", "schedule": "0 6 * * *" },
+    { "path": "/api/cron/rappel-emargement?moment=apresmidi", "schedule": "0 11 * * *" },
     { "path": "/api/cron/etats-presence", "schedule": "0 15 * * *" }
   ]
 }

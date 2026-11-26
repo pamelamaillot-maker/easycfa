@@ -33,6 +33,8 @@ export async function GET(request: NextRequest) {
 
   try {
     const dateJour = dateAujourdhuiFr();
+    // ?moment=matin (10h) → demi-journée du matin ; sinon (15h) → après-midi + fiche d'intervention
+    const moment = request.nextUrl.searchParams.get('moment') === 'matin' ? 'matin' : 'apresmidi';
     console.log(`[Cron rappel-emargement] Démarrage pour le ${dateJour}`);
 
     // 1. Récupérer les feuilles du jour
@@ -86,17 +88,17 @@ export async function GET(request: NextRequest) {
       const djMatin = feuille.demiJournees?.find((d: any) => d.type === 'Matin');
       const djAprem = feuille.demiJournees?.find((d: any) => d.type === 'Après-midi');
 
-      if (djMatin && !djMatin.valide) {
+      if (moment === 'matin' && djMatin && !djMatin.valide) {
         const nonSaisis = djMatin.presences?.filter((p: any) => p.statut === 'Non saisi').length || 0;
         manques.push(`🌅 Matin non validé (${nonSaisis} présence(s) non saisie(s))`);
       }
-      if (djAprem && !djAprem.valide) {
+      if (moment === 'apresmidi' && djAprem && !djAprem.valide) {
         const nonSaisis = djAprem.presences?.filter((p: any) => p.statut === 'Non saisi').length || 0;
         manques.push(`🌇 Après-midi non validé (${nonSaisis} présence(s) non saisie(s))`);
       }
 
       const fiche = fiches?.find((f: any) => f.id === feuille.id || f.formateurId === formateur.id);
-      if (!fiche?.dateSignature) {
+      if (moment === 'apresmidi' && !fiche?.dateSignature) {
         manques.push(`📝 Fiche d'intervention pédagogique non signée`);
       }
 
@@ -107,7 +109,7 @@ export async function GET(request: NextRequest) {
       const corps = `
 Bonjour ${formateur.prenom},
 
-Il est 15h15. Nous constatons que les éléments suivants ne sont pas encore complets pour ta session du jour :
+Il est ${moment === 'matin' ? '10h' : '15h'}. Nous constatons que les éléments suivants ne sont pas encore complets pour ta session du jour :
 
 ${manques.map(m => '• ' + m).join('\n')}
 
@@ -118,7 +120,7 @@ Merci de te connecter à EasyCFA dès que possible pour finaliser :
 👉 https://easycfa-three.vercel.app/emargement
 
 Pour rappel, conformément à nos exigences Qualiopi :
-- La saisie des présences doit être finalisée avant 15h15 (matin) et 17h00 (après-midi)
+- La saisie des présences doit être finalisée avant 10h (matin) et 15h (après-midi)
 - La fiche d'intervention pédagogique doit être signée en fin de journée
 
 Si tu rencontres un problème, contacte BERE : pedagogie@pamoi.re
