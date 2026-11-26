@@ -1,5 +1,3 @@
-'use client';
-
 import { Document, Page, Text, View, StyleSheet, Image } from '@react-pdf/renderer';
 
 const S = StyleSheet.create({
@@ -54,9 +52,11 @@ type Props = {
   tauxPresence: number;
   tauxAbsence: number;
   seances: Seance[];
+  /** Adresse du logo — obligatoire côté serveur (URL complète). */
+  logoSrc?: string;
 };
 
-export default function PdfEtatPresenceMensuel({ apprenant, entreprise, formation, session, mois, heuresPrevues, heuresRealisees, heuresAbsence, tauxPresence, tauxAbsence, seances }: Props) {
+export default function PdfEtatPresenceMensuel({ apprenant, entreprise, formation, session, mois, heuresPrevues, heuresRealisees, heuresAbsence, tauxPresence, tauxAbsence, seances, logoSrc = '/logo-pamoi.png' }: Props) {
   const absencesInjustifiees = seances.filter(s => (s.statut === 'Absent' || s.statut === 'Retard') && !s.justificatif);
 
   return (
@@ -64,7 +64,7 @@ export default function PdfEtatPresenceMensuel({ apprenant, entreprise, formatio
       <Page size="A4" style={S.page}>
         {/* En-tête */}
         <View style={S.header}>
-          <Image style={S.logo} src="/logo-pamoi.png" />
+          <Image style={S.logo} src={logoSrc} />
           <View>
             <Text style={S.headerTitle}>PAM OI Formation</Text>
             <Text style={S.headerRight}>1 Chemin Dubuisson – 97436 Saint-Leu</Text>

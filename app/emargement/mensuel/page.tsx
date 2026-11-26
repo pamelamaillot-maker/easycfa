@@ -10,6 +10,7 @@ import type { Emargement } from '../../../data/emargementsSupabase';
 import { chargerEntreprises } from '../../../data/entreprisesSupabase';
 import { pdf } from '@react-pdf/renderer';
 import PdfEtatPresenceMensuel from '../../../components/PdfEtatPresenceMensuel';
+import EtatsPresenceAValider from '../../../components/EtatsPresenceAValider';
 
 const BoutonPdfEtatMensuel = dynamic(() => import('../../../components/BoutonPdfEtatMensuel'), { ssr: false });
 
@@ -364,6 +365,8 @@ export default function RecapMensuel() {
           </div>
         </div>
       </Card>
+
+      <EtatsPresenceAValider annee={anneeFiltre} mois={moisFiltre} />
 
       {/* Récapitulatif */}
       {statsMensuelles.length === 0 ? (
