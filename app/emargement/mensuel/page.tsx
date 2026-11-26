@@ -8,6 +8,7 @@ import dynamic from 'next/dynamic';
 import { chargerEmargements } from '../../../data/emargementsSupabase';
 import type { Emargement } from '../../../data/emargementsSupabase';
 import { chargerEntreprises } from '../../../data/entreprisesSupabase';
+import { chargerSessions } from '../../../data/sessionsSupabase';
 import { pdf } from '@react-pdf/renderer';
 import PdfEtatPresenceMensuel from '../../../components/PdfEtatPresenceMensuel';
 import EtatsPresenceAValider from '../../../components/EtatsPresenceAValider';
@@ -64,6 +65,8 @@ export default function RecapMensuel() {
   const apprenantIdFiltre = searchParams.get('apprenantId') || '';
   const [emargements, setEmargements] = useState<Emargement[]>([]);
   const [entreprises, setEntreprises] = useState<any[]>([]);
+  // Session de la fiche apprenant (au lieu du libellé « A + B + C » des feuilles fusionnées)
+  const [sessionParApprenant, setSessionParApprenant] = useState<Record<string, string>>({});
   const [chargement, setChargement] = useState(true);
   const [moisFiltre, setMoisFiltre] = useState<number>(new Date().getMonth() + 1);
   const [anneeFiltre, setAnneeFiltre] = useState<number>(new Date().getFullYear());
@@ -75,12 +78,18 @@ export default function RecapMensuel() {
   useEffect(() => {
     (async () => {
       try {
-        const [feuilles, ents] = await Promise.all([
+        const [feuilles, ents, sessions] = await Promise.all([
           chargerEmargements(),
           chargerEntreprises(),
+          chargerSessions(),
         ]);
         setEmargements(feuilles);
         setEntreprises(ents);
+        const carte: Record<string, string> = {};
+        // Les sessions « En cours » passent en dernier pour avoir la priorité
+        [...sessions].sort((a, b) => (a.statut === 'En cours' ? 1 : 0) - (b.statut === 'En cours' ? 1 : 0))
+          .forEach(s => (s.apprenantIds || []).forEach(id => { if (s.numero) carte[id] = s.numero; }));
+        setSessionParApprenant(carte);
         console.log(`[EmargementMensuel] ${feuilles.length} feuilles + ${ents.length} entreprises chargées ✅`);
       } catch (e) {
         console.error('[EmargementMensuel] Erreur Supabase', e);
@@ -93,15 +102,17 @@ export default function RecapMensuel() {
   const sessionsDispo = useMemo(() => {
     const set = new Map<string, string>();
     emargements.forEach(e => {
-      // Depuis la fiche apprenant : seulement les sessions où figure cet apprenant
-      const concerne = !apprenantIdFiltre
-        || (e.demiJournees || []).some(dj => (dj.presences || []).some(p => p.apprenantId === apprenantIdFiltre));
-      if (e.sessionNumero && concerne) {
-        set.set(e.sessionNumero, `${e.sessionNumero} — ${e.formation || ''}`);
-      }
+      const d = parseDateFr(e.date || '');
+      if (!d || d.mois !== moisFiltre || d.annee !== anneeFiltre) return;
+      (e.demiJournees || []).forEach(dj => (dj.presences || []).forEach(p => {
+        // Depuis la fiche apprenant : seulement la session de cet apprenant
+        if (!p.apprenantId || (apprenantIdFiltre && p.apprenantId !== apprenantIdFiltre)) return;
+        const numero = sessionParApprenant[p.apprenantId] || e.sessionNumero;
+        if (numero) set.set(numero, `${numero} — ${e.formation || ''}`);
+      }));
     });
     return Array.from(set.entries()).sort();
-  }, [emargements, apprenantIdFiltre]);
+  }, [emargements, apprenantIdFiltre, sessionParApprenant, moisFiltre, anneeFiltre]);
 
   // Une seule session pour cet apprenant : on la sélectionne d'office
   useEffect(() => {
@@ -116,7 +127,6 @@ export default function RecapMensuel() {
       if (!d) return false;
       if (d.mois !== moisFiltre) return false;
       if (d.annee !== anneeFiltre) return false;
-      if (sessionFiltre && e.sessionNumero !== sessionFiltre) return false;
       return true;
     });
 
@@ -141,7 +151,7 @@ export default function RecapMensuel() {
               emailEntreprise: p.emailEntreprise || '',
               formation: feuille.formation || '',
               formationCode: feuille.formationCode || '',
-              session: feuille.sessionNumero || '',
+              session: sessionParApprenant[p.apprenantId] || feuille.sessionNumero || '',
               mois: `${MOIS_NOMS[moisFiltre - 1]} ${anneeFiltre}`,
               heuresPrevues: 0,
               heuresRealisees: 0,
@@ -191,10 +201,12 @@ export default function RecapMensuel() {
     });
 
     // Filtre apprenant (depuis ?apprenantId= dans l'URL)
-    const filtree = apprenantIdFiltre ? liste.filter(a => a.apprenantId === apprenantIdFiltre) : liste;
+    const filtree = liste
+      .filter(a => !apprenantIdFiltre || a.apprenantId === apprenantIdFiltre)
+      .filter(a => !sessionFiltre || a.session === sessionFiltre);
 
     return filtree.sort((a, b) => a.nom.localeCompare(b.nom));
-  }, [emargements, entreprises, moisFiltre, anneeFiltre, sessionFiltre, apprenantIdFiltre]);
+  }, [emargements, entreprises, moisFiltre, anneeFiltre, sessionFiltre, apprenantIdFiltre, sessionParApprenant]);
 
   // Helper : convertit un Blob en base64
   function blobToBase64(blob: Blob): Promise<string> {

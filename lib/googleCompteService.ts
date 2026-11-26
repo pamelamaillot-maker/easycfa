@@ -15,6 +15,7 @@
 
 import { google, drive_v3, sheets_v4 } from 'googleapis';
 import { Readable } from 'stream';
+import { createPrivateKey } from 'crypto';
 
 const SCOPES = [
   'https://www.googleapis.com/auth/drive',
@@ -32,9 +33,10 @@ function normaliserCle(brute: string): string {
     try { k = JSON.parse(k).private_key || ''; } catch { /* on continue avec le texte brut */ }
   }
   k = k.replace(/^["']+|["',]+$/g, '').replace(/\\n/g, '\n');
-  const m = k.match(/-----BEGIN PRIVATE KEY-----([\s\S]*?)-----END PRIVATE KEY-----/);
-  if (!m) return k;
-  const corps = m[1].replace(/[^A-Za-z0-9+/=]/g, '');
+  const m = k.match(/-----BEGIN PRIVATE KEY-----([\s\S]*?)(-----END PRIVATE KEY-----|$)/);
+  // Sans les lignes BEGIN/END : on prend le texte tel quel s'il ressemble à une clé
+  const corps = (m ? m[1] : k).replace(/[^A-Za-z0-9+/=]/g, '');
+  if (corps.length < 1000) return k;
   const lignes = corps.match(/.{1,64}/g) || [];
   return `-----BEGIN PRIVATE KEY-----\n${lignes.join('\n')}\n-----END PRIVATE KEY-----\n`;
 }
@@ -43,6 +45,13 @@ function auth() {
   const email = process.env.GOOGLE_SA_EMAIL;
   const key = normaliserCle(process.env.GOOGLE_SA_PRIVATE_KEY || '');
   if (!email || !key) throw new Error('Compte de service Google non configuré (GOOGLE_SA_EMAIL / GOOGLE_SA_PRIVATE_KEY)');
+  try {
+    createPrivateKey(key);
+  } catch {
+    const brute = process.env.GOOGLE_SA_PRIVATE_KEY || '';
+    // Diagnostic sans jamais afficher la clé
+    throw new Error(`Clé privée Google illisible : ${brute.length} caractères, début BEGIN ${brute.includes('BEGIN PRIVATE KEY') ? 'présent' : 'ABSENT'}, fin END ${brute.includes('END PRIVATE KEY') ? 'présente' : 'ABSENTE'}. Collez dans Vercel tout le contenu du fichier JSON.`);
+  }
   return new google.auth.JWT({ email, key, scopes: SCOPES, subject: process.env.GOOGLE_COMPTE_DELEGUE });
 }
 

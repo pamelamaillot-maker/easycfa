@@ -61,9 +61,18 @@ export async function genererEtatsSession(opts: {
 
   const ids = etats.map(e => e.apprenantId);
   const [{ data: apprenants }, { data: existants }] = await Promise.all([
-    sb.from('apprenants').select('id,nom,prenom,entreprise,"tuteurNom","tuteurPrenom","dossierAssiduiteDriveId"').in('id', ids),
+    sb.from('apprenants').select('id,nom,prenom,entreprise,"tuteurNom","tuteurPrenom","dossierAssiduiteDriveId","sessionId"').in('id', ids),
     sb.from('etats_presence').select('id,statut').in('id', ids.map(id => `${id}_${opts.annee}-${mm}`)),
   ]);
+
+  // Numéro de la session de la fiche apprenant (pas le libellé « A + B + C » des feuilles fusionnées)
+  const idsSessions = Array.from(new Set((apprenants || []).map((a: any) => a.sessionId).filter(Boolean)));
+  const { data: sessionsFiches } = idsSessions.length
+    ? await sb.from('sessions').select('id,numero').in('id', idsSessions)
+    : { data: [] as any[] };
+  const numeroSession = (fiche: any, libelleFeuille: string) =>
+    (sessionsFiches || []).find((s: any) => s.id === fiche.sessionId)?.numero
+    || (libelleFeuille && !libelleFeuille.includes('+') ? libelleFeuille : opts.session.numero || libelleFeuille);
 
   const dossierBrouillons = await dossierASigner(opts.annee, opts.mois);
   const resultats: ResultatGeneration[] = [];
@@ -85,6 +94,7 @@ export async function genererEtatsSession(opts: {
     const nomEntreprise = fiche.entreprise || etat.entreprise;
     const tuteur = [fiche.tuteurPrenom, fiche.tuteurNom].filter(Boolean).join(' ');
     const nomFichier = nomFichierEtat(etat.nom, etat.prenom, opts.annee, opts.mois);
+    etat.session = numeroSession(fiche, etat.session);
 
     const ligne: Record<string, any> = {
       id: idEtat,
