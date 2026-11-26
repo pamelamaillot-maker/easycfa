@@ -23,7 +23,7 @@ export function supabaseAdmin() {
 
 export type ResultatGeneration = {
   apprenant: string;
-  statut: 'ok' | 'erreur' | 'deja_signe';
+  statut: 'ok' | 'erreur' | 'deja_signe' | 'existant';
   detail?: string;
 };
 
@@ -43,6 +43,8 @@ export async function genererEtatsSession(opts: {
   forcer?: boolean;
   /** limite à un seul apprenant (bouton « Régénérer » d'une ligne) */
   apprenantId?: string;
+  /** true = ne génère que les états absents ou en erreur (reprise après coupure) */
+  seulementManquants?: boolean;
   /** adresse du site, pour le logo du PDF */
   origine: string;
 }): Promise<ResultatGeneration[]> {
@@ -72,6 +74,10 @@ export async function genererEtatsSession(opts: {
     const deja = (existants || []).find((x: any) => x.id === idEtat);
     if (deja?.statut === 'signe' && !opts.forcer) {
       resultats.push({ apprenant: libelle, statut: 'deja_signe' });
+      continue;
+    }
+    if (deja && deja.statut !== 'erreur' && opts.seulementManquants) {
+      resultats.push({ apprenant: libelle, statut: 'existant' });
       continue;
     }
 

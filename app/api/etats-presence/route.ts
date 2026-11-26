@@ -50,11 +50,11 @@ export async function POST(request: NextRequest) {
       const auj = lireDateFr(aujourdhuiReunion())!;
       const cleAuj = auj.annee * 10000 + auj.mois * 100 + auj.jour;
       const { data: sessions } = await sb.from('sessions').select('id,numero,planning').eq('statut', 'En cours');
-      const bilan: Record<string, number> = { ok: 0, erreur: 0, deja_signe: 0 };
+      const bilan: Record<string, number> = { ok: 0, erreur: 0, deja_signe: 0, existant: 0 };
       for (const s of sessions || []) {
         const dernier = lireDateFr(dernierJourFormationDuMois(s.planning as any, annee, mois));
         if (!dernier || dernier.annee * 10000 + dernier.mois * 100 + dernier.jour > cleAuj) continue;
-        const r = await genererEtatsSession({ session: s, annee, mois, origine: request.nextUrl.origin });
+        const r = await genererEtatsSession({ session: s, annee, mois, seulementManquants: true, origine: request.nextUrl.origin });
         r.forEach(x => { bilan[x.statut] = (bilan[x.statut] || 0) + 1; });
       }
       return NextResponse.json({ success: true, bilan });

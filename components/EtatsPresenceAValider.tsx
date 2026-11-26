@@ -41,7 +41,8 @@ async function appelApi(corps: object) {
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${data.session?.access_token || ''}` },
     body: JSON.stringify(corps),
   });
-  return res.json();
+  try { return await res.json(); }
+  catch { return { success: false, error: 'Délai dépassé — relancez le même bouton : EasyCFA reprendra là où il s’est arrêté.' }; }
 }
 
 export default function EtatsPresenceAValider({ annee, mois }: { annee: number; mois: number }) {
@@ -92,7 +93,7 @@ export default function EtatsPresenceAValider({ annee, mois }: { annee: number; 
     const r = await appelApi({ action: 'generer_mois', annee, mois });
     setOccupe(null);
     setMessage(r.success
-      ? `✅ ${r.bilan?.ok || 0} état(s) générés${r.bilan?.erreur ? `, ${r.bilan.erreur} en erreur` : ''}${r.bilan?.deja_signe ? `, ${r.bilan.deja_signe} déjà signés` : ''}`
+      ? `✅ ${r.bilan?.ok || 0} état(s) générés${r.bilan?.erreur ? `, ${r.bilan.erreur} en erreur` : ''}${r.bilan?.deja_signe ? `, ${r.bilan.deja_signe} déjà signés` : ''}${r.bilan?.existant ? `, ${r.bilan.existant} déjà générés` : ''}`
       : `⚠️ ${r.error || 'Erreur'}`);
     charger();
   }

@@ -36,6 +36,7 @@ export async function GET(request: NextRequest) {
         session: { id: s.id, numero: s.numero },
         annee: d.annee,
         mois: d.mois,
+        seulementManquants: true,
         origine: request.nextUrl.origin,
       });
     } catch (e: any) {
