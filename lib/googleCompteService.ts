@@ -21,9 +21,27 @@ const SCOPES = [
   'https://www.googleapis.com/auth/spreadsheets',
 ];
 
+/**
+ * Remet la clé privée au format PEM, quelle que soit la façon dont elle a été collée
+ * dans Vercel : avec ou sans guillemets, avec des \n littéraux, des espaces à la place
+ * des retours à la ligne, ou même le fichier JSON entier.
+ */
+function normaliserCle(brute: string): string {
+  let k = (brute || '').trim();
+  if (k.startsWith('{')) {
+    try { k = JSON.parse(k).private_key || ''; } catch { /* on continue avec le texte brut */ }
+  }
+  k = k.replace(/^["']+|["',]+$/g, '').replace(/\\n/g, '\n');
+  const m = k.match(/-----BEGIN PRIVATE KEY-----([\s\S]*?)-----END PRIVATE KEY-----/);
+  if (!m) return k;
+  const corps = m[1].replace(/[^A-Za-z0-9+/=]/g, '');
+  const lignes = corps.match(/.{1,64}/g) || [];
+  return `-----BEGIN PRIVATE KEY-----\n${lignes.join('\n')}\n-----END PRIVATE KEY-----\n`;
+}
+
 function auth() {
   const email = process.env.GOOGLE_SA_EMAIL;
-  const key = (process.env.GOOGLE_SA_PRIVATE_KEY || '').replace(/\\n/g, '\n');
+  const key = normaliserCle(process.env.GOOGLE_SA_PRIVATE_KEY || '');
   if (!email || !key) throw new Error('Compte de service Google non configuré (GOOGLE_SA_EMAIL / GOOGLE_SA_PRIVATE_KEY)');
   return new google.auth.JWT({ email, key, scopes: SCOPES, subject: process.env.GOOGLE_COMPTE_DELEGUE });
 }
