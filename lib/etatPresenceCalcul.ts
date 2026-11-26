@@ -159,3 +159,79 @@ export function nomFichierEtat(nom: string, prenom: string, annee: number, mois:
   const propre = (s: string) => (s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^A-Za-z0-9-]+/g, '_').replace(/^_|_$/g, '');
   return `Etat_Presence_${propre(nom).toUpperCase()}_${propre(prenom)}_${annee}-${String(mois).padStart(2, '0')}.pdf`;
 }
+
+// ---------------------------------------------------------------------------
+// Alerte : absences sur plusieurs jours de formation d'affilée
+// ---------------------------------------------------------------------------
+
+/** Nombre de jours de formation consécutifs d'absence à partir duquel on alerte. */
+export const SEUIL_ABSENCES_CONSECUTIVES = 2;
+
+const cleDate = (d: { jour: number; mois: number; annee: number }) => d.annee * 10000 + d.mois * 100 + d.jour;
+
+/**
+ * Plus longue série de jours de formation où l'apprenant a été absent toute la journée
+ * (justifié ou non), parmi les séries qui touchent le mois choisi. Une série peut
+ * commencer le mois précédent : on regarde tout l'historique jusqu'à la fin du mois.
+ */
+export function plusLongueSerieAbsences(feuilles: Emargement[], apprenantId: string, annee: number, mois: number): number {
+  const finMois = annee * 10000 + mois * 100 + 31;
+  const debutMois = annee * 10000 + mois * 100 + 1;
+  const jours = new Map<number, boolean>(); // date → absent toute la journée ?
+  for (const f of feuilles) {
+    const d = lireDateFr(f.date);
+    if (!d || cleDate(d) > finMois) continue;
+    const statuts = (f.demiJournees || []).flatMap(dj => (dj.presences || []).filter(p => p.apprenantId === apprenantId).map(p => p.statut || ''));
+    if (statuts.length === 0) continue;
+    const absent = statuts.every(s => s === 'Absent');
+    const k = cleDate(d);
+    jours.set(k, (jours.get(k) ?? true) && absent);
+  }
+  let max = 0, serie = 0, serieTouche = false;
+  for (const k of Array.from(jours.keys()).sort((a, b) => a - b)) {
+    if (jours.get(k)) {
+      serie += 1;
+      if (k >= debutMois) serieTouche = true;
+      if (serieTouche) max = Math.max(max, serie);
+    } else {
+      serie = 0;
+      serieTouche = false;
+    }
+  }
+  return max;
+}
+
+// ---------------------------------------------------------------------------
+// État complet : toute la formation d'un apprenant
+// ---------------------------------------------------------------------------
+
+/** Cumule tous les émargements d'un apprenant (du premier au dernier jour émargé). */
+export function calculerEtatComplet(feuilles: Emargement[], apprenantId: string): EtatPresenceCalcule | null {
+  const siennes = feuilles
+    .filter(f => lireDateFr(f.date) && (f.demiJournees || []).some(dj => (dj.presences || []).some(p => p.apprenantId === apprenantId)))
+    .sort((a, b) => cleDate(lireDateFr(a.date)!) - cleDate(lireDateFr(b.date)!));
+  if (siennes.length === 0) return null;
+
+  // On réutilise le calcul mensuel mois par mois, puis on additionne
+  const moisVus = new Set(siennes.map(f => { const d = lireDateFr(f.date)!; return `${d.annee}-${d.mois}`; }));
+  let total: EtatPresenceCalcule | null = null;
+  for (const m of Array.from(moisVus)) {
+    const [a, mo] = m.split('-').map(Number);
+    const e = calculerEtatsDuMois(siennes, a, mo).find(x => x.apprenantId === apprenantId);
+    if (!e) continue;
+    if (!total) { total = { ...e, seances: [...e.seances] }; continue; }
+    total.heuresPrevues += e.heuresPrevues;
+    total.heuresRealisees += e.heuresRealisees;
+    total.heuresAbsence += e.heuresAbsence;
+    total.seancesNonSaisies += e.seancesNonSaisies;
+    total.seances.push(...e.seances);
+  }
+  if (!total) return null;
+  total.heuresPrevues = arrondi(total.heuresPrevues);
+  total.heuresRealisees = arrondi(total.heuresRealisees);
+  total.heuresAbsence = arrondi(total.heuresAbsence);
+  total.tauxPresence = total.heuresPrevues > 0 ? Math.round((total.heuresRealisees / total.heuresPrevues) * 100) : 0;
+  total.tauxAbsence = 100 - total.tauxPresence;
+  total.mois = `Du ${siennes[0].date} au ${siennes[siennes.length - 1].date}`;
+  return total;
+}

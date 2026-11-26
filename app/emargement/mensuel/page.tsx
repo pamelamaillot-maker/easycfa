@@ -9,6 +9,8 @@ import { chargerEmargements } from '../../../data/emargementsSupabase';
 import type { Emargement } from '../../../data/emargementsSupabase';
 import { chargerEntreprises } from '../../../data/entreprisesSupabase';
 import { chargerSessions } from '../../../data/sessionsSupabase';
+import { plusLongueSerieAbsences, SEUIL_ABSENCES_CONSECUTIVES } from '../../../lib/etatPresenceCalcul';
+import BoutonEtatComplet from '../../../components/BoutonEtatComplet';
 import { pdf } from '@react-pdf/renderer';
 import PdfEtatPresenceMensuel from '../../../components/PdfEtatPresenceMensuel';
 import EtatsPresenceAValider from '../../../components/EtatsPresenceAValider';
@@ -436,10 +438,13 @@ export default function RecapMensuel() {
                       </span>
                     </td>
                     <td style={{ padding: '12px', textAlign: 'center' }}>
-                      {a.tauxAbsence > 10
-                        ? <span style={{ backgroundColor: '#fde8e8', color: '#e53e3e', padding: '3px 8px', borderRadius: '6px', fontSize: '11px', fontWeight: '600' }}>⚠ Taux élevé</span>
-                        : <span style={{ color: '#aaa', fontSize: '12px' }}>OK</span>
-                      }
+                      {(() => {
+                        // Alerte seulement si absent plusieurs jours de formation d'affilée
+                        const serie = plusLongueSerieAbsences(emargements, a.apprenantId, anneeFiltre, moisFiltre);
+                        return serie >= SEUIL_ABSENCES_CONSECUTIVES
+                          ? <span style={{ backgroundColor: '#fde8e8', color: '#e53e3e', padding: '3px 8px', borderRadius: '6px', fontSize: '11px', fontWeight: '600' }}>⚠ {serie} jours d'affilée</span>
+                          : <span style={{ color: '#aaa', fontSize: '12px' }}>OK</span>;
+                      })()}
                     </td>
                     <td style={{ padding: '12px' }}>
                       <BoutonPdfEtatMensuel
@@ -455,6 +460,12 @@ export default function RecapMensuel() {
                         tauxAbsence={a.tauxAbsence}
                         seances={a.seances}
                         nomFichier={`Etat_Presence_${a.nom}_${a.mois.replace(/\s/g, '_')}.pdf`}
+                      />
+                      <BoutonEtatComplet
+                        feuilles={emargements}
+                        apprenantId={a.apprenantId}
+                        entreprise={{ nom: a.entreprise, email: a.emailEntreprise, tuteur: '' }}
+                        session={a.session}
                       />
                     </td>
                     <td style={{ padding: '12px' }}>

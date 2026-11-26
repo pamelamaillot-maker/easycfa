@@ -54,9 +54,11 @@ type Props = {
   seances: Seance[];
   /** Adresse du logo — obligatoire côté serveur (URL complète). */
   logoSrc?: string;
+  /** Titre du document (par défaut « État de présence mensuel »). */
+  titre?: string;
 };
 
-export default function PdfEtatPresenceMensuel({ apprenant, entreprise, formation, session, mois, heuresPrevues, heuresRealisees, heuresAbsence, tauxPresence, tauxAbsence, seances, logoSrc = '/logo-pamoi.png' }: Props) {
+export default function PdfEtatPresenceMensuel({ apprenant, entreprise, formation, session, mois, heuresPrevues, heuresRealisees, heuresAbsence, tauxPresence, tauxAbsence, seances, logoSrc = '/logo-pamoi.png', titre = 'État de présence mensuel' }: Props) {
   const absencesInjustifiees = seances.filter(s => (s.statut === 'Absent' || s.statut === 'Retard') && !s.justificatif);
 
   return (
@@ -75,7 +77,7 @@ export default function PdfEtatPresenceMensuel({ apprenant, entreprise, formatio
 
         {/* Titre */}
         <View style={S.titleBlock}>
-          <Text style={S.title}>État de présence mensuel</Text>
+          <Text style={S.title}>{titre}</Text>
           <Text style={S.subtitle}>{mois} — {formation}</Text>
         </View>
 
