@@ -10,10 +10,10 @@ const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 const supabase = createClient(supabaseUrl, supabaseKey);
 
-const EMAIL_EXPEDITEUR = 'EasyCFA <onboarding@resend.dev>'; // TODO: noreply@pamoi.re après vérif domaine
+const EMAIL_EXPEDITEUR = 'PAM OI Formation <pedagogie@pamoi.re>';
 const BERE_EMAIL = 'pedagogie@pamoi.re';
 // En mode test (domaine non vérifié), Resend n'envoie qu'à l'email du compte → on bascule sur PAMA pour tester
-const MODE_TEST = true;
+const MODE_TEST = false;
 const EMAIL_TEST = 'pamelamaillot@pamoi.re';
 
 function dateAujourdhuiFr(): string {
