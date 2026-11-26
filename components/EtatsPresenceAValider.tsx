@@ -45,7 +45,7 @@ async function appelApi(corps: object) {
   catch { return { success: false, error: 'Délai dépassé — relancez le même bouton : EasyCFA reprendra là où il s’est arrêté.' }; }
 }
 
-export default function EtatsPresenceAValider({ annee, mois }: { annee: number; mois: number }) {
+export default function EtatsPresenceAValider({ annee, mois, apprenantId, sessionNumero }: { annee: number; mois: number; apprenantId?: string; sessionNumero?: string }) {
   const [etats, setEtats] = useState<Etat[]>([]);
   const [noms, setNoms] = useState<Record<string, string>>({});
   const [occupe, setOccupe] = useState<string | null>(null);
@@ -66,8 +66,12 @@ export default function EtatsPresenceAValider({ annee, mois }: { annee: number; 
   }
   useEffect(() => { charger(); }, [annee, mois]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const triees = useMemo(() => [...etats].sort((a, b) => (noms[a.apprenantId] || '').localeCompare(noms[b.apprenantId] || '')), [etats, noms]);
-  const nbSignes = etats.filter(e => e.statut === 'signe').length;
+  // Filtre d'affichage (fiche apprenant / session choisie) ; l'import en lot reste sur tout le mois
+  const visibles = useMemo(() => etats.filter(e =>
+    (!apprenantId || e.apprenantId === apprenantId) && (!sessionNumero || e.sessionNumero === sessionNumero)
+  ), [etats, apprenantId, sessionNumero]);
+  const triees = useMemo(() => [...visibles].sort((a, b) => (noms[a.apprenantId] || '').localeCompare(noms[b.apprenantId] || '')), [visibles, noms]);
+  const nbSignes = visibles.filter(e => e.statut === 'signe').length;
 
   async function importer(fichiers: File[], idImpose?: string) {
     setOccupe('import');
@@ -123,7 +127,7 @@ export default function EtatsPresenceAValider({ annee, mois }: { annee: number; 
     charger();
   }
 
-  if (etats.length === 0) {
+  if (visibles.length === 0) {
     return (
       <Card style={{ marginBottom: 16 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
@@ -142,7 +146,7 @@ export default function EtatsPresenceAValider({ annee, mois }: { annee: number; 
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, gap: 12, flexWrap: 'wrap' }}>
         <div>
           <h2 style={{ fontSize: 15, fontWeight: 700, color: COLORS.primary, margin: 0 }}>
-            🤖 États de présence — {nbSignes}/{etats.length} signés et rangés
+            🤖 États de présence — {nbSignes}/{visibles.length} signés et rangés
           </h2>
           <div style={{ fontSize: 12, color: COLORS.textMuted, marginTop: 4 }}>
             1. Envoyez les PDF « à signer » sur sign.plus · 2. Importez ici les PDF signés : rangement Drive et lien dans le tableau automatiques.

@@ -93,12 +93,20 @@ export default function RecapMensuel() {
   const sessionsDispo = useMemo(() => {
     const set = new Map<string, string>();
     emargements.forEach(e => {
-      if (e.sessionNumero) {
+      // Depuis la fiche apprenant : seulement les sessions où figure cet apprenant
+      const concerne = !apprenantIdFiltre
+        || (e.demiJournees || []).some(dj => (dj.presences || []).some(p => p.apprenantId === apprenantIdFiltre));
+      if (e.sessionNumero && concerne) {
         set.set(e.sessionNumero, `${e.sessionNumero} — ${e.formation || ''}`);
       }
     });
     return Array.from(set.entries()).sort();
-  }, [emargements]);
+  }, [emargements, apprenantIdFiltre]);
+
+  // Une seule session pour cet apprenant : on la sélectionne d'office
+  useEffect(() => {
+    if (apprenantIdFiltre && sessionsDispo.length === 1 && !sessionFiltre) setSessionFiltre(sessionsDispo[0][0]);
+  }, [apprenantIdFiltre, sessionsDispo, sessionFiltre]);
 
   // Calcul des stats mensuelles
   const statsMensuelles: StatApprenantMensuel[] = useMemo(() => {
@@ -366,7 +374,7 @@ export default function RecapMensuel() {
         </div>
       </Card>
 
-      <EtatsPresenceAValider annee={anneeFiltre} mois={moisFiltre} />
+      <EtatsPresenceAValider annee={anneeFiltre} mois={moisFiltre} apprenantId={apprenantIdFiltre || undefined} sessionNumero={sessionFiltre || undefined} />
 
       {/* Récapitulatif */}
       {statsMensuelles.length === 0 ? (
