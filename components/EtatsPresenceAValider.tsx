@@ -132,6 +132,16 @@ export default function EtatsPresenceAValider({ annee, mois, apprenantId, sessio
     charger();
   }
 
+  async function recupererSignes() {
+    setOccupe('signes');
+    const r = await appelApi({ action: 'recuperer_signes', annee, mois });
+    setOccupe(null);
+    setMessage(r.importes
+      ? `✅ ${r.importes.length} PDF signé(s) récupéré(s) dans Drive et rangé(s)${r.erreurs?.length ? ` — ${r.erreurs.length} en erreur : ${r.erreurs.join(' · ')}` : ''}`
+      : `⚠️ ${r.error || 'Erreur'}`);
+    charger();
+  }
+
   const boutonMois = (
     <button style={{ ...bouton('#888'), padding: '9px 14px', fontSize: 13 }} disabled={occupe === 'mois'} onClick={genererMois}
       title="Rattrapage : génère les états manquants (sessions dont le dernier jour du mois est passé)">
@@ -184,6 +194,10 @@ export default function EtatsPresenceAValider({ annee, mois, apprenantId, sessio
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
           {boutonMois}
+          <button style={{ ...bouton(COLORS.primary), padding: '9px 14px', fontSize: 13 }} disabled={occupe === 'signes'} onClick={recupererSignes}
+            title="Cherche dans Drive les PDF signés avec la signature électronique Google (fait aussi chaque soir automatiquement)">
+            {occupe === 'signes' ? '⏳ Recherche…' : '📥 Récupérer les signés Google'}
+          </button>
           <button style={{ ...bouton('#C8A23A'), padding: '9px 14px', fontSize: 13 }} disabled={occupe === 'import'} onClick={() => champImportLot.current?.click()}>
             {occupe === 'import' ? '⏳ Import…' : '📤 Importer les PDF signés'}
           </button>

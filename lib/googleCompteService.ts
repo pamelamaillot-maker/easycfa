@@ -160,6 +160,53 @@ export async function dossierASigner(annee: number, mois: number): Promise<strin
   return cree.data.id!;
 }
 
+/** Sous-dossier (créé au besoin), ex. « Non signés (archives) » dans « 2026-11 ». */
+export async function sousDossier(parentId: string, nom: string): Promise<string> {
+  const drive = driveService();
+  const res = await drive.files.list({
+    q: `'${parentId}' in parents and mimeType='${DOSSIER}' and name='${echapper(nom)}' and trashed=false`,
+    fields: 'files(id)', supportsAllDrives: true, includeItemsFromAllDrives: true,
+  });
+  if (res.data.files?.[0]?.id) return res.data.files[0].id;
+  const cree = await drive.files.create({
+    requestBody: { name: nom, parents: [parentId], mimeType: DOSSIER }, fields: 'id', supportsAllDrives: true,
+  });
+  return cree.data.id!;
+}
+
+/** PDF présents directement dans un dossier. */
+export async function listerPdf(dossierId: string): Promise<Array<{ id: string; name: string }>> {
+  const drive = driveService();
+  const fichiers: Array<{ id: string; name: string }> = [];
+  let pageToken: string | undefined;
+  do {
+    const res = await drive.files.list({
+      q: `'${dossierId}' in parents and mimeType='application/pdf' and trashed=false`,
+      fields: 'nextPageToken, files(id,name)', pageSize: 200, pageToken,
+      supportsAllDrives: true, includeItemsFromAllDrives: true,
+    });
+    (res.data.files || []).forEach(f => fichiers.push({ id: f.id!, name: f.name || '' }));
+    pageToken = res.data.nextPageToken || undefined;
+  } while (pageToken);
+  return fichiers;
+}
+
+/** Contenu d'un fichier Drive. */
+export async function telechargerFichier(fileId: string): Promise<Buffer> {
+  const res = await driveService().files.get({ fileId, alt: 'media', supportsAllDrives: true }, { responseType: 'arraybuffer' });
+  return Buffer.from(res.data as ArrayBuffer);
+}
+
+/** Déplace un fichier d'un dossier à un autre (sans erreur bloquante si les droits manquent). */
+export async function deplacerFichier(fileId: string, depuisId: string, versId: string): Promise<boolean> {
+  try {
+    await driveService().files.update({ fileId, addParents: versId, removeParents: depuisId, fields: 'id', supportsAllDrives: true });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Tableau « Gestion Assiduité » : X cliquable dans la colonne du mois,
 // bloc « Etats de présence … pour les entreprises ».

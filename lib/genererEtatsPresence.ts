@@ -13,7 +13,10 @@ import { createClient } from '@supabase/supabase-js';
 import PdfEtatPresenceMensuel from '../components/PdfEtatPresenceMensuel';
 import type { Emargement } from '../data/emargementsSupabase';
 import { calculerEtatsDuMois, feuilleDeLaSession, nomFichierEtat } from './etatPresenceCalcul';
-import { trouverDossierAssiduite, deposerPdf, dossierASigner, lireOngletAssiduite, ecrireLienDansTableau } from './googleCompteService';
+import { trouverDossierAssiduite, deposerPdf, dossierASigner, lireOngletAssiduite, ecrireLienDansTableau, sousDossier, listerPdf, telechargerFichier, deplacerFichier } from './googleCompteService';
+
+export const DOSSIER_ARCHIVES_NON_SIGNES = 'Non signés (archives)';
+export const DOSSIER_SIGNES_IMPORTES = 'Signés (rangés dans ASSIDUITE)';
 
 export function supabaseAdmin() {
   return createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SECRET_KEY!, {
@@ -185,5 +188,50 @@ export async function importerEtatSigne(idEtat: string, pdfSigne: Buffer, auteur
     maj.erreur = `Tableau : ${e.message}`;
   }
   await sb.from('etats_presence').update(maj).eq('id', idEtat);
+
+  // Le PDF non signé n'a plus de valeur probante : on le range à part (jamais supprimé)
+  try {
+    const dossierMois = await dossierASigner(etat.annee, etat.mois);
+    const brouillon = (await listerPdf(dossierMois)).find(f => f.name === etat.nomFichier);
+    if (brouillon) await deplacerFichier(brouillon.id, dossierMois, await sousDossier(dossierMois, DOSSIER_ARCHIVES_NON_SIGNES));
+  } catch (e: any) {
+    console.error('[etats-presence] archivage du non signé', idEtat, e.message);
+  }
   return { ok: true, detail: maj.erreur || undefined };
+}
+
+/**
+ * Récupère tout seul les PDF signés par la signature électronique Google.
+ * Google enregistre la version signée dans le même dossier, sous le nom d'origine suivi
+ * de la date : « Etat_Presence_NOM_Prenom_2026-11 - 27/11/2026 08:26.pdf ».
+ */
+export async function recupererSignesGoogle(annee: number, mois: number): Promise<{ importes: string[]; erreurs: string[] }> {
+  const sb = supabaseAdmin();
+  const { data: aSigner } = await sb.from('etats_presence').select('id,"nomFichier"').eq('annee', annee).eq('mois', mois).eq('statut', 'a_signer');
+  const importes: string[] = [], erreurs: string[] = [];
+  if (!aSigner?.length) return { importes, erreurs };
+
+  const dossierMois = await dossierASigner(annee, mois);
+  const fichiers = await listerPdf(dossierMois);
+  let dossierSignes: string | null = null;
+
+  for (const etat of aSigner) {
+    const base = String(etat.nomFichier || '').replace(/\.pdf$/i, '');
+    if (!base) continue;
+    // La version la plus récente en premier (plusieurs demandes de signature possibles)
+    const signe = fichiers
+      .filter(f => f.name !== etat.nomFichier && f.name.startsWith(`${base} - `))
+      .sort((a, b) => b.name.localeCompare(a.name))[0];
+    if (!signe) continue;
+    try {
+      const r = await importerEtatSigne(etat.id, await telechargerFichier(signe.id), 'automatique (signature Google)');
+      if (!r.ok) { erreurs.push(`${base} : ${r.detail}`); continue; }
+      importes.push(base);
+      dossierSignes = dossierSignes || await sousDossier(dossierMois, DOSSIER_SIGNES_IMPORTES);
+      await deplacerFichier(signe.id, dossierMois, dossierSignes);
+    } catch (e: any) {
+      erreurs.push(`${base} : ${e.message}`);
+    }
+  }
+  return { importes, erreurs };
 }

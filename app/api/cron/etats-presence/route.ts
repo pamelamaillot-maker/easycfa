@@ -8,7 +8,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { aujourdhuiReunion, dernierJourFormationDuMois, lireDateFr } from '../../../../lib/etatPresenceCalcul';
-import { genererEtatsSession, supabaseAdmin } from '../../../../lib/genererEtatsPresence';
+import { genererEtatsSession, recupererSignesGoogle, supabaseAdmin } from '../../../../lib/genererEtatsPresence';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -41,6 +41,16 @@ export async function GET(request: NextRequest) {
       });
     } catch (e: any) {
       rapport[s.numero || s.id] = { erreur: e.message };
+    }
+  }
+
+  // Chaque soir : récupération des PDF signés (mois en cours et mois précédent)
+  const precedent = d.mois === 1 ? { annee: d.annee - 1, mois: 12 } : { annee: d.annee, mois: d.mois - 1 };
+  for (const p of [precedent, { annee: d.annee, mois: d.mois }]) {
+    try {
+      rapport[`signés ${p.annee}-${p.mois}`] = await recupererSignesGoogle(p.annee, p.mois);
+    } catch (e: any) {
+      rapport[`signés ${p.annee}-${p.mois}`] = { erreur: e.message };
     }
   }
 

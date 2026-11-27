@@ -6,7 +6,7 @@
 //   { action: 'generer_mois', annee, mois }       → rattrapage : génère les états manquants du mois
 
 import { NextRequest, NextResponse } from 'next/server';
-import { genererEtatsSession, importerEtatSigne, supabaseAdmin } from '../../../lib/genererEtatsPresence';
+import { genererEtatsSession, importerEtatSigne, recupererSignesGoogle, supabaseAdmin } from '../../../lib/genererEtatsPresence';
 import { idDepuisLienDrive } from '../../../lib/googleCompteService';
 import { aujourdhuiReunion, dernierJourFormationDuMois, lireDateFr } from '../../../lib/etatPresenceCalcul';
 
@@ -45,6 +45,12 @@ export async function POST(request: NextRequest) {
     }
 
     // Rattrapage : toutes les sessions en cours dont le dernier jour du mois est passé
+    // Récupère tout de suite les PDF signés via Google (sans attendre le passage du soir)
+    if (corps.action === 'recuperer_signes') {
+      const r = await recupererSignesGoogle(Number(corps.annee), Number(corps.mois));
+      return NextResponse.json({ success: r.erreurs.length === 0, ...r });
+    }
+
     if (corps.action === 'generer_mois') {
       const annee = Number(corps.annee), mois = Number(corps.mois);
       const auj = lireDateFr(aujourdhuiReunion())!;
